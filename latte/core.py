@@ -1,7 +1,6 @@
 import numpy as np
 import numbers
 import ast
-from .neuron import Neuron, WeightedNeuron
 from .ensemble import Ensemble, DataEnsemble
 import latte.util as util
 import astor
