@@ -185,6 +185,11 @@ class Net:
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
 
+    def init_ensemble(self, neurons):
+        ens = Ensemble(neurons)
+        self.ensembles.append(ens)
+        return ens
+
     def add_connections(self, source_ens, sink_ens, mapping):
         self.connections.append(Connection(source_ens, sink_ens, mapping))
 
