@@ -51,30 +51,32 @@ class NeuronTransformer(ast.NodeTransformer):
             self.seen_vars.add(name)
             ndims = self.ensemble.ndim
             incr = 0
-            if node.attr in "value":
+            if node.attr in ["value", "grad"]:
                 ndims += 1
-            elif node.attr == "inputs":
+            elif node.attr in ["inputs", "grad_inputs"]:
                 ndims = 1
             else:
                 incr = 1
             args = [ast.Name("_neuron_index_{}".format(i + incr), ast.Load()) for i in range(ndims)]
             # if node.attr in ["value", "inputs"]:
             #     args.append(C.Dot(C.SymbolRef(next_rdom), C.SymbolRef("x")))
-            return ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
+            node = ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
+            return node
         else:
             raise Exception("Unsupported Attribute node")
 
     def visit_Subscript(self, node):
         node.value = self.visit(node.value)
         # assert isinstance(node.value, ast.Call)
-        if isinstance(node.value, ast.Name) and "inputs" in node.value.id:
-            assert False
+        # if isinstance(node.value, ast.Name) and "inputs" in node.value.id:
+        #     assert False
+        #     value = node.value
+        #     assert isinstance(node.slice, ast.Index)
+        #     value.id = "{}{}".format(value.id, node.slice.value.n)
+        #     return value
+        if isinstance(node.value, ast.Subscript):
             value = node.value
-            assert isinstance(node.slice, ast.Index)
-            value.id = "{}{}".format(value.id, node.slice.value.n)
-            return value
-        elif isinstance(node.value, ast.Subscript):
-            value = node.value
+            value.ctx = node.ctx
             if isinstance(node.slice.value, (ast.Name, ast.Num)):
                 value.slice.value.elts.append(node.slice.value)
             else:
@@ -178,6 +180,8 @@ class Net:
         self.connections = []
         self.buffers = {}
         self.forward_tasks = []
+        self.backward_tasks = []
+        self.connections_map = {}
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -188,6 +192,7 @@ class Net:
     def compile(self):
         task_groups = {}
         connections_map = {ensemble: [] for ensemble in self.ensembles}
+        self.connections_map = connections_map
         for connection in self.connections:
             connections_map[connection.sink].append(connection)
 
@@ -209,7 +214,8 @@ class Net:
                     source_name = connections_map[ensemble][0].source.name
                     self.buffers[(ensemble.name + "inputs")] = self.buffers[(source_name + "value")]
                 elif field == "grad_inputs":
-                    continue # skip
+                    source_name = connections_map[ensemble][0].source.name
+                    self.buffers[(ensemble.name + "grad_inputs")] = self.buffers[(source_name + "grad")]
                 else:
                     value = getattr(neuron, field)
                     if isinstance(value, numbers.Real):
@@ -231,28 +237,40 @@ class Net:
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
                 continue
-            forward_def = util.get_ast(neuron.forward).body[0]
-            transformer = NeuronTransformer(ensemble, connections_map[ensemble])
-            forward_def = transformer.visit(forward_def)
-            loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
-            loop_ranges = [self.batch_size] + [d for d in ensemble.shape]
-            loop_ranges = loop_ranges[::-1]
-            nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in forward_def.body]
-            args = [ast.arg(arg, None) for arg in transformer.seen_vars]
-            func_name = util.generate_unique_function_name()
-            func_def = ast.FunctionDef(func_name,
-                    ast.arguments(args, None, [], [], None, []), nests,
-                    [], None)
-            func_def = util.PatternMatchGemm().visit(func_def)
-            func_def = ast.fix_missing_locations(func_def)
-            print(astor.to_source(func_def))
-            exec(compile(ast.Module([func_def]), filename="<ast>", mode="exec"))
-            func = eval(func_name)
-            _args = [self.buffers[arg.arg] for arg in args]
-            self.forward_tasks.append(Task(func, _args))
+
+            func, args = self._synthesize_ast(ensemble, neuron.forward)
+            self.forward_tasks.append(Task(func, args))
+
+            func, args = self._synthesize_ast(ensemble, neuron.backward)
+            self.backward_tasks.insert(0, Task(func, args))
+
+    def _synthesize_ast(self, ensemble, fn):
+        fn_def = util.get_ast(fn).body[0]
+        transformer = NeuronTransformer(ensemble, self.connections_map[ensemble])
+        fn_def = transformer.visit(fn_def)
+        loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
+        loop_ranges = [self.batch_size] + [d for d in ensemble.shape]
+        loop_ranges = loop_ranges[::-1]
+        nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in fn_def.body]
+        args = [ast.arg(arg, None) for arg in transformer.seen_vars]
+        func_name = util.generate_unique_function_name()
+        func_def = ast.FunctionDef(func_name,
+                ast.arguments(args, None, [], [], None, []), nests,
+                [], None)
+        func_def = util.PatternMatchGemm().visit(func_def)
+        func_def = ast.fix_missing_locations(func_def)
+        # print(astor.to_source(func_def))
+        exec(compile(ast.Module([func_def]), filename="<ast>", mode="exec"))
+        func = eval(func_name)
+        _args = [self.buffers[arg.arg] for arg in args]
+        return func, _args
 
     def forward(self):
         for task in self.forward_tasks:
+            task()
+
+    def backward(self):
+        for task in self.backward_tasks:
             task()
 
 def prod(elts):

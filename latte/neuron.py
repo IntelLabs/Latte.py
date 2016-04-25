@@ -29,8 +29,10 @@ class WeightedNeuron(Neuron):
         self.value += self.bias[0]
 
     def backward(self):
-        self.grad_inputs = dot(self.weights, self.grad)
-        self.grad_weights = dot(self.inputs, self.grad)
+        for i, input_idx in enumerate_mapping(self.inputs):
+            self.grad_inputs[input_idx] += self.grad * self.weights[i]
+        for i, input_idx in enumerate_mapping(self.inputs):
+            self.grad_weights[i] += self.grad * self.inputs[input_idx]
         self.grad_bias[0] += self.grad
 
 class DataNeuron(Neuron):
