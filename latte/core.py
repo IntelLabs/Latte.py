@@ -1,5 +1,6 @@
 import numpy as np
 import numbers
+import itertools
 import ast
 from .ensemble import Ensemble, DataEnsemble
 import latte.util as util
@@ -38,11 +39,18 @@ class Task:
 #         return self.tasks[index]
 
 class NeuronTransformer(ast.NodeTransformer):
-    def __init__(self, ensemble, connections):
+    def __init__(self, ensemble, connections, buffer_dim_info):
         super().__init__()
         self.ensemble = ensemble
         self.seen_vars = set()
         self.connections = connections
+        self.buffer_dim_info = buffer_dim_info
+
+    def visit(self, node):
+        node = super().visit(node)
+        if hasattr(node, 'body'):
+            node.body = util.flatten(node.body)
+        return node
 
     def visit_Attribute(self, node):
         if node.value.id == "self":
@@ -56,7 +64,10 @@ class NeuronTransformer(ast.NodeTransformer):
                 ndims = 1
             else:
                 incr = 1
-            args = [ast.Name("_neuron_index_{}".format(i + incr), ast.Load()) for i in range(ndims)]
+            args = []
+            for i in range(ndims):
+                if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
+                    args.append(ast.Name("_neuron_index_{}".format(i + incr), ast.Load()))
             # if node.attr in ["value", "inputs"]:
             #     args.append(C.Dot(C.SymbolRef(next_rdom), C.SymbolRef("x")))
             node = ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
@@ -78,6 +89,8 @@ class NeuronTransformer(ast.NodeTransformer):
             value.ctx = node.ctx
             if isinstance(node.slice.value, (ast.Name, ast.Num)):
                 value.slice.value.elts.append(node.slice.value)
+            elif isinstance(node.slice.value, ast.Tuple):
+                value.slice.value.elts.extend(node.slice.value.elts)
             else:
                 raise NotImplementedError(node.slice.value)
             return value
@@ -105,6 +118,21 @@ class NeuronTransformer(ast.NodeTransformer):
                 raise NotImplementedError(ast.dump(node))
                 # val = ast.Call(ast.Name("range", ast.Load()), [ast.Num(eval(astor.to_source(val)))], [])
                 return ast.Call(ast.Name("enumerate", ast.Load()), [val], [])
+        elif isinstance(_range, ast.Call) and _range.func.id == "enumerate_dim":
+            closure_vars = inspect.getclosurevars(self.connections[0].mapping)
+            mapping_func = util.get_ast(self.connections[0].mapping).body[0]
+            for var, value in closure_vars.nonlocals.items():
+                mapping_func = util.InlineVariable(var, value).visit(mapping_func)
+            for i, arg in enumerate(mapping_func.args.args):
+                i += 1  # offset batch
+                mapping_func = util.InlineVariable(arg.arg, "_neuron_index_{}".format(i)).visit(mapping_func)
+
+            pre_stmts = mapping_func.body[:-1]
+            shape = mapping_func.body[-1].value
+            node.iter = ast.Call(ast.Name("enumerate", ast.Load()), [shape.elts[_range.args[1].n]], [])
+            node.body = [self.visit(s) for s in node.body]
+            node.body = util.flatten(node.body)
+            return pre_stmts + [node]
         else:
             raise NotImplementedError(ast.dump(node))
 
@@ -181,6 +209,7 @@ class Net:
         self.forward_tasks = []
         self.backward_tasks = []
         self.connections_map = {}
+        self.buffer_dim_info = {}
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -229,14 +258,35 @@ class Net:
                             buff[i] = getattr(v, field)
                     elif isinstance(value, np.ndarray):
                         _shape = ensemble.shape
-                        _shape += value.shape
-                        buff = np.empty(_shape, dtype=value.dtype)
+                        uniform_across_dim = [True for _ in range(len(_shape))]
+                        first = getattr(ensemble.neurons.flat[0], field)
+                        for d in range(len(_shape)):
+                            for i in range(_shape[d]):
+                                idx = tuple(i if x == d else 0 for x in range(len(_shape)))
+                                if first.ctypes.data != getattr(ensemble.neurons[idx], field).ctypes.data:
+                                    uniform_across_dim[d] = False
+                                    break
+                        _iter = []
+                        shape = []
+                        for i in range(len(_shape)):
+                            if not uniform_across_dim[i]:
+                                _iter.append(range(_shape[i]))
+                                shape.append(_shape[i])
+                            else:
+                                _iter.append(range(1))
+                        shape += first.shape
+
+                        buff = np.empty(shape, dtype=value.dtype)
                         self.buffers[(ensemble.name + field)] = buff
-                        for i, v in ensemble:
-                            i += tuple(np.arange(0,d) for d in value.shape)
-                            buff[i] = getattr(v, field)
+                        self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
+                        for index in itertools.product(*_iter):
+                            _index = []
+                            for i in range(len(uniform_across_dim)):
+                                if not uniform_across_dim[i]:
+                                    _index.append(index[i])
+                            buff[_index] = getattr(ensemble.neurons[index], field)
                     else:
-                        print(field)
+                        raise NotImplementedError(field)
             if isinstance(ensemble, DataEnsemble):
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
@@ -250,7 +300,7 @@ class Net:
 
     def _synthesize_ast(self, ensemble, fn):
         fn_def = util.get_ast(fn).body[0]
-        transformer = NeuronTransformer(ensemble, self.connections_map[ensemble])
+        transformer = NeuronTransformer(ensemble, self.connections_map[ensemble], self.buffer_dim_info)
         fn_def = transformer.visit(fn_def)
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
         loop_ranges = [self.batch_size] + [d for d in ensemble.shape]
@@ -263,7 +313,7 @@ class Net:
                 [], None)
         func_def = util.PatternMatchGemm().visit(func_def)
         func_def = ast.fix_missing_locations(func_def)
-        # print(astor.to_source(func_def))
+        print(astor.to_source(func_def))
         exec(compile(ast.Module([func_def]), filename="<ast>", mode="exec"))
         func = eval(func_name)
         _args = [self.buffers[arg.arg] for arg in args]

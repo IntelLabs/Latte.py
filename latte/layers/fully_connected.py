@@ -29,7 +29,6 @@ class WeightedNeuron(Neuron):
 def FullyConnectedLayer(net, input_ensemble, num_outputs):
     fan_in = len(input_ensemble)
     scale = np.sqrt(3.0 / fan_in)
-
     weights = np.random.rand(num_outputs, fan_in).astype(np.float32) * (2 * scale) - scale
 
     bias = np.zeros((num_outputs, 1), dtype=np.float32)

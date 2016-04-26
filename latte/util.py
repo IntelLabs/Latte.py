@@ -2,6 +2,7 @@ import inspect
 import textwrap
 import ast
 import astor
+import collections
 
 def print_ast(ast):
     print(astor.to_source(ast))
@@ -171,3 +172,8 @@ def sgemm(trans_A, trans_B, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc):
             B.ctypes.data_as(c_float_p), c_int(ldb), c_float(beta),
             C.ctypes.data_as(c_float_p), c_int(ldc))
 
+def flatten(x):
+    if isinstance(x, collections.Iterable):
+        return [a for i in x for a in flatten(i)]
+    else:
+        return [x]
