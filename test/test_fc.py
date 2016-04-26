@@ -3,9 +3,9 @@ import numpy as np
 from latte import *
 
 class FCTest(unittest.TestCase):
-    def _check_equal(self, actual, expected):
+    def _check_equal(self, actual, expected, decimal=6):
         try:
-            np.testing.assert_array_almost_equal(actual, expected)
+            np.testing.assert_array_almost_equal(actual, expected, decimal)
         except AssertionError:
             self.fail("Arrays not equal")
 

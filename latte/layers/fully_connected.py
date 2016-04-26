@@ -15,15 +15,15 @@ class WeightedNeuron(Neuron):
         self.grad_bias = np.zeros_like(bias)
 
     def forward(self):
-        for i, input_idx in enumerate_mapping(self.inputs):
-            self.value += self.inputs[input_idx] * self.weights[i]
+        for i in range_dim(self.inputs, 0):
+            self.value += self.inputs[i] * self.weights[i]
         self.value += self.bias[0]
 
     def backward(self):
-        for i, input_idx in enumerate_mapping(self.inputs):
-            self.grad_inputs[input_idx] += self.grad * self.weights[i]
-        for i, input_idx in enumerate_mapping(self.inputs):
-            self.grad_weights[i] += self.grad * self.inputs[input_idx]
+        for i in range_dim(self.inputs, 0):
+            self.grad_inputs[i] += self.grad * self.weights[i]
+        for i in range_dim(self.inputs, 0):
+            self.grad_weights[i] += self.grad * self.inputs[i]
         self.grad_bias[0] += self.grad
 
 def FullyConnectedLayer(net, input_ensemble, num_outputs):
@@ -37,10 +37,11 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
     ens = net.init_ensemble(neurons)
 
     input_shape = input_ensemble.shape
+    flattened = np.prod(input_shape)
 
     def mapping(x):
-        return prod([range(d) for d in input_shape])
+        return (range(flattened), )
 
-    net.add_connections(input_ensemble, ens, mapping)
+    net.add_connections(input_ensemble, ens, mapping, reshape=(flattened, ))
 
     return ens

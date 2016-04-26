@@ -16,11 +16,12 @@ import ctypes
 import latte.transformers as transformers
 
 class Connection:
-    def __init__(self, source_ens, sink_ens, mapping):
+    def __init__(self, source_ens, sink_ens, mapping, reshape):
         self.source = source_ens
         self.sink = sink_ens
         self.mapping = mapping
         self.mapping_inserted = False
+        self.reshape = reshape
 
 class Task:
     def __init__(self, fn, args):
@@ -66,8 +67,8 @@ class NeuronTransformer(ast.NodeTransformer):
             ndims = self.ensemble.ndim
             incr = 0
             if node.attr in ["value", "grad"]:
-                return ast.Name(node.attr, node.ctx)
-                # ndims += 1
+                # return ast.Name(node.attr, node.ctx)
+                ndims += 1
             elif node.attr in ["inputs", "grad_inputs"]:
                 ndims = 1
             else:
@@ -149,6 +150,29 @@ class NeuronTransformer(ast.NodeTransformer):
             node.body = [self.visit(s) for s in node.body]
             node.body = util.flatten(node.body)
             return pre_stmts + [node]
+        elif isinstance(_range, ast.Call) and _range.func.id == "range_dim":
+            closure_vars = inspect.getclosurevars(self.connections[0].mapping)
+            mapping_func = util.get_ast(self.connections[0].mapping).body[0]
+            for var, value in closure_vars.nonlocals.items():
+                mapping_func = util.InlineVariable(var, value).visit(mapping_func)
+            for i, arg in enumerate(mapping_func.args.args):
+                i += 1  # offset batch
+                mapping_func = util.InlineVariable(arg.arg, "_neuron_index_{}".format(i)).visit(mapping_func)
+
+            shape = mapping_func.body[-1].value
+            node.iter = shape.elts[_range.args[1].n]
+            if self.connections[0].mapping_inserted:
+                pre_stmts = []
+            else:
+                pre_stmts = mapping_func.body[:-1]
+                for stmt in pre_stmts:
+                    assert isinstance(stmt, ast.Assign)
+                    assert len(stmt.targets) == 1
+                    stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
+                self.connections[0].mapping_inserted = True
+            node.body = [self.visit(s) for s in node.body]
+            node.body = util.flatten(node.body)
+            return pre_stmts + [node]
         else:
             raise NotImplementedError(ast.dump(node))
 
@@ -171,8 +195,8 @@ class Net:
         self.ensembles.append(ens)
         return ens
 
-    def add_connections(self, source_ens, sink_ens, mapping):
-        self.connections.append(Connection(source_ens, sink_ens, mapping))
+    def add_connections(self, source_ens, sink_ens, mapping, reshape=None):
+        self.connections.append(Connection(source_ens, sink_ens, mapping, reshape))
 
     def compile(self):
         task_groups = {}
@@ -196,11 +220,19 @@ class Net:
                     _shape = (self.batch_size, ) + ensemble.shape
                     self.buffers[(ensemble.name + "grad")] = np.zeros(_shape, dtype=np.float32)
                 elif field == "inputs":
-                    source_name = connections_map[ensemble][0].source.name
-                    self.buffers[(ensemble.name + "inputs")] = self.buffers[(source_name + "value")]
+                    conn = connections_map[ensemble][0]
+                    source_name = conn.source.name
+                    buff = self.buffers[(source_name + "value")]
+                    if conn.reshape is not None:
+                        buff = buff.reshape((self.batch_size, ) + conn.reshape)
+                    self.buffers[(ensemble.name + "inputs")] = buff
                 elif field == "grad_inputs":
-                    source_name = connections_map[ensemble][0].source.name
-                    self.buffers[(ensemble.name + "grad_inputs")] = self.buffers[(source_name + "grad")]
+                    conn = connections_map[ensemble][0]
+                    source_name = conn.source.name
+                    buff = self.buffers[(source_name + "grad")]
+                    if conn.reshape is not None:
+                        buff = buff.reshape((self.batch_size, ) + conn.reshape)
+                    self.buffers[(ensemble.name + "grad_inputs")] = buff
                 else:
                     value = getattr(neuron, field)
                     if isinstance(value, numbers.Real):
@@ -259,26 +291,8 @@ class Net:
         loop_ranges = [self.batch_size] + [d for d in ensemble.shape]
         loop_ranges = loop_ranges[::-1]
         body = fn_def.body
-        if direction == "forward":
-            to_load = "value"
-        elif direction == "backward":
-            to_load = "grad"
-        else:
-            raise NotImplementedError
-        # Initialize value
-        body.insert(0, 
-            C.Assign(
-                C.SymbolRef(to_load, ctypes.c_float()), 
-                ast.Subscript(ast.Name(ensemble.name+to_load, ast.Load()), ast.Index(ast.Tuple([ast.Name("_neuron_index_{}".format(i), ast.Load()) for i in range(ensemble.ndim + 1)], ast.Load())), ast.Load()),
-            ))
-        # Store value
-        body.append( 
-            C.Assign(
-                ast.Subscript(ast.Name(ensemble.name+to_load, ast.Load()), ast.Index(ast.Tuple([ast.Name("_neuron_index_{}".format(i), ast.Load()) for i in range(ensemble.ndim + 1)], ast.Load())), ast.Load()),
-                C.SymbolRef(to_load)
-            ))
         # Add value to args
-        transformer.seen_vars.add(ensemble.name+to_load)
+        # transformer.seen_vars.add(ensemble.name+to_load)
 
         nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in body]
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
@@ -289,6 +303,7 @@ class Net:
         func_def = transformers.pattern_match_gemm(func_def)
         func_def = ast.fix_missing_locations(func_def)
         func_def = transformers.simple_fusion(func_def)
+        func_def = transformers.register_promote_value_refs(func_def, ensemble, direction)
         func_def = transformers.flatten_subscripts(func_def, self.buffers)
         func_def = transformers.convert_enumerate_ranges(func_def)
         func_def = transformers.convert_sgemm_calls(func_def)
