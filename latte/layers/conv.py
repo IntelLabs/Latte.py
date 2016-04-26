@@ -79,10 +79,10 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
     input_shape = input_ensemble.shape
 
     def mapping(c, y, x):
-        in_y = max(y*stride_h - pad, 0)
-        in_x = max(x*stride_w - pad, 0)
-        out_y = min(in_y + kernel_h, output_height)
-        out_x = min(in_x + kernel_w, output_width)
+        in_y = fmax(y*stride_h - pad, 0)
+        in_x = fmax(x*stride_w - pad, 0)
+        out_y = fmin(in_y + kernel_h, output_height)
+        out_x = fmin(in_x + kernel_w, output_width)
         return range(input_channels), range(in_y,out_y), range(in_x,out_x)
 
     net.add_connections(input_ensemble, ens, mapping)

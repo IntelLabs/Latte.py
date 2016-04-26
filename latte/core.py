@@ -8,12 +8,18 @@ import astor
 from itertools import product
 import inspect
 from .util import sgemm
+import ctree
+from ctree.transformations import PyBasicConversions
+import ctree.c.nodes as C
+from ctree.templates.nodes import StringTemplate
+import ctypes
 
 class Connection:
     def __init__(self, source_ens, sink_ens, mapping):
         self.source = source_ens
         self.sink = sink_ens
         self.mapping = mapping
+        self.mapping_inserted = False
 
 class Task:
     def __init__(self, fn, args):
@@ -127,9 +133,17 @@ class NeuronTransformer(ast.NodeTransformer):
                 i += 1  # offset batch
                 mapping_func = util.InlineVariable(arg.arg, "_neuron_index_{}".format(i)).visit(mapping_func)
 
-            pre_stmts = mapping_func.body[:-1]
             shape = mapping_func.body[-1].value
             node.iter = ast.Call(ast.Name("enumerate", ast.Load()), [shape.elts[_range.args[1].n]], [])
+            if self.connections[0].mapping_inserted:
+                pre_stmts = []
+            else:
+                pre_stmts = mapping_func.body[:-1]
+                for stmt in pre_stmts:
+                    assert isinstance(stmt, ast.Assign)
+                    assert len(stmt.targets) == 1
+                    stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
+                self.connections[0].mapping_inserted = True
             node.body = [self.visit(s) for s in node.body]
             node.body = util.flatten(node.body)
             return pre_stmts + [node]
@@ -200,6 +214,109 @@ class Unpack(ast.NodeTransformer):
         node.args = new_args
         if len(block) > 0:
             return block + [node]
+
+class ConvertEnumerateRange(ast.NodeTransformer):
+    def visit(self, node):
+        node = super().visit(node)
+        if hasattr(node, 'body'):
+            node.body = util.flatten(node.body)
+        return node
+
+    def visit_For(self, node):
+        node.body = util.flatten([self.visit(s) for s in node.body])
+        if isinstance(node.iter, ast.Call) and node.iter.func.id == "enumerate":
+            assert node.iter.args[0].func.id == "range"
+            range_args = node.iter.args[0].args
+            if len(range_args) == 1:
+                init = [C.Assign(
+                    C.SymbolRef(node.target.elts[0].id),
+                    C.Constant(0)),
+                    C.Assign(
+                        C.SymbolRef(node.target.elts[1].id),
+                        C.Constant(0))]
+                end = node.iter.args[0].args[0]
+            elif len(range_args) == 2:
+                start = node.iter.args[0].args[0] 
+                if isinstance(start, ast.Name):
+                    start = C.SymbolRef(start.id)
+                elif isinstance(start, ast.Num):
+                    start = C.Constant(start.n)
+                else:
+                    raise NotImplementedError
+                init = [C.Assign(
+                    C.SymbolRef(node.target.elts[0].id),
+                    C.Constant(0)),
+                    C.Assign(
+                        C.SymbolRef(node.target.elts[1].id),
+                        C.Constant(start))]
+                end = node.iter.args[0].args[1]
+            else:
+                raise NotImplementedError
+
+            if isinstance(end, ast.Name):
+                end = C.SymbolRef(end.id)
+            elif isinstance(end, ast.Num):
+                end = C.Constant(end.n)
+            else:
+                raise NotImplementedError
+            pre_stmts = [C.SymbolRef(var.id, ctypes.c_int()) for var in node.target.elts]
+            return pre_stmts + [C.For(
+                    init,
+                    C.Lt(C.SymbolRef(node.target.elts[1].id), end),
+                    [C.PostInc(C.SymbolRef(var.id)) for var in node.target.elts],
+                    node.body
+                )]
+        return node
+
+class SimpleFusion(ast.NodeTransformer):
+    def visit(self, node):
+        node = super().visit(node)
+        if hasattr(node, 'body') and len(node.body) > 1:
+            new_body = [node.body[0]]
+            for statement in node.body[1:]:
+                if isinstance(new_body[-1], ast.For) and \
+                        isinstance(statement, ast.For) and \
+                        astor.to_source(statement.iter) == astor.to_source(new_body[-1].iter) and \
+                        astor.to_source(statement.target) == astor.to_source(new_body[-1].target):
+                    new_body[-1].body.extend(statement.body)
+                else:
+                    new_body.append(statement)
+            node.body = [self.visit(s) for s in new_body]
+
+        return node
+
+class ConvertSGEMMCalls(ast.NodeTransformer):
+    def visit_Call(self, node):
+        if node.func.id == "sgemm":
+            for i in range(2):
+                node.args[i] = C.Constant(112) if node.args[i].id == "True" else C.Constant(111) 
+            node.args.insert(0, C.Constant(101))
+            node.func.id = "cblas_sgemm"
+        return node
+
+class FlattenSubscripts(ast.NodeTransformer):
+    def __init__(self, buffers):
+        self.buffers = buffers
+
+    def visit_Subscript(self, node):
+        assert node.value.id in self.buffers
+        shape = self.buffers[node.value.id].shape
+        if isinstance(node.slice.value, ast.Tuple):
+            idxs = node.slice.value.elts
+            flat_idx = idxs[0]
+            for i in range(len(idxs[1:])):
+                flat_idx = ast.BinOp(
+                        ast.BinOp(
+                            flat_idx,
+                            ast.Mult(),
+                            ast.Num(shape[i + 1])
+                        ),
+                        ast.Add(),
+                        idxs[i + 1]
+                    )
+            node.slice.value = flat_idx
+        return node
+
 class Net:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -301,6 +418,7 @@ class Net:
     def _synthesize_ast(self, ensemble, fn):
         fn_def = util.get_ast(fn).body[0]
         transformer = NeuronTransformer(ensemble, self.connections_map[ensemble], self.buffer_dim_info)
+        self.connections_map[ensemble][0].mapping_inserted = False
         fn_def = transformer.visit(fn_def)
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
         loop_ranges = [self.batch_size] + [d for d in ensemble.shape]
@@ -313,11 +431,24 @@ class Net:
                 [], None)
         func_def = util.PatternMatchGemm().visit(func_def)
         func_def = ast.fix_missing_locations(func_def)
-        print(astor.to_source(func_def))
-        exec(compile(ast.Module([func_def]), filename="<ast>", mode="exec"))
-        func = eval(func_name)
+        func_def = SimpleFusion().visit(func_def)
+        func_def = FlattenSubscripts(self.buffers).visit(func_def)
+        func_def = ConvertEnumerateRange().visit(func_def)
+        func_def = ConvertSGEMMCalls().visit(func_def)
+        func_def = PyBasicConversions().visit(func_def)
+        type_sig = []
+        for arg in func_def.params:
+            arg.type = ctypes.POINTER(ctypes.c_float)()
+            buf = self.buffers[arg.name]
+            type_sig.append(np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape))
+        type_sig = ctypes.CFUNCTYPE(None, *type_sig)
+        include = StringTemplate("#include <math.h>\n#include <mkl.h>")
+        print(func_def)
+        module = ctree.nodes.Project([C.CFile(func_name, [include, func_def])]).codegen()
+        fn = module.get_callable(func_name, type_sig)
+
         _args = [self.buffers[arg.arg] for arg in args]
-        return func, _args
+        return fn, _args
 
     def forward(self):
         for task in self.forward_tasks:
