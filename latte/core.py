@@ -66,7 +66,8 @@ class NeuronTransformer(ast.NodeTransformer):
             ndims = self.ensemble.ndim
             incr = 0
             if node.attr in ["value", "grad"]:
-                ndims += 1
+                return ast.Name(node.attr, node.ctx)
+                # ndims += 1
             elif node.attr in ["inputs", "grad_inputs"]:
                 ndims = 1
             else:
@@ -243,13 +244,13 @@ class Net:
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
                 continue
 
-            func, args = self._synthesize_ast(ensemble, neuron.forward)
+            func, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
             self.forward_tasks.append(Task(func, args))
 
-            func, args = self._synthesize_ast(ensemble, neuron.backward)
+            func, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
             self.backward_tasks.insert(0, Task(func, args))
 
-    def _synthesize_ast(self, ensemble, fn):
+    def _synthesize_ast(self, ensemble, fn, direction):
         fn_def = util.get_ast(fn).body[0]
         transformer = NeuronTransformer(ensemble, self.connections_map[ensemble], self.buffer_dim_info)
         self.connections_map[ensemble][0].mapping_inserted = False
@@ -257,7 +258,29 @@ class Net:
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
         loop_ranges = [self.batch_size] + [d for d in ensemble.shape]
         loop_ranges = loop_ranges[::-1]
-        nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in fn_def.body]
+        body = fn_def.body
+        if direction == "forward":
+            to_load = "value"
+        elif direction == "backward":
+            to_load = "grad"
+        else:
+            raise NotImplementedError
+        # Initialize value
+        body.insert(0, 
+            C.Assign(
+                C.SymbolRef(to_load, ctypes.c_float()), 
+                ast.Subscript(ast.Name(ensemble.name+to_load, ast.Load()), ast.Index(ast.Tuple([ast.Name("_neuron_index_{}".format(i), ast.Load()) for i in range(ensemble.ndim + 1)], ast.Load())), ast.Load()),
+            ))
+        # Store value
+        body.append( 
+            C.Assign(
+                ast.Subscript(ast.Name(ensemble.name+to_load, ast.Load()), ast.Index(ast.Tuple([ast.Name("_neuron_index_{}".format(i), ast.Load()) for i in range(ensemble.ndim + 1)], ast.Load())), ast.Load()),
+                C.SymbolRef(to_load)
+            ))
+        # Add value to args
+        transformer.seen_vars.add(ensemble.name+to_load)
+
+        nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in body]
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
         func_name = util.generate_unique_function_name()
         func_def = ast.FunctionDef(func_name,

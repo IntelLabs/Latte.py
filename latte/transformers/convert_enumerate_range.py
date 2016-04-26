@@ -1,6 +1,7 @@
 import ast
 import ctree.c.nodes as C
 import latte.util as util
+import ctypes
 
 class ConvertEnumerateRange(ast.NodeTransformer):
     """
