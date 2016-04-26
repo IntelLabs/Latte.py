@@ -82,6 +82,12 @@ def flatten(x):
     else:
         return [x]
 
+def extend_or_append(_list, value):
+    if isinstance(value, list):
+        _list.extend(value)
+    else:
+        _list.append(value)
+
 # class Unpack(ast.NodeTransformer):
 #     def __init__(self):
 #         super().__init__()
