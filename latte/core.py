@@ -13,6 +13,7 @@ from ctree.transformations import PyBasicConversions
 import ctree.c.nodes as C
 from ctree.templates.nodes import StringTemplate
 import ctypes
+import latte.transformers as transformers
 
 class Connection:
     def __init__(self, source_ens, sink_ens, mapping):
@@ -156,65 +157,6 @@ def extend_or_append(_list, value):
     else:
         _list.append(value)
 
-class Unpack(ast.NodeTransformer):
-    def __init__(self):
-        super().__init__()
-        self.counter = 0
-        self.curr_tmp_var = None
-
-    def _gen_next_tmp_var(self):
-        self.counter += 1
-        self.curr_tmp_var = "v{}".format(self.counter)
-        return self.curr_tmp_var
-
-    def visit_FunctionDef(self, node):
-        new_body = []
-        for statement in node.body:
-            result = self.visit(statement)
-            extend_or_append(new_body, result)
-        node.body = new_body
-        return node
-
-    def visit_Assign(self, node):
-        block = []
-        if not isinstance(node.value, ast.Name):
-            result = self.visit(node.value)
-            extend_or_append(block, result[:-1])
-            node.value = result[-1]
-        if len(block) > 0:
-            return block + [node]
-
-    def visit_BinOp(self, node):
-        block = []
-        if not isinstance(node.left, ast.Name):
-            var = self._gen_next_tmp_var()
-            result = self.visit(node.left)
-            node.left = ast.Name(var, ast.Load())
-            extend_or_append(block, result)
-            # block[-1] = ast.Assign([C.SymbolRef(var, ctree.c.HalideFunc())], block[-1])
-        if not isinstance(node.right, ast.Name):
-            var = self._gen_next_tmp_var()
-            result = self.visit(node.right)
-            extend_or_append(block, result)
-            node.right = ast.Name(var, ast.Load())
-            # block[-1] = ast.Assign([C.SymbolRef(var, ctree.c.HalideFunc())], block[-1])
-        if len(block) > 0:
-            return block + [node]
-
-    def visit_Call(self, node):
-        block = []
-        new_args = []
-        for arg in node.args:
-            if not isinstance(arg, ast.Name):
-                var = self._gen_next_tmp_var()
-                result = self.visit(arg)
-                extend_or_append(block, result)
-                # block[-1] = ast.Assign([C.SymbolRef(var, ctree.c.HalideFunc())], block[-1])
-                new_args.append(ast.Name(var, ast.Load()))
-        node.args = new_args
-        if len(block) > 0:
-            return block + [node]
-
 class ConvertEnumerateRange(ast.NodeTransformer):
     def visit(self, node):
         node = super().visit(node)
@@ -266,55 +208,6 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     [C.PostInc(C.SymbolRef(var.id)) for var in node.target.elts],
                     node.body
                 )]
-        return node
-
-class SimpleFusion(ast.NodeTransformer):
-    def visit(self, node):
-        node = super().visit(node)
-        if hasattr(node, 'body') and len(node.body) > 1:
-            new_body = [node.body[0]]
-            for statement in node.body[1:]:
-                if isinstance(new_body[-1], ast.For) and \
-                        isinstance(statement, ast.For) and \
-                        astor.to_source(statement.iter) == astor.to_source(new_body[-1].iter) and \
-                        astor.to_source(statement.target) == astor.to_source(new_body[-1].target):
-                    new_body[-1].body.extend(statement.body)
-                else:
-                    new_body.append(statement)
-            node.body = [self.visit(s) for s in new_body]
-
-        return node
-
-class ConvertSGEMMCalls(ast.NodeTransformer):
-    def visit_Call(self, node):
-        if node.func.id == "sgemm":
-            for i in range(2):
-                node.args[i] = C.Constant(112) if node.args[i].id == "True" else C.Constant(111) 
-            node.args.insert(0, C.Constant(101))
-            node.func.id = "cblas_sgemm"
-        return node
-
-class FlattenSubscripts(ast.NodeTransformer):
-    def __init__(self, buffers):
-        self.buffers = buffers
-
-    def visit_Subscript(self, node):
-        assert node.value.id in self.buffers
-        shape = self.buffers[node.value.id].shape
-        if isinstance(node.slice.value, ast.Tuple):
-            idxs = node.slice.value.elts
-            flat_idx = idxs[0]
-            for i in range(len(idxs[1:])):
-                flat_idx = ast.BinOp(
-                        ast.BinOp(
-                            flat_idx,
-                            ast.Mult(),
-                            ast.Num(shape[i + 1])
-                        ),
-                        ast.Add(),
-                        idxs[i + 1]
-                    )
-            node.slice.value = flat_idx
         return node
 
 class Net:
@@ -429,12 +322,12 @@ class Net:
         func_def = ast.FunctionDef(func_name,
                 ast.arguments(args, None, [], [], None, []), nests,
                 [], None)
-        func_def = util.PatternMatchGemm().visit(func_def)
+        func_def = transformers.pattern_match_gemm(func_def)
         func_def = ast.fix_missing_locations(func_def)
-        func_def = SimpleFusion().visit(func_def)
-        func_def = FlattenSubscripts(self.buffers).visit(func_def)
+        func_def = transformers.simple_fusion(func_def)
+        func_def = transformers.flatten_subscripts(func_def, self.buffers)
         func_def = ConvertEnumerateRange().visit(func_def)
-        func_def = ConvertSGEMMCalls().visit(func_def)
+        func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
         type_sig = []
         for arg in func_def.params:
