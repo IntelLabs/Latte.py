@@ -44,6 +44,9 @@ class PatternMatchGemm(ast.NodeTransformer):
                     ldb = j_len
                 else:
                     raise NotImplementedError()
+                A.value.id = "_" + A.value.id
+                B.value.id = "_" + B.value.id
+                C.value.id = "_" + C.value.id
                 gemm_call = ast.Call(ast.Name("sgemm", ast.Load()),
                         [trans_A, trans_B, i_len, j_len, k_len, ast.Num(1.0), A.value,
                             lda, B.value, ldb, ast.Num(1.0), C.value, ldc], [])
@@ -66,6 +69,9 @@ class PatternMatchGemm(ast.NodeTransformer):
                     ldb = k_len
                 else:
                     raise NotImplementedError()
+                A.value.id = "_" + A.value.id
+                B.value.id = "_" + B.value.id
+                C.value.id = "_" + C.value.id
                 gemm_call = ast.Call(ast.Name("sgemm", ast.Load()),
                         [trans_A, trans_B, i_len, k_len, j_len, ast.Num(1.0), A.value,
                             lda, B.value, ldb, ast.Num(1.0), C.value, ldc], [])
@@ -88,6 +94,9 @@ class PatternMatchGemm(ast.NodeTransformer):
                     ldb = k_len
                 else:
                     raise NotImplementedError()
+                A.value.id = "_" + A.value.id
+                B.value.id = "_" + B.value.id
+                C.value.id = "_" + C.value.id
                 gemm_call = ast.Call(ast.Name("sgemm", ast.Load()),
                         [trans_A, trans_B, j_len, k_len, i_len, ast.Num(1.0), A.value,
                             lda, B.value, ldb, ast.Num(1.0), C.value, ldc], [])

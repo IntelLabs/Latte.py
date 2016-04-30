@@ -68,7 +68,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
             kernel_w).astype(np.float32) * (2 * scale) - scale
     grad_weights = np.zeros_like(weights)
 
-    bias = np.zeros((num_filters, 1), dtype=np.float32)
+    bias = np.zeros((num_filters, 8), dtype=np.float32)
     grad_bias = np.zeros_like(bias)
     neurons = np.empty((num_filters, output_height, output_width), dtype='object')
     for o, y, x in itertools.product(range(num_filters), range(output_height), range(output_width)):

@@ -1,4 +1,5 @@
 import ast
+import latte.util as util
 
 class FlattenSubscripts(ast.NodeTransformer):
     """
@@ -13,18 +14,7 @@ class FlattenSubscripts(ast.NodeTransformer):
         shape = self.buffers[node.value.id].shape
         if isinstance(node.slice.value, ast.Tuple):
             idxs = node.slice.value.elts
-            flat_idx = idxs[0]
-            for i in range(len(idxs[1:])):
-                flat_idx = ast.BinOp(
-                        ast.BinOp(
-                            flat_idx,
-                            ast.Mult(),
-                            ast.Num(shape[i + 1])
-                        ),
-                        ast.Add(),
-                        idxs[i + 1]
-                    )
-            node.slice.value = flat_idx
+            node.slice.value = util.gen_flat_index(idxs, shape)
         return node
 
 def flatten_subscripts(ast, buffers):

@@ -12,8 +12,8 @@ class FCTest(unittest.TestCase):
     def test_forward_backward(self):
         net = Net(8)
         data, data_value = MemoryDataLayer(net, (24, 24))
-        fc1 = FullyConnectedLayer(net, data, 20)
-        fc2 = FullyConnectedLayer(net, fc1, 20)
+        fc1 = FullyConnectedLayer(net, data, 24)
+        fc2 = FullyConnectedLayer(net, fc1, 24)
 
         data_value[:, :, :] = np.random.rand(8, 24, 24)
 
@@ -21,7 +21,7 @@ class FCTest(unittest.TestCase):
         net.forward()
 
         weights = net.buffers[fc1.name + "weights"]
-        bias    = net.buffers[fc1.name + "bias"].reshape((20, ))
+        bias    = net.buffers[fc1.name + "bias"].reshape((24, ))
         _input  = net.buffers[data.name + "value"]
         np.testing.assert_array_almost_equal(_input, data_value)
         actual  = net.buffers[fc1.name + "value"]
@@ -46,7 +46,7 @@ class FCTest(unittest.TestCase):
         self._check_equal(weights_grad, expected_weights_grad)
 
         bias_grad = net.buffers[fc2.name + "grad_bias"]
-        expected_bias_grad = np.sum(top_grad, 0).reshape(20, 1)
+        expected_bias_grad = np.sum(top_grad, 0).reshape(24, 1)
         self._check_equal(bias_grad, expected_bias_grad)
 
 if __name__ == '__main__':

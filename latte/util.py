@@ -4,6 +4,20 @@ import ast
 import astor
 import collections
 
+def gen_flat_index(idxs, shape):
+    flat_idx = idxs[0]
+    for i in range(len(idxs[1:])):
+        flat_idx = ast.BinOp(
+                ast.BinOp(
+                    flat_idx,
+                    ast.Mult(),
+                    ast.Num(shape[i + 1])
+                ),
+                ast.Add(),
+                idxs[i + 1]
+            )
+    return flat_idx
+
 def print_ast(ast):
     print(astor.to_source(ast))
 
