@@ -1,20 +1,7 @@
 import ast
 import ctree.simd.macros as simd_macros
 import ctree.c.nodes as C
-
-class ContainsSymbol(ast.NodeVisitor):
-    def __init__(self, sym):
-        self.result = False
-        self.sym = sym
-
-    def visit_SymbolRef(self, node):
-        if node.name == self.sym:
-            self.result = True
-
-def contains_symbol(ast, symbol):
-    checker = ContainsSymbol(symbol)
-    checker.visit(ast)
-    return checker.result
+import latte.util as util
 
 class VectorizeOuterLoop(ast.NodeTransformer):
     def __init__(self, vectorized_buffers):
@@ -28,10 +15,16 @@ class VectorizeOuterLoop(ast.NodeTransformer):
 
     def visit_AugAssign(self, node):
         node.value = self.visit(node.value)
-        if contains_symbol(node.target, "_neuron_index_1"):
+        if util.contains_symbol(node.target, "_neuron_index_1"):
             return simd_macros.mm256_store_ps(
                     node.target,
                     C.BinaryOp(self.visit(node.target), node.op, node.value))
+        elif isinstance(node.op, C.Op.Add) and isinstance(node.value, C.BinaryOp) and \
+                isinstance(node.value.op, C.Op.Mul):
+            return C.Assign(node.target, C.FunctionCall(C.SymbolRef("_mm256_fmadd_ps"), [node.value.left, node.value.right, node.target]))
+        elif isinstance(node.op, C.Op.Add) and isinstance(node.value, C.FunctionCall):
+            # TODO: Verfiy it's a vector intrinsic
+            return C.Assign(node.target, C.FunctionCall(C.SymbolRef("_mm256_add_ps"), [node.value, node.target]))
         elif isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
             raise NotImplementedError()
         node.target = self.visit(node.target)
@@ -40,7 +33,7 @@ class VectorizeOuterLoop(ast.NodeTransformer):
 
     def visit_BinaryOp(self, node):
         if isinstance(node.op, C.Op.ArrayRef):
-            if contains_symbol(node, "_neuron_index_1"):
+            if util.contains_symbol(node, "_neuron_index_1"):
                 idx = 0
                 curr_node = node
                 while not isinstance(curr_node.right, C.SymbolRef) or \

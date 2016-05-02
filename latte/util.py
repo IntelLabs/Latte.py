@@ -3,6 +3,26 @@ import textwrap
 import ast
 import astor
 import collections
+import ctree.c.nodes as C
+import numpy as np
+
+def aligned(a, alignment=64):
+    if (a.ctypes.data % alignment) == 0:
+        return a
+
+    extra = alignment // a.itemsize
+    buf = np.empty(a.size + extra, dtype=a.dtype)
+    ofs = (-buf.ctypes.data % alignment) // a.itemsize
+    aa = buf[ofs:ofs+a.size].reshape(a.shape)
+    np.copyto(aa, a)
+    assert (aa.ctypes.data % alignment) == 0
+    return aa
+
+def empty(shape, dtype):
+    return aligned(np.empty(shape, dtype))
+
+def zeros(shape, dtype):
+    return aligned(np.zeros(shape, dtype))
 
 def gen_flat_index(idxs, shape):
     flat_idx = idxs[0]
@@ -43,6 +63,67 @@ class InlineVariable(ast.NodeTransformer):
             return ast.parse(str(self.value)).body[0].value
         return node
 
+def inline_variable(variable, value, ast):
+    return InlineVariable(variable, value).visit(ast)
+
+
+class TileArrayRefs(ast.NodeTransformer):
+    def __init__(self, idx):
+        super().__init__()
+        self.idx = idx
+        self.tiled_buffers = {}
+
+    def visit_BinaryOp(self, node):
+        if isinstance(node.op, C.Op.ArrayRef) and \
+            contains_name(node, self.idx):
+            idx = 0
+            curr_node = node
+            while not isinstance(curr_node.right, ast.Name) or \
+                    curr_node.right.id != self.idx:
+                idx += 1
+                curr_node = curr_node.left
+            while not isinstance(curr_node, ast.Name):
+                curr_node = curr_node.left
+            self.tiled_buffers[curr_node.id] = idx
+
+            node = replace_name(ast.Name(self.idx, ast.Load()), ast.Name(self.idx+"_tile", ast.Load()), node)
+            return C.ArrayRef(node, C.SymbolRef(self.idx))
+        node.left = self.visit(node.left)
+        node.right = self.visit(node.right)
+        return node
+
+def tile_array_refs(idx, ast):
+    visitor = TileArrayRefs(idx)
+    ast = visitor.visit(ast)
+    return ast, visitor.tiled_buffers
+
+class ContainsName(ast.NodeVisitor):
+    def __init__(self, sym):
+        self.result = False
+        self.sym = sym
+
+    def visit_Name(self, node):
+        if node.id == self.sym:
+            self.result = True
+
+def contains_name(ast, id):
+    checker = ContainsName(id)
+    checker.visit(ast)
+    return checker.result
+
+class ContainsSymbol(ast.NodeVisitor):
+    def __init__(self, sym):
+        self.result = False
+        self.sym = sym
+
+    def visit_SymbolRef(self, node):
+        if node.name == self.sym:
+            self.result = True
+
+def contains_symbol(ast, symbol):
+    checker = ContainsSymbol(symbol)
+    checker.visit(ast)
+    return checker.result
 
 class ReplaceName(ast.NodeTransformer):
     def __init__(self, old, new):

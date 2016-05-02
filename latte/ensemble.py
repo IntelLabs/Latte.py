@@ -32,12 +32,14 @@ class DataEnsemble(Ensemble):
         self.value = value
 
     def forward(self, value):
-        shape = self.value.shape
-        # for n in range(shape[0]):
-        #     for ifm in range(shape[1] // 8):
-        #         for y in range(shape[2]):
-        #             for x in range(shape[3]):
-        #                 for v in range(8):
-        #                     value.flat[(((n * shape[1] // 8 + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = self.value[n, ifm * 8 + v, y, x]
-        np.copyto(value, self.value)
+        if self.value.ndim == 4:
+            shape = self.value.shape
+            for n in range(shape[0]):
+                for ifm in range(shape[1] // 8):
+                    for y in range(shape[2]):
+                        for x in range(shape[3]):
+                            for v in range(8):
+                                value.flat[(((n * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = self.value[n, ifm * 8 + v, y, x]
+        else:
+            np.copyto(value, self.value)
 

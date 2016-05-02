@@ -16,11 +16,11 @@ class ConvNeuron(Neuron):
         self.grad_bias = grad_bias
 
     def forward(self):
-        for i, p in enumerate_dim(self.inputs, 0):
-            for j, q in enumerate_dim(self.inputs, 1):
-                for k, r in enumerate_dim(self.inputs, 2):
+        for j, q in enumerate_dim(self.inputs, 1):
+            for k, r in enumerate_dim(self.inputs, 2):
+                for i, p in enumerate_dim(self.inputs, 0):
                     self.value += self.inputs[p, q, r] * self.weights[i, j, k]
-        self.value += self.bias[0]
+        # self.value += self.bias[0]
 
     def backward(self):
         for i, p in enumerate_dim(self.inputs, 0):

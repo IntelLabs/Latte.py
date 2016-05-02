@@ -15,19 +15,8 @@ from ctree.templates.nodes import StringTemplate
 import ctypes
 import latte.transformers as transformers
 
-def aligned(a, alignment=64):
-    if (a.ctypes.data % alignment) == 0:
-        return a
-
-    extra = alignment // a.itemsize
-    buf = np.empty(a.size + extra, dtype=a.dtype)
-    ofs = (-buf.ctypes.data % alignment) // a.itemsize
-    aa = buf[ofs:ofs+a.size].reshape(a.shape)
-    np.copyto(aa, a)
-    assert (aa.ctypes.data % alignment) == 0
-    return aa
-
 SIMDWIDTH = 8
+TILE_SIZE = SIMDWIDTH
 
 class Connection:
     def __init__(self, source_ens, sink_ens, mapping, reshape):
@@ -45,21 +34,6 @@ class Task:
     def __call__(self):
         self.fn(*self.args)
 
-# class Task:
-#     def __init__(self, neuron):
-#         self.neuron = neuron
-#         self.inputs = []
-
-# class TaskGroup:
-#     def __init__(self, tasks):
-#         self.tasks = tasks
-
-#     def __iter__(self):
-#         return np.ndenumerate(self.tasks)
-    
-#     def __getitem__(self, index):
-#         return self.tasks[index]
-
 class NeuronTransformer(ast.NodeTransformer):
     def __init__(self, ensemble, connections, buffer_dim_info):
         super().__init__()
@@ -69,92 +43,101 @@ class NeuronTransformer(ast.NodeTransformer):
         self.buffer_dim_info = buffer_dim_info
 
     def visit(self, node):
+        """
+        Support replacing nodes with a list of nodes by flattening `body`
+        fields.
+        """
         node = super().visit(node)
         if hasattr(node, 'body'):
             node.body = util.flatten(node.body)
         return node
 
     def visit_Attribute(self, node):
+        """
+        A reference `self.field[...]` will be replaced with an array reference
+        ensemble_namefield[...] to reflect SOA (struct of array) layout.
+        """
         if node.value.id == "self":
-            name = "{}{}".format(self.ensemble.name, node.attr)
+            # name is ensemble name + attribute
+            name = self.ensemble.name + node.attr
+
+            # mark as seen
             self.seen_vars.add(name)
-            ndims = self.ensemble.ndim
-            incr = 0
+
+            ndim = self.ensemble.ndim
+            offset = 0
+
             if node.attr in ["value", "grad"]:
-                # return ast.Name(node.attr, node.ctx)
-                ndims += 1
+                # increment ndim for fields that have a batch dimension
+                ndim += 1
             elif node.attr in ["inputs", "grad_inputs"]:
-                ndims = 1
+                # only generate batch index for inputs/grad_inputs because
+                # the user will provide rest of indices in expression
+                ndim = 1
             else:
-                incr = 1
+                # fields that don't have a batch dimension start at an offset 1
+                # as 0 is the batch dimension
+                offset = 1
             args = []
-            for i in range(ndims):
+            for i in range(ndim):
+                # only append this dimension if it is not fixed in self.buffer_dim_info
+                # (used for shared values)
                 if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
-                    args.append(ast.Name("_neuron_index_{}".format(i + incr), ast.Load()))
-            # if node.attr in ["value", "inputs"]:
-            #     args.append(C.Dot(C.SymbolRef(next_rdom), C.SymbolRef("x")))
-            node = ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
-            return node
+                    args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
+
+            # return updated indedxing expression
+            return ast.Subscript(ast.Name(name, ast.Load()), 
+                                 ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
         else:
             raise Exception("Unsupported Attribute node")
 
     def visit_Subscript(self, node):
+        """
+        If self.visit(node.value) returns a Subscript, flatten that expression
+        into the current subscript node.
+        """
         node.value = self.visit(node.value)
-        # assert isinstance(node.value, ast.Call)
-        # if isinstance(node.value, ast.Name) and "inputs" in node.value.id:
-        #     assert False
-        #     value = node.value
-        #     assert isinstance(node.slice, ast.Index)
-        #     value.id = "{}{}".format(value.id, node.slice.value.n)
-        #     return value
         if isinstance(node.value, ast.Subscript):
             value = node.value
-            value.ctx = node.ctx
+            # append or extend the indexing expressions for *current* node to child node
             if isinstance(node.slice.value, (ast.Name, ast.Num)):
                 value.slice.value.elts.append(node.slice.value)
             elif isinstance(node.slice.value, ast.Tuple):
                 value.slice.value.elts.extend(node.slice.value.elts)
             else:
                 raise NotImplementedError(node.slice.value)
+            # return child node
             return value
         else:
             raise NotImplementedError()
         return node
 
     def visit_For(self, node):
+        """
+        Converts iteration expressions into enumerate and range calls
+        """
         _range = node.iter
-        if isinstance(_range, ast.Call) and _range.func.id == "enumerate_mapping":
-            assert False
-            # closure_vars = inspect.getclosurevars(self.connections[0].mapping)
-            # mapping_func = util.get_ast(self.connections[0].mapping).body[0]
-            # for var, value in closure_vars.nonlocals.items():
-            #     mapping_func = util.InlineVariable(var, value).visit(mapping_func)
-            # val = mapping_func.body[0].value
-            # val = eval(astor.to_source(val))
-            # if isinstance(val, int):
-            #     node.iter = ast.Call(ast.Name("range", ast.Load()), [ast.Num(val)], [])
-            #     node.body = [util.replace_name(node.target.elts[0], node.target.elts[1], s) 
-            #                  for s in node.body]
-            #     node.target = node.target.elts[1]
-            #     node.body = [self.visit(s) for s in node.body]
-            #     return node
-            # else:
-            #     raise NotImplementedError(ast.dump(node))
-            #     # val = ast.Call(ast.Name("range", ast.Load()), [ast.Num(eval(astor.to_source(val)))], [])
-            #     return ast.Call(ast.Name("enumerate", ast.Load()), [val], [])
-        elif isinstance(_range, ast.Call) and _range.func.id in ["enumerate_dim", "range_dim"]:
+        if isinstance(_range, ast.Call) and _range.func.id in ["enumerate_dim", "range_dim"]:
+            # grab closure variables and inline them into the mapping ast
             closure_vars = inspect.getclosurevars(self.connections[0].mapping)
             mapping_func = util.get_ast(self.connections[0].mapping).body[0]
             for var, value in closure_vars.nonlocals.items():
-                mapping_func = util.InlineVariable(var, value).visit(mapping_func)
+                mapping_func = util.inline_variable(var, value, mapping_func)
+
+            # replace argument variables with loop variables corresponding to 
+            # the current _neuron_index
             for i, arg in enumerate(mapping_func.args.args):
                 i += 1  # offset batch
-                mapping_func = util.InlineVariable(arg.arg, "_neuron_index_{}".format(i)).visit(mapping_func)
-
+                mapping_func = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), mapping_func)
+            
+            # the dimension is the second argument i.e. range_dim(self.inputs, dim)
+            target_dim = _range.args[1].n
             shape = mapping_func.body[-1].value
-            node.iter = shape.elts[_range.args[1].n]
+            node.iter = shape.elts[target_dim]
+
             if _range.func.id == "enumerate_dim":
                 node.iter = ast.Call(ast.Name("enumerate", ast.Load()), [node.iter], [])
+
             if self.connections[0].mapping_inserted:
                 pre_stmts = []
             else:
@@ -164,6 +147,7 @@ class NeuronTransformer(ast.NodeTransformer):
                     assert len(stmt.targets) == 1
                     stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
                 self.connections[0].mapping_inserted = True
+
             node.body = [self.visit(s) for s in node.body]
             node.body = util.flatten(node.body)
             return pre_stmts + [node]
@@ -192,89 +176,87 @@ class Net:
     def add_connections(self, source_ens, sink_ens, mapping, reshape=None):
         self.connections.append(Connection(source_ens, sink_ens, mapping, reshape))
 
+    def _get_uniformity(self, ensemble, field):
+        _shape = ensemble.shape
+        uniform_across_dim = [True for _ in range(len(_shape))]
+        first = getattr(ensemble.neurons.flat[0], field)
+        for d in range(len(_shape)):
+            for i in range(_shape[d]):
+                idx = tuple(i if x == d else 0 for x in range(len(_shape)))
+                if first.ctypes.data != getattr(ensemble.neurons[idx], field).ctypes.data:
+                    uniform_across_dim[d] = False
+                    break
+        return uniform_across_dim
+
+    def _init_buffers(self, ensemble):
+        neuron = ensemble.neurons.flat[0]
+        for field in vars(neuron):
+            if field in ["value", "grad"]:
+                _shape = (self.batch_size, ) + ensemble.shape
+                self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
+            elif field in ["inputs", "grad_inputs"]:
+                conn = self.connections_map[ensemble][0]
+                source_name = conn.source.name
+                source_target = "value" if field == "inputs" else "grad"
+                buff = self.buffers[source_name + source_target]
+                if conn.reshape is not None:
+                    buff = buff.reshape((self.batch_size, ) + conn.reshape)
+                self.buffers[ensemble.name + field] = buff
+            else:
+                value = getattr(neuron, field)
+
+                if isinstance(value, numbers.Real):
+                    buff = util.empty(ensemble.shape, type(value))
+                    self.buffers[ensemble.name + field] = buff
+                    for index, neuron in ensemble:
+                        buff[index] = getattr(neuron, field)
+
+                elif isinstance(value, np.ndarray):
+                    _shape = ensemble.shape
+
+                    uniform_across_dim = self._get_uniformity(ensemble, field)
+                    shape = []
+                    _iter = []
+                    for i in range(len(_shape)):
+                        if not uniform_across_dim[i]:
+                            _iter.append(range(_shape[i]))
+                            shape.append(_shape[i])
+                        else:
+                            _iter.append(range(1))
+                    shape += value.shape
+
+                    buff = util.empty(shape, value.dtype)
+                    self.buffers[ensemble.name + field] = buff
+                    self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
+
+                    for index in itertools.product(*_iter):
+                        _index = []
+                        for i in range(len(uniform_across_dim)):
+                            if not uniform_across_dim[i]:
+                                _index.append(index[i])
+                        buff[_index] = getattr(ensemble.neurons[index], field)
+                else:
+                    raise NotImplementedError(field)
+
     def compile(self):
         task_groups = {}
-        connections_map = {ensemble: [] for ensemble in self.ensembles}
-        self.connections_map = connections_map
+        self.connections_map = {ensemble: [] for ensemble in self.ensembles}
         for connection in self.connections:
-            connections_map[connection.sink].append(connection)
+            self.connections_map[connection.sink].append(connection)
 
         for ensemble in self.ensembles:
-            neuron = ensemble.neurons.flat[0]
-            # tasks = np.empty(ensemble.shape, dtype='object')
-            # for i, neuron in np.ndenumerate(ensemble.neurons):
-            #     tasks[i] = Task(ensemble.neurons[i])
-            # task_groups[ensemble] = TaskGroup(tasks)
-
-            for field in vars(neuron):
-                if field == "value":
-                    _shape = (self.batch_size, ) + ensemble.shape
-                    self.buffers[(ensemble.name + "value")] = aligned(np.zeros(_shape, dtype=np.float32))
-                elif field == "grad":
-                    _shape = (self.batch_size, ) + ensemble.shape
-                    self.buffers[(ensemble.name + "grad")] = aligned(np.zeros(_shape, dtype=np.float32))
-                elif field == "inputs":
-                    conn = connections_map[ensemble][0]
-                    source_name = conn.source.name
-                    buff = self.buffers[(source_name + "value")]
-                    if conn.reshape is not None:
-                        buff = buff.reshape((self.batch_size, ) + conn.reshape)
-                    self.buffers[(ensemble.name + "inputs")] = buff
-                elif field == "grad_inputs":
-                    conn = connections_map[ensemble][0]
-                    source_name = conn.source.name
-                    buff = self.buffers[(source_name + "grad")]
-                    if conn.reshape is not None:
-                        buff = buff.reshape((self.batch_size, ) + conn.reshape)
-                    self.buffers[(ensemble.name + "grad_inputs")] = buff
-                else:
-                    value = getattr(neuron, field)
-                    if isinstance(value, numbers.Real):
-                        buff = aligned(np.empty(ensemble.shape, dtype=type(value)))
-                        self.buffers[(ensemble.name + field)] = buff
-                        for i, v in ensemble:
-                            buff[i] = getattr(v, field)
-                    elif isinstance(value, np.ndarray):
-                        _shape = ensemble.shape
-                        uniform_across_dim = [True for _ in range(len(_shape))]
-                        first = getattr(ensemble.neurons.flat[0], field)
-                        for d in range(len(_shape)):
-                            for i in range(_shape[d]):
-                                idx = tuple(i if x == d else 0 for x in range(len(_shape)))
-                                if first.ctypes.data != getattr(ensemble.neurons[idx], field).ctypes.data:
-                                    uniform_across_dim[d] = False
-                                    break
-                        _iter = []
-                        shape = []
-                        for i in range(len(_shape)):
-                            if not uniform_across_dim[i]:
-                                _iter.append(range(_shape[i]))
-                                shape.append(_shape[i])
-                            else:
-                                _iter.append(range(1))
-                        shape += first.shape
-
-                        buff = aligned(np.empty(shape, dtype=value.dtype))
-                        self.buffers[(ensemble.name + field)] = buff
-                        self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
-                        for index in itertools.product(*_iter):
-                            _index = []
-                            for i in range(len(uniform_across_dim)):
-                                if not uniform_across_dim[i]:
-                                    _index.append(index[i])
-                            buff[_index] = getattr(ensemble.neurons[index], field)
-                    else:
-                        raise NotImplementedError(field)
+            self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
-                continue
+            else:
+                neuron = ensemble.neurons.flat[0]
 
-            func, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
-            self.forward_tasks.append(Task(func, args))
+                func, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
+                self.forward_tasks.append(Task(func, args))
 
-            func, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
-            self.backward_tasks.insert(0, Task(func, args))
+                # func, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
+                # self.backward_tasks.insert(0, Task(func, args))
 
     def _synthesize_ast(self, ensemble, fn, direction):
         fn_def = util.get_ast(fn).body[0]
@@ -294,18 +276,28 @@ class Net:
         func_def = ast.FunctionDef(func_name,
                 ast.arguments(args, None, [], [], None, []), nests,
                 [], None)
+
         func_def = transformers.pattern_match_gemm(func_def)
-        func_def = ast.fix_missing_locations(func_def)
         func_def = transformers.simple_fusion(func_def)
+
         func_def = transformers.register_promote_value_refs(func_def, ensemble,
                 direction, self.batch_size)
-        # func_def = transformers.flatten_subscripts(func_def, self.buffers)
+
         func_def = transformers.convert_tuple_subscripts(func_def)
-        func_def = transformers.convert_enumerate_ranges(func_def)
+        func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def)
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
         func_def, vectorized_buffers = transformers.vectorize_outer_loop(func_def)
-        # vectorized_buffers[ensemble.name+"inputs"] = ensemble.ndim - 1
+
+        for key in vectorized_buffers.keys():
+            vectorized_buffers[key] = [(vectorized_buffers[key], SIMDWIDTH)]
+        for key in tiled_buffers.keys():
+            if key in vectorized_buffers:
+                vectorized_buffers[key].insert(0, (tiled_buffers[key], TILE_SIZE))
+            else:
+                vectorized_buffers[key] = [(tiled_buffers[key], TILE_SIZE)]
+        print(vectorized_buffers)
+
         type_sig = []
         for arg in func_def.params:
             name = arg.name
@@ -317,26 +309,23 @@ class Net:
             if name.endswith("value") or name.endswith("grad"):
                 buf_shape = (max(buf_shape[1] // SIMDWIDTH, 1), *buf_shape[2:], SIMDWIDTH)
             elif name in vectorized_buffers:
-                dim_to_vectorize = buf.ndim - vectorized_buffers[name] - 1
                 buf_shape = list(buf_shape)
-                buf_shape[dim_to_vectorize] //= SIMDWIDTH
-                buf_shape = tuple(buf_shape[1:]) + (SIMDWIDTH, )
+                for (dim, factor) in vectorized_buffers[name]:
+                    dim_to_vectorize = len(buf_shape) - dim - 1
+                    buf_shape[dim_to_vectorize] //= factor
+                    buf_shape.append(factor)
+                buf_shape = tuple(buf_shape[1:])
             else:
                 buf_shape = buf_shape[1:]
-            shape = ""
-            cast = ""
-            for d in buf_shape:
-                shape += "[{}]".format(d)
-                cast += "[{}]".format(d)
-            func_def.defn.insert(0, StringTemplate("""float (* __restrict $arg_name)$shape = (float (*)$cast) _$arg_name;""",
-                {"arg_name": C.SymbolRef(name), "shape": C.SymbolRef(shape),
-                "cast": C.SymbolRef(cast)}))
+            self._insert_cast(func_def.defn, buf_shape, name)
         type_sig = ctypes.CFUNCTYPE(None, *type_sig)
         include = StringTemplate("""
                 #include <immintrin.h>
                 #include <math.h>
                 #include <mkl.h>
                 #define SIMDWIDTH 8
+                #define TILE_SIZE 8
+                #define MIN(x, y) (((x) < (y)) ? (x) : (y))
             """)
         print(func_def)
         module = ctree.nodes.Project([C.CFile(func_name, [include, func_def])]).codegen()
@@ -344,6 +333,17 @@ class Net:
 
         _args = [self.buffers[arg.arg] for arg in args]
         return fn, _args
+
+    def _insert_cast(self, body, shape, name):
+        shape_str = "".join("[{}]".format(d) for d in shape)
+
+        body.insert(0, StringTemplate(
+            "float (* __restrict $arg_name)$shape = (float (*)$cast) _$arg_name;",
+            {
+                "arg_name": C.SymbolRef(name), 
+                "shape": C.SymbolRef(shape_str),
+                "cast": C.SymbolRef(shape_str)
+            }))
 
     def forward(self):
         for task in self.forward_tasks:

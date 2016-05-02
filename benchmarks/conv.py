@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
 from latte import *
+import time
 
 def reference_conv_forward(_input, weights, bias, pad, stride):
     stride_h, stride_w = stride, stride
@@ -51,69 +52,73 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride):
     return bot_grad, weights_grad, bias_grad
 
 
-class ConvTest(unittest.TestCase):
-    def _check_equal(self, actual, expected):
-        try:
-            np.testing.assert_array_almost_equal(actual, expected)
-        except AssertionError:
-            self.fail("Arrays not equal")
+def check_equal(actual, expected):
+    np.testing.assert_array_almost_equal(actual, expected)
 
-    def test_forward_backward(self):
-        net = Net(8)
-        channels, height, width = 16, 8, 8
-        data, data_value = MemoryDataLayer(net, (channels, height, width))
-        conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=1)
-        conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=1)
+def main():
+    batch_size = 8
+    net = Net(batch_size)
+    channels, height, width = 128, 112, 112
+    data, data_value = MemoryDataLayer(net, (channels, height, width))
+    conv1 = ConvLayer(net, data, num_filters=128, kernel=3, stride=1, pad=1)
 
-        data_value[:, :, :] = np.random.rand(8, channels, height, width)
+    data_value[:, :, :] = np.random.rand(8, channels, height, width)
 
-        net.compile()
+    net.compile()
 
-        weights = net.buffers[conv1.name + "weights"]
-        bias    = net.buffers[conv1.name + "bias"]
-        weights_converted = np.copy(weights)
-        shape = weights.shape
-        for ofm in range(shape[0] // 8):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
-                        for v2 in range(8):
-                            for v in range(8):
-                                weights.flat[((((ofm * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v2) * 8 + v] = \
-                                        weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x]
-
-        net.forward()
-
-        expected = reference_conv_forward(data_value, weights_converted, bias, 1, 1)
-
-        expected_converted = np.zeros_like(expected)
-        shape = expected.shape
-        for n in range(shape[0]):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
+    weights = net.buffers[conv1.name + "weights"]
+    bias    = net.buffers[conv1.name + "bias"]
+    weights_converted = np.copy(weights)
+    shape = weights.shape
+    for ofm in range(shape[0] // 8):
+        for ifm in range(shape[1] // 8):
+            for y in range(shape[2]):
+                for x in range(shape[3]):
+                    for v2 in range(8):
                         for v in range(8):
-                            expected_converted.flat[(((n * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = expected[n, ifm * 8 + v, y, x]
-        actual  = net.buffers[conv1.name + "value"]
-        self._check_equal(actual, expected_converted)
+                            weights.flat[(((ofm * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = \
+                                    weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x]
 
-        # top_grad = net.buffers[conv2.name + "grad"]
-        # np.copyto(top_grad, np.random.rand(*top_grad.shape))
+    assert(len(net.forward_tasks) == 2)
+    t = time.time()
+    net.forward_tasks[1]()
+    t = time.time() - t 
 
-        # net.backward()
-        # weights = net.buffers[conv2.name + "weights"]
 
-        # expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-        #         reference_conv_backward(top_grad, actual, weights, 1, 1)
+    _, ofm, oh, ow = net.buffers[conv1.name + "value"].shape
+    gflops = (batch_size * channels * 128 * oh * ow * (2 * 3 * 3)) * 1e-9
+    print("GFLOPS/s : fp = {}".format(gflops / t))
 
-        # bot_grad = net.buffers[conv1.name + "grad"]
-        # self._check_equal(bot_grad, expected_bot_grad)
+    # expected = reference_conv_forward(data_value, weights_converted, bias, 1, 1)
 
-        # weights_grad = net.buffers[conv2.name + "grad_weights"]
-        # self._check_equal(weights_grad, expected_weights_grad)
+    # expected_converted = np.zeros_like(expected)
+    # shape = expected.shape
+    # for n in range(shape[0]):
+    #     for ifm in range(shape[1] // 8):
+    #         for y in range(shape[2]):
+    #             for x in range(shape[3]):
+    #                 for v in range(8):
+    #                     expected_converted.flat[(((n * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = expected[n, ifm * 8 + v, y, x]
+    # actual  = net.buffers[conv1.name + "value"]
+    # self._check_equal(actual, expected_converted)
 
-        # bias_grad = net.buffers[conv2.name + "grad_bias"]
-        # self._check_equal(bias_grad, expected_bias_grad)
+    # top_grad = net.buffers[conv2.name + "grad"]
+    # np.copyto(top_grad, np.random.rand(*top_grad.shape))
+
+    # net.backward()
+    # weights = net.buffers[conv2.name + "weights"]
+
+    # expected_bot_grad, expected_weights_grad, expected_bias_grad = \
+    #         reference_conv_backward(top_grad, actual, weights, 1, 1)
+
+    # bot_grad = net.buffers[conv1.name + "grad"]
+    # self._check_equal(bot_grad, expected_bot_grad)
+
+    # weights_grad = net.buffers[conv2.name + "grad_weights"]
+    # self._check_equal(weights_grad, expected_weights_grad)
+
+    # bias_grad = net.buffers[conv2.name + "grad_bias"]
+    # self._check_equal(bias_grad, expected_bias_grad)
 
 if __name__ == '__main__':
-    unittest.main()
+    main()

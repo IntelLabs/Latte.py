@@ -12,51 +12,61 @@ SIMDWIDTH = 8
 class RegisterPromoteValueRefs(ast.NodeTransformer):
     def __init__(self, ensemble, direction, batch_size):
         self.ensemble = ensemble
-        self.direction = direction
+        self.target = "value" if direction == "forward" else "backward"
         self.batch_size = batch_size
 
     def visit_Subscript(self, node):
-        if self.direction == "forward":
-            target = "value"
-        elif self.direction == "backward":
-            target = "grad"
-        else:
-            raise NotImplementedError
-        if node.value.id.endswith(target):
-            return ast.Name(target, node.ctx)
+        """
+        Promote array reference ensemble_name$field[...] to register reference
+        $field
+
+        $field is either "value" or "grad" depending on the current direction
+        """
+        if node.value.id.endswith(self.target):
+            return ast.Name(self.target, node.ctx)
         return node
 
+    def _gen_nested_index_expr(self, target, idxs):
+        """
+        Generates a nested indexing expression target[i1][i2][i3] for a list of
+        idxs = [i1, i2, i3]
+        """
+        idx_expr = C.ArrayRef(target, idxs[0])
+        for idx in idxs[1:]:
+            idx_expr = C.ArrayRef(idx_expr, idx)
+        return idx_expr
+
+
     def visit_For(self, node):
+        """
+        Find the innermost loop to insert a load and store of the target register
+
+        target is either "value" or "grad" depending on direction
+        """
         node.body = [self.visit(s) for s in node.body]
-        if isinstance(node.target, ast.Name) and node.target.id == "_neuron_index_{}".format(self.ensemble.ndim):
-            if self.direction == "forward":
-                to_load = "value"
-            elif self.direction == "backward":
-                to_load = "grad"
-            else:
-                raise NotImplementedError
-            # Initialize value
-            idxs = [C.SymbolRef("_neuron_index_{}".format(i)) for i in range(self.ensemble.ndim + 1)]
-            idx_expr = C.ArrayRef(C.SymbolRef(self.ensemble.name+to_load), idxs[0])
-            for idx in idxs[1:]:
-                idx_expr = C.ArrayRef(idx_expr, idx)
-            # flat_idx = util.gen_flat_index(index, (self.batch_size, ) + self.ensemble.shape)
-            # flat_idx = util.gen_flat_index(index, (self.batch_size, math.ceil(self.ensemble.shape[0] / float(SIMDWIDTH))) + self.ensemble.shape[1:] + (SIMDWIDTH, ))
-            # flat_idx = PyBasicConversions().visit(flat_idx)
+        # innermost loop uses "_neuron_index_X" where X = ensemble.ndim
+        if isinstance(node.target, ast.Name) and \
+                node.target.id == "_neuron_index_{}".format(self.ensemble.ndim):
+
+            idxs = [C.SymbolRef("_neuron_index_{}".format(i)) for i in
+                    range(self.ensemble.ndim + 1)]
+
+            idx_expr = self._gen_nested_index_expr(
+                C.SymbolRef(self.ensemble.name+self.target), idxs)
+
+            # Insert a vectorized load for the current value of target[idx...]
             node.body.insert(0, 
                 C.Assign(
-                    # C.SymbolRef(to_load, ctypes.c_float()), idx_expr
-                    C.SymbolRef(to_load, simd.types.m256()), 
-                    simd_macros.mm256_load_ps( 
-                        idx_expr)
+                    C.SymbolRef(self.target, simd.types.m256()), 
+                    simd_macros.mm256_load_ps(idx_expr)
                 ))
-            if to_load == "value":
-                # Store value
+
+            # we only store the value register as "grad" is only read by definition
+            if self.target == "value":
                 node.body.append( 
-                    # C.Assign(idx_expr, C.SymbolRef(to_load), ))
                     simd_macros.mm256_store_ps(
                         idx_expr,
-                        C.SymbolRef(to_load)
+                        C.SymbolRef(self.target)
                     ))
         return node
 
