@@ -56,13 +56,13 @@ def check_equal(actual, expected):
     np.testing.assert_array_almost_equal(actual, expected)
 
 def main():
-    batch_size = 8
+    batch_size = 4
     net = Net(batch_size)
     channels, height, width = 128, 112, 112
     data, data_value = MemoryDataLayer(net, (channels, height, width))
     conv1 = ConvLayer(net, data, num_filters=128, kernel=3, stride=1, pad=1)
 
-    data_value[:, :, :] = np.random.rand(8, channels, height, width)
+    data_value[:, :, :] = np.random.rand(batch_size, channels, height, width)
 
     net.compile()
 
@@ -80,9 +80,9 @@ def main():
                                     weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x]
 
     assert(len(net.forward_tasks) == 2)
-    t = time.time()
+    t = time.clock()
     net.forward_tasks[1]()
-    t = time.time() - t 
+    t = time.clock() - t 
 
 
     _, ofm, oh, ow = net.buffers[conv1.name + "value"].shape

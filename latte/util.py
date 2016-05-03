@@ -19,10 +19,10 @@ def aligned(a, alignment=64):
     return aa
 
 def empty(shape, dtype):
-    return aligned(np.empty(shape, dtype))
+    return aligned(np.empty(shape, dtype=dtype))
 
 def zeros(shape, dtype):
-    return aligned(np.zeros(shape, dtype))
+    return aligned(np.zeros(shape, dtype=dtype))
 
 def gen_flat_index(idxs, shape):
     flat_idx = idxs[0]
@@ -170,6 +170,12 @@ def sgemm(trans_A, trans_B, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc):
             c_float(alpha), A.ctypes.data_as(c_float_p), c_int(lda),
             B.ctypes.data_as(c_float_p), c_int(ldb), c_float(beta),
             C.ctypes.data_as(c_float_p), c_int(ldc))
+
+def prod(elts):
+    result = 1
+    for _range in elts:
+        result *= (_range.stop - _range.start)
+    return result
 
 def flatten(x):
     if isinstance(x, collections.Iterable):

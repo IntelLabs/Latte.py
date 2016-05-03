@@ -3,6 +3,7 @@ import ctree.c.nodes as C
 import latte.util as util
 import ctypes
 import latte.core
+from ctree.transformations import PyBasicConversions
 
 class ConvertEnumerateRange(ast.NodeTransformer):
     """
@@ -46,32 +47,38 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 node.body = [util.replace_name(old, new, s) for s in node.body]
                 end = node.iter.args[0].args[0]
                 if isinstance(end, ast.Num):
-                    self.blocked_loops.append(
-                        C.For(
-                            C.Assign(C.SymbolRef(node.target.elts[1].id + "_tile", ctypes.c_int()), C.Constant(0)),
-                            C.Lt(C.SymbolRef(node.target.elts[1].id + "_tile"), C.Constant(end.n // latte.core.TILE_SIZE)),
-                            # C.AddAssign(C.SymbolRef(node.target.elts[1].id + "_tile"), C.SymbolRef("TILE_SIZE")),
-                            C.PostInc(C.SymbolRef(node.target.elts[1].id + "_tile")),
-                            [])
-                    )
-                    if end.n % latte.core.TILE_SIZE == 0:
-                        # end = C.Add(C.SymbolRef(node.target.elts[1].id + "_tile"), 
-                        #             C.SymbolRef("TILE_SIZE"))
-                        end = C.SymbolRef("TILE_SIZE")
+                    if True:  # Tiling
+                        self.blocked_loops.append(
+                            C.For(
+                                C.Assign(C.SymbolRef(node.target.elts[1].id + "_tile", ctypes.c_int()), C.Constant(0)),
+                                C.Lt(C.SymbolRef(node.target.elts[1].id + "_tile"), C.Constant(end.n // latte.core.TILE_SIZE)),
+                                # C.AddAssign(C.SymbolRef(node.target.elts[1].id + "_tile"), C.SymbolRef("TILE_SIZE")),
+                                C.PostInc(C.SymbolRef(node.target.elts[1].id + "_tile")),
+                                [])
+                        )
+                        if end.n % latte.core.TILE_SIZE == 0:
+                            # end = C.Add(C.SymbolRef(node.target.elts[1].id + "_tile"), 
+                            #             C.SymbolRef("TILE_SIZE"))
+                            end = C.SymbolRef("TILE_SIZE")
+                        else:
+                            raise NotImplementedError()
+                        # init = C.Assign(
+                        #     C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
+                        #     C.SymbolRef(node.target.elts[1].id + "_tile"))
+                        init = C.Assign(
+                            C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
+                            C.Constant(0))
+                        new_body = []
+                        for statement in node.body:
+                            result, tiled_buffers = util.tile_array_refs(node.target.elts[1].id, statement)
+                            new_body.append(result)
+                            self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
+                        node.body = new_body
                     else:
-                        raise NotImplementedError()
-                    # init = C.Assign(
-                    #     C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
-                    #     C.SymbolRef(node.target.elts[1].id + "_tile"))
-                    init = C.Assign(
-                        C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
-                        C.Constant(0))
-                    new_body = []
-                    for statement in node.body:
-                        result, tiled_buffers = util.tile_array_refs(node.target.elts[1].id, statement)
-                        new_body.append(result)
-                        self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
-                    node.body = new_body
+                        end = C.Constant(end.n)
+                        init = C.Assign(
+                            C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
+                            C.Constant(0))
                 elif isinstance(end, Ast.Name):
                     end = C.SymbolRef(end.id)
                     init = C.Assign(
@@ -86,13 +93,13 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                         node.body
                     )
             elif len(range_args) == 2:
-                start = node.iter.args[0].args[0] 
-                if isinstance(start, ast.Name):
-                    start = C.SymbolRef(start.id)
-                elif isinstance(start, ast.Num):
-                    start = C.Constant(start.n)
-                else:
-                    raise NotImplementedError
+                start = PyBasicConversions().visit(node.iter.args[0].args[0])
+                # if isinstance(start, ast.Name):
+                #     start = C.SymbolRef(start.id)
+                # elif isinstance(start, ast.Num):
+                #     start = C.Constant(start.n)
+                # else:
+                #     raise NotImplementedError
                 init = [C.Assign(
                     C.SymbolRef(node.target.elts[0].id),
                     C.Constant(0)),
@@ -103,12 +110,13 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             else:
                 raise NotImplementedError
 
-            if isinstance(end, ast.Name):
-                end = C.SymbolRef(end.id)
-            elif isinstance(end, ast.Num):
-                end = C.Constant(end.n)
-            else:
-                raise NotImplementedError
+            end = PyBasicConversions().visit(end)
+            # if isinstance(end, ast.Name):
+            #     end = C.SymbolRef(end.id)
+            # elif isinstance(end, ast.Num):
+            #     end = C.Constant(end.n)
+            # else:
+            #     raise NotImplementedError
             pre_stmts = [C.SymbolRef(var.id, ctypes.c_int()) for var in node.target.elts]
             return pre_stmts + [C.For(
                     init,

@@ -16,13 +16,13 @@ def reference_conv_forward(_input, weights, bias, pad, stride):
                 for x in range(output_width):
                     in_y = max(y*stride_h - pad, 0)
                     in_x = max(x*stride_w - pad, 0)
-                    out_y = min(in_y + kernel_h, output_height)
-                    out_x = min(in_x + kernel_w, output_width)
+                    out_y = min(in_y + kernel_h, in_height)
+                    out_x = min(in_x + kernel_w, in_width)
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y)):
                             for j, q in enumerate(range(in_x, out_x)):
                                 output[n, o, y, x] += weights[o, c, i, j] * _input[n, c, p, q]
-                    output[n, o, y, x] += bias[o][0]
+                    # output[n, o, y, x] += bias[o][0]
     return output
 
 def reference_conv_backward(top_grad, _input, weights, pad, stride):
@@ -61,9 +61,10 @@ class ConvTest(unittest.TestCase):
     def test_forward_backward(self):
         net = Net(8)
         channels, height, width = 16, 8, 8
+        pad = 0
         data, data_value = MemoryDataLayer(net, (channels, height, width))
-        conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=1)
-        conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=1)
+        conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)
+        conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad)
 
         data_value[:, :, :] = np.random.rand(8, channels, height, width)
 
@@ -73,29 +74,41 @@ class ConvTest(unittest.TestCase):
         bias    = net.buffers[conv1.name + "bias"]
         weights_converted = np.copy(weights)
         shape = weights.shape
+        weights_reshaped = weights.reshape(shape[0] // 8, shape[1] // 8, shape[2], shape[3], 8, 8)
         for ofm in range(shape[0] // 8):
             for ifm in range(shape[1] // 8):
                 for y in range(shape[2]):
                     for x in range(shape[3]):
                         for v2 in range(8):
                             for v in range(8):
-                                weights.flat[((((ofm * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v2) * 8 + v] = \
+                                weights_reshaped[ofm, ifm, y, x, v2, v] = \
                                         weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x]
+        # weights_reshaped = weights.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
+        # for ofm in range(shape[0]):
+        #     for ifm in range(shape[1] // 8):
+        #         for y in range(shape[2]):
+        #             for x in range(shape[3]):
+        #                 for v in range(8):
+        #                     weights_reshaped[ofm, ifm, y, x, v] = \
+        #                             weights_converted[ofm, ifm * 8 + v, y, x]
 
         net.forward()
 
-        expected = reference_conv_forward(data_value, weights_converted, bias, 1, 1)
+        expected = reference_conv_forward(data_value, weights_converted, bias, pad, 1)
 
-        expected_converted = np.zeros_like(expected)
+        actual  = net.buffers[conv1.name + "value"]
         shape = expected.shape
+        actual_converted = np.zeros_like(actual)
+        actual_reshaped = actual.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
         for n in range(shape[0]):
             for ifm in range(shape[1] // 8):
                 for y in range(shape[2]):
                     for x in range(shape[3]):
                         for v in range(8):
-                            expected_converted.flat[(((n * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = expected[n, ifm * 8 + v, y, x]
-        actual  = net.buffers[conv1.name + "value"]
-        self._check_equal(actual, expected_converted)
+                            actual_converted[n, ifm * 8 + v, y, x] = actual_reshaped[n, ifm, y, x, v]
+        # print(actual_converted[7][0:1])
+        # print(expected[7][0:1])
+        self._check_equal(actual_converted, expected)
 
         # top_grad = net.buffers[conv2.name + "grad"]
         # np.copyto(top_grad, np.random.rand(*top_grad.shape))

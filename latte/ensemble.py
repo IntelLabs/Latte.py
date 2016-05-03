@@ -32,14 +32,15 @@ class DataEnsemble(Ensemble):
         self.value = value
 
     def forward(self, value):
-        if self.value.ndim == 4:
+        if True and self.value.ndim == 4:
             shape = self.value.shape
+            value_reshaped = value.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
             for n in range(shape[0]):
                 for ifm in range(shape[1] // 8):
                     for y in range(shape[2]):
                         for x in range(shape[3]):
                             for v in range(8):
-                                value.flat[(((n * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = self.value[n, ifm * 8 + v, y, x]
+                                value_reshaped[n, ifm, y, x, v] = self.value[n, ifm * 8 + v, y, x]
         else:
             np.copyto(value, self.value)
 

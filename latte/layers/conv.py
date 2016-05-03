@@ -27,9 +27,6 @@ class ConvNeuron(Neuron):
             for j, q in enumerate_dim(self.inputs, 1):
                 for k, r in enumerate_dim(self.inputs, 2):
                     self.grad_inputs[p, q, r] += self.grad * self.weights[i, j, k]
-        for i, p in enumerate_dim(self.inputs, 0):
-            for j, q in enumerate_dim(self.inputs, 1):
-                for k, r in enumerate_dim(self.inputs, 2):
                     self.grad_weights[i, j, k] += self.grad * self.inputs[p, q, r]
         self.grad_bias[0] += self.grad
 
@@ -79,10 +76,10 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
     input_shape = input_ensemble.shape
 
     def mapping(c, y, x):
-        in_y = fmax(y*stride_h - pad, 0)
-        in_x = fmax(x*stride_w - pad, 0)
-        out_y = fmin(in_y + kernel_h, output_height)
-        out_x = fmin(in_x + kernel_w, output_width)
+        in_y = y*stride_h - pad
+        in_x = x*stride_w - pad
+        out_y = in_y + kernel_h
+        out_x = in_x + kernel_w
         return range(input_channels), range(in_y,out_y), range(in_x,out_x)
 
     net.add_connections(input_ensemble, ens, mapping)
