@@ -156,7 +156,7 @@ class Net:
         fn_def = transformer.visit(fn_def)
 
         vectorize = direction == "forward"
-        vectorize = False
+        # vectorize = False
         # Reverse iteration space for row major indexing
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
         shape = ensemble.shape
@@ -196,12 +196,16 @@ class Net:
 
         func_def, vectorized_buffers = transformers.vectorize_outer_loop(func_def, "_neuron_index_1", vectorize)
 
-        if False and direction == "forward":
+        # if False and direction == "forward":
+        if direction == "forward":
             unroll_factor = UNROLL_FACTOR
-            while ensemble.shape[-1] % unroll_factor != 0:
-                unroll_factor /= 2
+            unroll_dim = ensemble.shape[-1]
+            if ensemble.ndim == 1:
+                unroll_dim //= SIMDWIDTH
+            while unroll_factor > unroll_dim or unroll_dim % unroll_factor != 0 :
+                unroll_factor //= 2
             if unroll_factor > 1:
-                func_def = transformers.unroll_inner_neuron_loop(func_def, "_neuron_index_{}".format(ensemble.ndim), UNROLL_FACTOR)
+                func_def = transformers.unroll_inner_neuron_loop(func_def, "_neuron_index_{}".format(ensemble.ndim), unroll_factor)
             func_def = transformers.register_promote_vector_loads(func_def)
 
         for key in vectorized_buffers.keys():
