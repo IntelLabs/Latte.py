@@ -39,10 +39,12 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             for statement in node.body:
                 result = self.visit(statement)
                 if len(self.blocked_loops) > 0:
-                    if len(self.blocked_loops) > 1:
-                        raise NotImplementedError()
-                    new_body.append(self.blocked_loops[0])
-                    self.blocked_loops[0].body = [result]
+                    curr_loop = self.blocked_loops[0]
+                    new_body.append(curr_loop)
+                    for loop in self.blocked_loops[1:]:
+                        curr_loop.body = [loop]
+                        curr_loop = loop
+                    curr_loop.body = [result]
                     self.blocked_loops = []
                 else:
                     new_body.append(result)
@@ -53,11 +55,11 @@ class ConvertEnumerateRange(ast.NodeTransformer):
 
     def visit_RangeDim(self, node):
         iter = node.child_for.iter
+        mapping_func = util.get_ast(node.mapping).body[0]
+        ndim = len(mapping_func.args.args)
+        dim = iter.args[1].n
+        length = len(node.mapping(*[1 for _ in range(ndim)])[dim])
         if isinstance(iter, ast.Call) and iter.func.id == "enumerate_dim":
-            mapping_func = util.get_ast(node.mapping).body[0]
-            ndim = len(mapping_func.args.args)
-            dim = iter.args[1].n
-            length = len(node.mapping(*[1 for _ in range(ndim)])[dim])
             # grab closure variables and inline them into the mapping ast
             closure_vars = inspect.getclosurevars(node.mapping)
             for var, value in closure_vars.nonlocals.items():
@@ -114,6 +116,35 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 C.Assign(C.SymbolRef(enum_var.id, ctypes.c_int()), C.Constant(0)),
                 C.Lt(C.SymbolRef(enum_var.id), C.Constant(length)),
                 C.PostInc(C.SymbolRef(enum_var.id)),
+                body,
+                "unroll({})".format(length)
+            )
+        elif isinstance(iter, ast.Call) and iter.func.id == "range_dim":
+            loop_var = node.child_for.target.id
+            body = []
+            if dim == 0:
+                self.blocked_loops.append(
+                    C.For(
+                        C.Assign(C.SymbolRef(loop_var + "_tile", ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef(loop_var + "_tile"), C.Constant(length // latte.core.TILE_SIZE)),
+                        C.PostInc(C.SymbolRef(loop_var + "_tile")),
+                        [])
+                )
+                if length % latte.core.TILE_SIZE == 0:
+                    length = C.SymbolRef("TILE_SIZE")
+                else:
+                    raise NotImplementedError()
+                new_body = []
+                for statement in node.child_for.body:
+                    result, tiled_buffers = util.tile_array_refs(loop_var, statement)
+                    new_body.append(result)
+                    self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
+                node.child_for.body = new_body
+            body += [self.visit(s) for s in node.child_for.body]
+            return C.For(
+                C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
+                C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
+                C.PostInc(C.SymbolRef(loop_var)),
                 body,
                 "unroll({})".format(length)
             )

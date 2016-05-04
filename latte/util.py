@@ -230,8 +230,42 @@ def collect_stores(ast):
     visitor = StoreCollecter()
     visitor.visit(ast)
     return visitor.seen
+
+def convert_6d_4d(arr):
+    shape = arr.shape
+    arr_converted = np.zeros_like(arr)
+    arr_reshaped = arr.reshape(shape[0] // 8, shape[1] // 8, shape[2], shape[3], 8, 8)
+    for ofm in range(shape[0] // 8):
+        for ifm in range(shape[1] // 8):
+            for y in range(shape[2]):
+                for x in range(shape[3]):
+                    for v2 in range(8):
+                        for v in range(8):
+                            arr_converted[ofm * 8 + v, ifm * 8 + v2, y, x] = \
+                                arr_reshaped[ofm, ifm, y, x, v2, v]
+    return arr_converted
     
-    
+def convert_5d_4d(arr):
+    shape = arr.shape
+    arr_converted = np.zeros_like(arr)
+    arr_reshaped = arr.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
+    for n in range(shape[0]):
+        for ifm in range(shape[1] // 8):
+            for y in range(shape[2]):
+                for x in range(shape[3]):
+                    for v in range(8):
+                        arr_converted[n, ifm * 8 + v, y, x] = arr_reshaped[n, ifm, y, x, v]
+    return arr_converted
+
+def convert_3d_2d(arr):
+    shape = arr.shape
+    arr_converted = np.zeros_like(arr)
+    arr_reshaped = arr.reshape(shape[0] // 8, shape[1], 8)
+    for n in range(shape[0] // 8):
+        for i in range(shape[1]):
+            for v in range(8):
+                arr_converted[n * 8 + v, i] = arr_reshaped[n, i, v]
+    return arr_converted
 
 # class Unpack(ast.NodeTransformer):
 #     def __init__(self):

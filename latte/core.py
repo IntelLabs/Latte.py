@@ -212,7 +212,6 @@ class Net:
                 vectorized_buffers[key].insert(0, (tiled_buffers[key], TILE_SIZE))
             else:
                 vectorized_buffers[key] = [(tiled_buffers[key], TILE_SIZE)]
-        print(vectorized_buffers)
 
         type_sig = []
         for arg in func_def.params:

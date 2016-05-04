@@ -1,6 +1,7 @@
 import unittest
 import numpy as np
 from latte import *
+import latte.util as util
 
 def reference_conv_forward(_input, weights, bias, pad, stride):
     stride_h, stride_w = stride, stride
@@ -72,89 +73,35 @@ class ConvTest(unittest.TestCase):
 
         weights = net.buffers[conv1.name + "weights"]
         bias    = net.buffers[conv1.name + "bias"]
-        weights_converted = np.copy(weights)
-        shape = weights.shape
-        weights_reshaped = weights.reshape(shape[0] // 8, shape[1] // 8, shape[2], shape[3], 8, 8)
-        for ofm in range(shape[0] // 8):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
-                        for v2 in range(8):
-                            for v in range(8):
-                                weights_reshaped[ofm, ifm, y, x, v2, v] = \
-                                        weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x]
+        weights_converted = util.convert_6d_4d(weights)
 
         net.forward()
 
-        expected = reference_conv_forward(data_value, weights_converted, bias, pad, 1)
+        expected = reference_conv_forward(data_value, weights_converted, bias,
+                pad, 1)
 
         actual  = net.buffers[conv1.name + "value"]
-        shape = expected.shape
-        actual_converted = np.zeros_like(actual)
-        actual_reshaped = actual.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
-        for n in range(shape[0]):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
-                        for v in range(8):
-                            actual_converted[n, ifm * 8 + v, y, x] = actual_reshaped[n, ifm, y, x, v]
-        # print(actual_converted[7][0:1])
-        # print(expected[7][0:1])
+        actual_converted = util.convert_5d_4d(actual)
         self._check_equal(actual_converted, expected)
 
         top_grad = net.buffers[conv2.name + "grad"]
         np.copyto(top_grad, np.random.rand(*top_grad.shape))
-        shape = top_grad.shape
-        top_grad_converted = np.zeros_like(top_grad)
-        top_grad_reshaped = top_grad.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
-        for n in range(shape[0]):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
-                        for v in range(8):
-                            top_grad_converted[n, ifm * 8 + v, y, x] = top_grad_reshaped[n, ifm, y, x, v]
+        top_grad_converted = util.convert_5d_4d(top_grad)
 
         weights = net.buffers[conv2.name + "weights"]
-        weights_converted = np.copy(weights)
-        shape = weights.shape
-        weights_reshaped = weights.reshape(shape[0] // 8, shape[1] // 8, shape[2], shape[3], 8, 8)
-        for ofm in range(shape[0] // 8):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
-                        for v2 in range(8):
-                            for v in range(8):
-                                weights_reshaped[ofm, ifm, y, x, v2, v] = \
-                                        weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x]
+        weights_converted = util.convert_6d_4d(weights)
         net.backward()
 
         expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-                reference_conv_backward(top_grad_converted, actual_converted, weights_converted, pad, 1)
+            reference_conv_backward(top_grad_converted, actual_converted,
+                    weights_converted, pad, 1)
 
         bot_grad = net.buffers[conv1.name + "grad"]
-        shape = expected_bot_grad.shape
-        actual_converted = np.zeros_like(bot_grad)
-        actual_reshaped = bot_grad.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
-        for n in range(shape[0]):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
-                        for v in range(8):
-                            actual_converted[n, ifm * 8 + v, y, x] = actual_reshaped[n, ifm, y, x, v]
+        actual_converted = util.convert_5d_4d(bot_grad)
         self._check_equal(actual_converted, expected_bot_grad)
 
         weights_grad = net.buffers[conv2.name + "grad_weights"]
-        shape = expected_weights_grad.shape
-        weights_converted = np.zeros_like(weights_grad)
-        weights_reshaped = weights_grad.reshape(shape[0] // 8, shape[1] // 8, shape[2], shape[3], 8, 8)
-        for ofm in range(shape[0] // 8):
-            for ifm in range(shape[1] // 8):
-                for y in range(shape[2]):
-                    for x in range(shape[3]):
-                        for v2 in range(8):
-                            for v in range(8):
-                                weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x] = \
-                                        weights_reshaped[ofm, ifm, y, x, v2, v]
+        weights_converted = util.convert_6d_4d(weights_grad)
         self._check_equal(weights_converted, expected_weights_grad)
 
         # bias_grad = net.buffers[conv2.name + "grad_bias"]
