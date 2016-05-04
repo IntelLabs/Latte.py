@@ -56,11 +56,13 @@ def check_equal(actual, expected):
     np.testing.assert_array_almost_equal(actual, expected)
 
 def main():
-    batch_size = 4
+    batch_size = 32
     net = Net(batch_size)
-    channels, height, width = 128, 112, 112
+    channels, height, width = 256, 14, 14
+    pad = 0
+    ofm = 512
     data, data_value = MemoryDataLayer(net, (channels, height, width))
-    conv1 = ConvLayer(net, data, num_filters=128, kernel=3, stride=1, pad=1)
+    conv1 = ConvLayer(net, data, num_filters=ofm, kernel=3, stride=1, pad=pad)
 
     data_value[:, :, :] = np.random.rand(batch_size, channels, height, width)
 
@@ -86,10 +88,10 @@ def main():
 
 
     _, ofm, oh, ow = net.buffers[conv1.name + "value"].shape
-    gflops = (batch_size * channels * 128 * oh * ow * (2 * 3 * 3)) * 1e-9
+    gflops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3)) * 1e-9
     print("GFLOPS/s : fp = {}".format(gflops / t))
 
-    # expected = reference_conv_forward(data_value, weights_converted, bias, 1, 1)
+    # expected = reference_conv_forward(data_value, weights_converted, bias, pad, 1)
 
     # expected_converted = np.zeros_like(expected)
     # shape = expected.shape

@@ -7,3 +7,5 @@ from .convert_enumerate_range import convert_enumerate_ranges
 from .register_promote_value_refs import register_promote_value_refs
 from .vectorize_outer_loop import vectorize_outer_loop
 from .neuron import NeuronTransformer
+from .unroll import unroll_inner_neuron_loop
+from .register_promote import register_promote_vector_loads

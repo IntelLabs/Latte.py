@@ -138,6 +138,21 @@ class ReplaceName(ast.NodeTransformer):
 def replace_name(old, new, ast):
     return ReplaceName(old, new).visit(ast)
 
+class ReplaceSymbol(ast.NodeTransformer):
+    def __init__(self, old, new):
+        self.old = old
+        self.new = new
+
+    def visit_SymbolRef(self, node):
+        if node.name == self.old:
+            if isinstance(self.new, C.SymbolRef):
+                self.new.type = node.type
+            return self.new
+        return node
+
+def replace_symbol(old, new, ast):
+    return ReplaceSymbol(old, new).visit(ast)
+
 __counter = 0
 def generate_unique_function_name():
     global __counter
@@ -188,6 +203,35 @@ def extend_or_append(_list, value):
         _list.extend(value)
     else:
         _list.append(value)
+
+
+class LoadCollecter(ast.NodeVisitor):
+    def __init__(self):
+        self.seen = set()
+
+    def visit_Name(self, node):
+        if isinstance(node.ctx, ast.Load):
+            self.seen.add(node.id)
+
+def collect_loads(ast):
+    visitor = LoadCollecter()
+    visitor.visit(ast)
+    return visitor.seen
+
+class StoreCollecter(ast.NodeVisitor):
+    def __init__(self):
+        self.seen = set()
+
+    def visit_Name(self, node):
+        if isinstance(node.ctx, ast.Store):
+            self.seen.add(node.id)
+
+def collect_stores(ast):
+    visitor = StoreCollecter()
+    visitor.visit(ast)
+    return visitor.seen
+    
+    
 
 # class Unpack(ast.NodeTransformer):
 #     def __init__(self):

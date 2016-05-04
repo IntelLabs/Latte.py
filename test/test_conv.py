@@ -60,7 +60,7 @@ class ConvTest(unittest.TestCase):
 
     def test_forward_backward(self):
         net = Net(8)
-        channels, height, width = 16, 8, 8
+        channels, height, width = 16, 16, 16
         pad = 0
         data, data_value = MemoryDataLayer(net, (channels, height, width))
         conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)

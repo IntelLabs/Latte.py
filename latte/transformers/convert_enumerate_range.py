@@ -3,7 +3,19 @@ import ctree.c.nodes as C
 import latte.util as util
 import ctypes
 import latte.core
+import inspect
 from ctree.transformations import PyBasicConversions
+
+def get_dependent_statements(statements, target):
+    deps = set([target])
+    dep_statements = []
+    for statement in statements:
+        for dep in deps:
+            if dep in util.collect_stores(statement):
+                dep_statements.append(statement)
+                deps = deps.union(util.collect_loads(statement))
+    return dep_statements
+            
 
 class ConvertEnumerateRange(ast.NodeTransformer):
     """
@@ -37,94 +49,75 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             node.body = new_body
             return node
         node.body = util.flatten([self.visit(s) for s in node.body])
+        return node
 
-        if isinstance(node.iter, ast.Call) and node.iter.func.id == "enumerate":
-            assert node.iter.args[0].func.id == "range"
-            range_args = node.iter.args[0].args
-            if len(range_args) == 1:
-                old = node.target.elts[0]
-                new = node.target.elts[1]
-                node.body = [util.replace_name(old, new, s) for s in node.body]
-                end = node.iter.args[0].args[0]
-                if isinstance(end, ast.Num):
-                    if True:  # Tiling
-                        self.blocked_loops.append(
-                            C.For(
-                                C.Assign(C.SymbolRef(node.target.elts[1].id + "_tile", ctypes.c_int()), C.Constant(0)),
-                                C.Lt(C.SymbolRef(node.target.elts[1].id + "_tile"), C.Constant(end.n // latte.core.TILE_SIZE)),
-                                # C.AddAssign(C.SymbolRef(node.target.elts[1].id + "_tile"), C.SymbolRef("TILE_SIZE")),
-                                C.PostInc(C.SymbolRef(node.target.elts[1].id + "_tile")),
-                                [])
-                        )
-                        if end.n % latte.core.TILE_SIZE == 0:
-                            # end = C.Add(C.SymbolRef(node.target.elts[1].id + "_tile"), 
-                            #             C.SymbolRef("TILE_SIZE"))
-                            end = C.SymbolRef("TILE_SIZE")
-                        else:
-                            raise NotImplementedError()
-                        # init = C.Assign(
-                        #     C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
-                        #     C.SymbolRef(node.target.elts[1].id + "_tile"))
-                        init = C.Assign(
-                            C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
-                            C.Constant(0))
-                        new_body = []
-                        for statement in node.body:
-                            result, tiled_buffers = util.tile_array_refs(node.target.elts[1].id, statement)
-                            new_body.append(result)
-                            self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
-                        node.body = new_body
-                    else:
-                        end = C.Constant(end.n)
-                        init = C.Assign(
-                            C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
-                            C.Constant(0))
-                elif isinstance(end, Ast.Name):
-                    end = C.SymbolRef(end.id)
-                    init = C.Assign(
-                        C.SymbolRef(node.target.elts[1].id, ctypes.c_int()),
-                        C.Constant(0))
+    def visit_RangeDim(self, node):
+        iter = node.child_for.iter
+        if isinstance(iter, ast.Call) and iter.func.id == "enumerate_dim":
+            mapping_func = util.get_ast(node.mapping).body[0]
+            ndim = len(mapping_func.args.args)
+            dim = iter.args[1].n
+            length = len(node.mapping(*[1 for _ in range(ndim)])[dim])
+            # grab closure variables and inline them into the mapping ast
+            closure_vars = inspect.getclosurevars(node.mapping)
+            for var, value in closure_vars.nonlocals.items():
+                mapping_func = util.inline_variable(var, value, mapping_func)
+
+            # replace argument variables with loop variables corresponding to 
+            # the current _neuron_index
+            for i, arg in enumerate(mapping_func.args.args):
+                i += 1  # offset batch
+                mapping_func = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), mapping_func)
+
+            range_expr = mapping_func.body[-1].value.elts[dim]
+            if len(range_expr.args) == 2:
+                offset = range_expr.args[0]
+            elif len(range_expr.args) == 3:
+                raise NotImplementedError()
+            else:
+                offset = 0
+
+            enum_var, loop_var = node.child_for.target.elts
+            if offset == 0:
+                # body = [C.Assign(C.SymbolRef(loop_var.id, ctypes.c_int()), 
+                #                  C.SymbolRef(enum_var.id))]
+                body = []
+                node.body = [util.replace_name(loop_var, enum_var, s) for s in node.child_for.body]
+            else:
+                body = get_dependent_statements(mapping_func.body[:-1], offset.id)
+                for stmt in body:
+                    # Assume everything in mapping is an int
+                    # FIXME: Do we need to support other kinds of expressions?
+                    stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
+                body.append(C.Assign(C.SymbolRef(loop_var.id, ctypes.c_int()), 
+                                     C.Add(C.SymbolRef(enum_var.id), C.Constant(offset))))
+            if dim == 0:
+                self.blocked_loops.append(
+                    C.For(
+                        C.Assign(C.SymbolRef(enum_var.id + "_tile", ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef(enum_var.id + "_tile"), C.Constant(length // latte.core.TILE_SIZE)),
+                        C.PostInc(C.SymbolRef(enum_var.id + "_tile")),
+                        [])
+                )
+                if length % latte.core.TILE_SIZE == 0:
+                    length = C.SymbolRef("TILE_SIZE")
                 else:
                     raise NotImplementedError()
-                return C.For(
-                        init,
-                        C.Lt(C.SymbolRef(node.target.elts[1].id), end),
-                        C.PostInc(C.SymbolRef(new.id)),
-                        node.body
-                    )
-            elif len(range_args) == 2:
-                start = PyBasicConversions().visit(node.iter.args[0].args[0])
-                # if isinstance(start, ast.Name):
-                #     start = C.SymbolRef(start.id)
-                # elif isinstance(start, ast.Num):
-                #     start = C.Constant(start.n)
-                # else:
-                #     raise NotImplementedError
-                init = [C.Assign(
-                    C.SymbolRef(node.target.elts[0].id),
-                    C.Constant(0)),
-                    C.Assign(
-                        C.SymbolRef(node.target.elts[1].id),
-                        C.Constant(start))]
-                end = node.iter.args[0].args[1]
-            else:
-                raise NotImplementedError
-
-            end = PyBasicConversions().visit(end)
-            # if isinstance(end, ast.Name):
-            #     end = C.SymbolRef(end.id)
-            # elif isinstance(end, ast.Num):
-            #     end = C.Constant(end.n)
-            # else:
-            #     raise NotImplementedError
-            pre_stmts = [C.SymbolRef(var.id, ctypes.c_int()) for var in node.target.elts]
-            return pre_stmts + [C.For(
-                    init,
-                    C.Lt(C.SymbolRef(node.target.elts[1].id), end),
-                    [C.PostInc(C.SymbolRef(var.id)) for var in node.target.elts],
-                    node.body
-                )]
-        return node
+                new_body = []
+                for statement in node.child_for.body:
+                    result, tiled_buffers = util.tile_array_refs(enum_var.id, statement)
+                    new_body.append(result)
+                    self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
+                node.child_for.body = new_body
+            body += [self.visit(s) for s in node.child_for.body]
+            return C.For(
+                C.Assign(C.SymbolRef(enum_var.id, ctypes.c_int()), C.Constant(0)),
+                C.Lt(C.SymbolRef(enum_var.id), C.Constant(length)),
+                C.PostInc(C.SymbolRef(enum_var.id)),
+                body,
+                "unroll({})".format(length)
+            )
+        raise NotImplementedError()
 
 def convert_enumerate_ranges(ast):
     visitor = ConvertEnumerateRange()

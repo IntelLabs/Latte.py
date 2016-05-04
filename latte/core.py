@@ -16,6 +16,7 @@ import latte.transformers as transformers
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
+UNROLL_FACTOR = 12
 
 include = StringTemplate("""
 #include <immintrin.h>
@@ -186,10 +187,18 @@ class Net:
 
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
+
         if vectorize:
-            func_def, vectorized_buffers = transformers.vectorize_outer_loop(func_def)
+            func_def, vectorized_buffers = transformers.vectorize_outer_loop(func_def, "_neuron_index_1")
         else:
             vectorized_buffers = tiled_buffers
+
+        unroll_factor = UNROLL_FACTOR
+        while ensemble.shape[-1] % unroll_factor != 0:
+            unroll_factor /= 2
+        if unroll_factor > 1:
+            func_def = transformers.unroll_inner_neuron_loop(func_def, "_neuron_index_{}".format(ensemble.ndim), UNROLL_FACTOR)
+        func_def = transformers.register_promote_vector_loads(func_def)
 
         for key in vectorized_buffers.keys():
             vectorized_buffers[key] = [(vectorized_buffers[key], SIMDWIDTH)]
@@ -223,7 +232,7 @@ class Net:
             self._insert_cast(func_def.defn, buf_shape, name)
         type_sig = ctypes.CFUNCTYPE(None, *type_sig)
         c_file = C.CFile(func_name, [include, func_def])
-        print(c_file)
+        print(ctree.util.highlight(c_file.codegen()))
         module = ctree.nodes.Project([c_file]).codegen()
         fn = module.get_callable(func_name, type_sig)
 

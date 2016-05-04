@@ -12,7 +12,7 @@ SIMDWIDTH = 8
 class RegisterPromoteValueRefs(ast.NodeTransformer):
     def __init__(self, ensemble, direction, batch_size):
         self.ensemble = ensemble
-        self.target = "value" if direction == "forward" else "backward"
+        self.target = "value" if direction == "forward" else "grad"
         self.batch_size = batch_size
 
     def visit_Subscript(self, node):

@@ -28,7 +28,7 @@ class ConvNeuron(Neuron):
                 for k, r in enumerate_dim(self.inputs, 2):
                     self.grad_inputs[p, q, r] += self.grad * self.weights[i, j, k]
                     self.grad_weights[i, j, k] += self.grad * self.inputs[p, q, r]
-        self.grad_bias[0] += self.grad
+        # self.grad_bias[0] += self.grad
 
 
 def compute_output_shape(input_shape, kernel, pad, stride):
