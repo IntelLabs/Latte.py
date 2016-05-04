@@ -1,5 +1,6 @@
 import ast
 import latte.util as util
+import latte
 
 class PatternMatchGemm(ast.NodeTransformer):
     def visit_For(self, node):
@@ -14,8 +15,15 @@ class PatternMatchGemm(ast.NodeTransformer):
         if not util.has_nested_for(second.body):
             return node
         third = second.body[0]
+        if isinstance(third, latte.transformers.neuron.RangeDim):
+            mapping_func = util.get_ast(third.mapping).body[0]
+            ndim = len(mapping_func.args.args)
+            dim = third.child_for.iter.args[1].n
+            k_len = ast.Num(len(third.mapping(*[1 for _ in range(ndim)])[dim]))
+            third = third.child_for
+        else:
+            k_len = third.iter.args[0]
         k = third.target.id
-        k_len = third.iter.args[0]
         if isinstance(third.body[0], ast.AugAssign) and \
                 isinstance(third.body[0].op, ast.Add) and \
                 isinstance(third.body[0].value, ast.BinOp) and \

@@ -22,7 +22,8 @@ class FCTest(unittest.TestCase):
         net.forward()
 
         weights = net.buffers[fc1.name + "weights"]
-        weights_converted = util.convert_3d_2d(weights)
+        # weights_converted = util.convert_3d_2d(weights)
+        weights_converted = weights
         # bias    = net.buffers[fc1.name + "bias"].reshape((24, ))
         _input  = net.buffers[data.name + "value"]
         np.testing.assert_array_almost_equal(_input, data_value)

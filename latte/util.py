@@ -5,6 +5,7 @@ import astor
 import collections
 import ctree.c.nodes as C
 import numpy as np
+import latte
 
 def aligned(a, alignment=64):
     if (a.ctypes.data % alignment) == 0:
@@ -161,7 +162,7 @@ def generate_unique_function_name():
 
 
 def has_nested_for(body):
-    return len(body) == 1 and isinstance(body[0], ast.For)
+    return len(body) == 1 and isinstance(body[0], (ast.For, latte.transformers.neuron.RangeDim))
 
 import ctypes
 from ctypes import c_int, c_float, byref, cdll

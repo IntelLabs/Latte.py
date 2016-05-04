@@ -16,7 +16,7 @@ import latte.transformers as transformers
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
-UNROLL_FACTOR = 12
+UNROLL_FACTOR = 16
 
 include = StringTemplate("""
 #include <immintrin.h>
@@ -160,7 +160,7 @@ class Net:
         # Reverse iteration space for row major indexing
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
         shape = ensemble.shape
-        shape = (shape[0] // SIMDWIDTH, ) + shape[1:]
+        # shape = (shape[0] // SIMDWIDTH, ) + shape[1:]
         if not vectorize:
             shape += (SIMDWIDTH, )
             loop_vars.insert(0, "_neuron_index_1_inner")
@@ -203,7 +203,9 @@ class Net:
             if ensemble.ndim == 1:
                 unroll_dim //= SIMDWIDTH
             while unroll_factor > unroll_dim or unroll_dim % unroll_factor != 0 :
-                unroll_factor //= 2
+                unroll_factor -= 2
+                if unroll_factor == 0:
+                    break
             if unroll_factor > 1:
                 func_def = transformers.unroll_inner_neuron_loop(func_def, "_neuron_index_{}".format(ensemble.ndim), unroll_factor)
             func_def = transformers.register_promote_vector_loads(func_def)
