@@ -4,18 +4,20 @@ import ctree.c.nodes as C
 import latte.util as util
 
 class VectorizeOuterLoop(ast.NodeTransformer):
-    def __init__(self, vectorized_buffers, loop_var):
+    def __init__(self, vectorized_buffers, loop_var, vectorize):
         self.vectorized_buffers = vectorized_buffers
         self.loop_var = loop_var
+        self.vectorize = vectorize
 
     def visit_For(self, node):
-        if not isinstance(node.init, list) and node.init.left.name == self.loop_var:
-            node.test.right = C.Div(node.test.right, C.SymbolRef("SIMDWIDTH"))
         node.body = [self.visit(s) for s in node.body]
         return node
 
     def visit_AugAssign(self, node):
         node.value = self.visit(node.value)
+        if not self.vectorize:
+            node.target = self.visit(node.target)
+            return node
         if util.contains_symbol(node.target, self.loop_var):
             return simd_macros.mm256_store_ps(
                     node.target,
@@ -53,16 +55,22 @@ class VectorizeOuterLoop(ast.NodeTransformer):
                 while not isinstance(curr_node, C.SymbolRef):
                     curr_node = curr_node.left
                 self.vectorized_buffers[curr_node.name] = idx
-                return simd_macros.mm256_load_ps(
-                        node)
+                if self.vectorize:
+                    return simd_macros.mm256_load_ps(
+                            node)
+                else:
+                    return C.ArrayRef(node, C.SymbolRef("_neuron_index_1_inner"))
             else:
-                return simd_macros.mm256_set1_ps(node)
+                if self.vectorize:
+                    return simd_macros.mm256_set1_ps(node)
+                else:
+                    return node
                 
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
         return node
 
-def vectorize_outer_loop(ast, loop_var):
+def vectorize_outer_loop(ast, loop_var, vectorize):
     vectorized_buffers = {}
-    ast = VectorizeOuterLoop(vectorized_buffers, loop_var).visit(ast)
+    ast = VectorizeOuterLoop(vectorized_buffers, loop_var, vectorize).visit(ast)
     return ast, vectorized_buffers

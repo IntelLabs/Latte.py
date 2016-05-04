@@ -10,10 +10,12 @@ import latte.util as util
 SIMDWIDTH = 8
 
 class RegisterPromoteValueRefs(ast.NodeTransformer):
-    def __init__(self, ensemble, direction, batch_size):
+    def __init__(self, ensemble, direction, batch_size, target_loop_var, vectorize):
         self.ensemble = ensemble
         self.target = "value" if direction == "forward" else "grad"
         self.batch_size = batch_size
+        self.vectorize = vectorize
+        self.target_loop_var = target_loop_var
 
     def visit_Subscript(self, node):
         """
@@ -44,9 +46,8 @@ class RegisterPromoteValueRefs(ast.NodeTransformer):
         target is either "value" or "grad" depending on direction
         """
         node.body = [self.visit(s) for s in node.body]
-        # innermost loop uses "_neuron_index_X" where X = ensemble.ndim
         if isinstance(node.target, ast.Name) and \
-                node.target.id == "_neuron_index_{}".format(self.ensemble.ndim):
+                node.target.id == self.target_loop_var:
 
             idxs = [C.SymbolRef("_neuron_index_{}".format(i)) for i in
                     range(self.ensemble.ndim + 1)]
@@ -54,21 +55,35 @@ class RegisterPromoteValueRefs(ast.NodeTransformer):
             idx_expr = self._gen_nested_index_expr(
                 C.SymbolRef(self.ensemble.name+self.target), idxs)
 
-            # Insert a vectorized load for the current value of target[idx...]
-            node.body.insert(0, 
-                C.Assign(
-                    C.SymbolRef(self.target, simd.types.m256()), 
-                    simd_macros.mm256_load_ps(idx_expr)
-                ))
+            if self.vectorize:
+                # Insert a vectorized load for the current value of target[idx...]
+                node.body.insert(0, 
+                    C.Assign(
+                        C.SymbolRef(self.target, simd.types.m256()), 
+                        simd_macros.mm256_load_ps(idx_expr)
+                    ))
+            else:
+                node.body.insert(0, 
+                    C.Assign(
+                        C.SymbolRef(self.target, ctypes.c_float()), 
+                        idx_expr
+                    ))
 
             # we only store the value register as "grad" is only read by definition
             if self.target == "value":
-                node.body.append( 
-                    simd_macros.mm256_store_ps(
-                        idx_expr,
-                        C.SymbolRef(self.target)
-                    ))
+                if self.vectorize:
+                    node.body.append( 
+                        simd_macros.mm256_store_ps(
+                            idx_expr,
+                            C.SymbolRef(self.target)
+                        ))
+                else:
+                    node.body.append( 
+                        C.Assign(
+                            idx_expr,
+                            C.SymbolRef(self.target)
+                        ))
         return node
 
-def register_promote_value_refs(ast, ensemble, direction, batch_size):
-    return RegisterPromoteValueRefs(ensemble, direction, batch_size).visit(ast)
+def register_promote_value_refs(ast, ensemble, direction, batch_size, target_loop_var, vectorize):
+    return RegisterPromoteValueRefs(ensemble, direction, batch_size, target_loop_var, vectorize).visit(ast)

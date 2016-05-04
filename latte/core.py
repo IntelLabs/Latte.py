@@ -144,8 +144,8 @@ class Net:
                 func, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
                 self.forward_tasks.append(Task(func, args))
 
-                # func, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
-                # self.backward_tasks.insert(0, Task(func, args))
+                func, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
+                self.backward_tasks.insert(0, Task(func, args))
 
     def _synthesize_ast(self, ensemble, fn, direction):
         fn_def = util.get_ast(fn).body[0]
@@ -155,9 +155,16 @@ class Net:
                 self.connections_map[ensemble], self.buffer_dim_info)
         fn_def = transformer.visit(fn_def)
 
+        vectorize = direction == "forward"
+        vectorize = False
         # Reverse iteration space for row major indexing
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
-        loop_ranges = ([self.batch_size] + [d for d in ensemble.shape])[::-1]
+        shape = ensemble.shape
+        shape = (shape[0] // SIMDWIDTH, ) + shape[1:]
+        if not vectorize:
+            shape += (SIMDWIDTH, )
+            loop_vars.insert(0, "_neuron_index_1_inner")
+        loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
 
         body = fn_def.body
 
@@ -176,10 +183,9 @@ class Net:
         func_def = transformers.pattern_match_gemm(func_def)
         func_def = transformers.simple_fusion(func_def)
 
-        vectorize = True
-        if vectorize:
-            func_def = transformers.register_promote_value_refs(func_def, ensemble,
-                    direction, self.batch_size)
+        target_loop_var = "_neuron_index_{}".format(ensemble.ndim) if vectorize else "_neuron_index_1_inner"
+        func_def = transformers.register_promote_value_refs(func_def, ensemble,
+                direction, self.batch_size, target_loop_var, vectorize)
 
         func_def = transformers.convert_tuple_subscripts(func_def)
 
@@ -188,27 +194,25 @@ class Net:
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
 
-        if vectorize:
-            func_def, vectorized_buffers = transformers.vectorize_outer_loop(func_def, "_neuron_index_1")
-        else:
-            vectorized_buffers = tiled_buffers
+        func_def, vectorized_buffers = transformers.vectorize_outer_loop(func_def, "_neuron_index_1", vectorize)
 
-        unroll_factor = UNROLL_FACTOR
-        while ensemble.shape[-1] % unroll_factor != 0:
-            unroll_factor /= 2
-        if unroll_factor > 1:
-            func_def = transformers.unroll_inner_neuron_loop(func_def, "_neuron_index_{}".format(ensemble.ndim), UNROLL_FACTOR)
-        func_def = transformers.register_promote_vector_loads(func_def)
+        if False and direction == "forward":
+            unroll_factor = UNROLL_FACTOR
+            while ensemble.shape[-1] % unroll_factor != 0:
+                unroll_factor /= 2
+            if unroll_factor > 1:
+                func_def = transformers.unroll_inner_neuron_loop(func_def, "_neuron_index_{}".format(ensemble.ndim), UNROLL_FACTOR)
+            func_def = transformers.register_promote_vector_loads(func_def)
 
         for key in vectorized_buffers.keys():
             vectorized_buffers[key] = [(vectorized_buffers[key], SIMDWIDTH)]
 
-        if vectorize:
-            for key in tiled_buffers.keys():
-                if key in vectorized_buffers:
-                    vectorized_buffers[key].insert(0, (tiled_buffers[key], TILE_SIZE))
-                else:
-                    vectorized_buffers[key] = [(tiled_buffers[key], TILE_SIZE)]
+        for key in tiled_buffers.keys():
+            if key in vectorized_buffers:
+                vectorized_buffers[key].insert(0, (tiled_buffers[key], TILE_SIZE))
+            else:
+                vectorized_buffers[key] = [(tiled_buffers[key], TILE_SIZE)]
+        print(vectorized_buffers)
 
         type_sig = []
         for arg in func_def.params:
@@ -218,7 +222,7 @@ class Net:
             buf = self.buffers[name]
             type_sig.append(np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape))
             buf_shape = buf.shape
-            if vectorize and name.endswith("value") or name.endswith("grad"):
+            if name.endswith("value") or name.endswith("grad") or "inputs" in name:
                 buf_shape = (max(buf_shape[1] // SIMDWIDTH, 1), *buf_shape[2:], SIMDWIDTH)
             elif name in vectorized_buffers:
               buf_shape = list(buf_shape)
