@@ -25,6 +25,12 @@ def empty(shape, dtype):
 def zeros(shape, dtype):
     return aligned(np.zeros(shape, dtype=dtype))
 
+def gen_index_expr(target, idxs):
+    node = C.ArrayRef(target, idxs[0])
+    for idx in idxs[1:]:
+        node = C.ArrayRef(node, idx)
+    return node
+
 def gen_flat_index(idxs, shape):
     flat_idx = idxs[0]
     for i in range(len(idxs[1:])):
@@ -144,6 +150,9 @@ class ReplaceSymbol(ast.NodeTransformer):
         self.old = old
         self.new = new
 
+    def visit(self, node):
+        return super().visit(node)
+
     def visit_SymbolRef(self, node):
         if node.name == self.old:
             if isinstance(self.new, C.SymbolRef):
@@ -244,6 +253,20 @@ def convert_6d_4d(arr):
                         for v in range(8):
                             arr_converted[ofm * 8 + v, ifm * 8 + v2, y, x] = \
                                 arr_reshaped[ofm, ifm, y, x, v2, v]
+    return arr_converted
+
+def convert_6d_4d_tr(arr):
+    shape = arr.shape
+    arr_converted = np.zeros_like(arr)
+    arr_reshaped = arr.reshape(shape[0] // 8, shape[1] // 8, shape[2], shape[3], 8, 8)
+    for ofm in range(shape[0] // 8):
+        for ifm in range(shape[1] // 8):
+            for y in range(shape[2]):
+                for x in range(shape[3]):
+                    for v2 in range(8):
+                        for v in range(8):
+                            arr_converted[ofm * 8 + v, ifm * 8 + v2, y, x] = \
+                                arr_reshaped[ofm, ifm, y, x, v, v2]
     return arr_converted
     
 def convert_5d_4d(arr):

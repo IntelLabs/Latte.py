@@ -63,8 +63,6 @@ class NeuronTransformer(ast.NodeTransformer):
                 # (used for shared values)
                 if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
                     args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
-            # if node.attr in ["value", "grad", "inputs", "grad_inputs"]:
-            #     args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
 
             # return updated indedxing expression
             return ast.Subscript(ast.Name(name, ast.Load()), 

@@ -10,8 +10,9 @@ class VectorizeOuterLoop(ast.NodeTransformer):
         self.vectorize = vectorize
 
     def visit_For(self, node):
-        if node.init.left.name == self.loop_var:
-            node.test.right = C.Div(node.test.right, C.SymbolRef("SIMDWIDTH"))
+        # if node.init.left.name == self.loop_var:
+            # node.test.right = C.Div(node.test.right, C.SymbolRef("SIMDWIDTH"))
+            # node.test.right.value = node.test.right.value // 8
         node.body = [self.visit(s) for s in node.body]
         return node
 

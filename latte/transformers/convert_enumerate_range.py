@@ -93,7 +93,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
                 body.append(C.Assign(C.SymbolRef(loop_var.id, ctypes.c_int()), 
                                      C.Add(C.SymbolRef(enum_var.id), C.Constant(offset))))
-            if dim == 0:
+            if dim == 0 and isinstance(iter.args[0], ast.Attribute) and iter.args[0].attr == "inputs":
                 self.blocked_loops.append(
                     C.For(
                         C.Assign(C.SymbolRef(enum_var.id + "_tile", ctypes.c_int()), C.Constant(0)),
@@ -112,6 +112,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
                 node.child_for.body = new_body
             body += [self.visit(s) for s in node.child_for.body]
+
             return C.For(
                 C.Assign(C.SymbolRef(enum_var.id, ctypes.c_int()), C.Constant(0)),
                 C.Lt(C.SymbolRef(enum_var.id), C.Constant(length)),

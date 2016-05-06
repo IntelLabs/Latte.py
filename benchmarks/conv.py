@@ -82,22 +82,28 @@ def main():
                                     weights_converted[ofm * 8 + v, ifm * 8 + v2, y, x]
 
     assert(len(net.forward_tasks) == 2)
+    assert(len(net.backward_tasks) == 1)
 
     # warmup
     for _ in range(3):
         net.forward_tasks[1]()
+        net.backward_tasks[0]()
 
-    t_total = 0.0
-    num_trials = 10
+    forward_t_total = 0.0
+    backward_t_total = 0.0
+    num_trials = 2
     for _ in range(num_trials):
-        t = time.clock()
+        t = time.time()
         net.forward_tasks[1]()
-        t_total += time.clock() - t 
+        forward_t_total += time.time() - t 
+        t = time.time()
+        net.backward_tasks[0]()
+        backward_t_total += time.time() - t 
 
 
     _, ofm, oh, ow = net.buffers[conv1.name + "value"].shape
     gflops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3)) * num_trials * 1e-9
-    print("GFLOPS/s : fp = {}".format(gflops / t_total))
+    print("GFLOPS/s : fp = {}, bp = {}".format(gflops / forward_t_total, (gflops * 2) / backward_t_total))
 
     # expected = reference_conv_forward(data_value, weights_converted, bias, pad, 1)
 

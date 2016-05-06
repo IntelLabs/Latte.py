@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 from latte import *
 import latte.util as util
+np.set_printoptions(threshold=np.nan)
 
 def reference_conv_forward(_input, weights, bias, pad, stride):
     stride_h, stride_w = stride, stride
@@ -53,9 +54,9 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride):
 
 
 class ConvTest(unittest.TestCase):
-    def _check_equal(self, actual, expected):
+    def _check_equal(self, actual, expected, decimal=6):
         try:
-            np.testing.assert_array_almost_equal(actual, expected)
+            np.testing.assert_array_almost_equal(actual, expected, decimal)
         except AssertionError:
             self.fail("Arrays not equal")
 
@@ -82,7 +83,7 @@ class ConvTest(unittest.TestCase):
 
         actual  = net.buffers[conv1.name + "value"]
         actual_converted = util.convert_5d_4d(actual)
-        self._check_equal(actual_converted, expected)
+        self._check_equal(actual_converted, expected, 5)
 
         top_grad = net.buffers[conv2.name + "grad"]
         np.copyto(top_grad, np.random.rand(*top_grad.shape))
@@ -101,8 +102,8 @@ class ConvTest(unittest.TestCase):
         self._check_equal(actual_converted, expected_bot_grad)
 
         weights_grad = net.buffers[conv2.name + "grad_weights"]
-        weights_converted = util.convert_6d_4d(weights_grad)
-        self._check_equal(weights_converted, expected_weights_grad)
+        weights_converted = util.convert_6d_4d_tr(weights_grad)
+        self._check_equal(weights_converted, expected_weights_grad, 3)
 
         # bias_grad = net.buffers[conv2.name + "grad_bias"]
         # self._check_equal(bias_grad, expected_bias_grad)

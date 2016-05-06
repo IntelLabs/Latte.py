@@ -25,11 +25,12 @@ class UnrollStatements(ast.NodeTransformer):
             check = [util.contains_symbol(node.right, var) for var in [*self.unrolled_vars] + [self.target_var]]
             if any(check):
                 body = []
-                self.unrolled_vars.add(node.left.name)
+                if node.left.type is not None:
+                    self.unrolled_vars.add(node.left.name)
                 for i in range(self.factor):
                     stmt = deepcopy(node)
                     for var in self.unrolled_vars:
-                        stmt = util.replace_symbol(var, C.SymbolRef(var + str(i)), stmt)
+                        stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
                     body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
                 return body
         return node
@@ -43,7 +44,7 @@ class UnrollStatements(ast.NodeTransformer):
                 for i in range(self.factor):
                     stmt = deepcopy(node)
                     for var in self.unrolled_vars:
-                        stmt = util.replace_symbol(var, C.SymbolRef(var + str(i)), stmt)
+                        stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
                     body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
                 return body
             elif isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
@@ -51,7 +52,7 @@ class UnrollStatements(ast.NodeTransformer):
                 for i in range(self.factor):
                     stmt = deepcopy(node)
                     for var in self.unrolled_vars:
-                        stmt = util.replace_symbol(var, C.SymbolRef(var + str(i)), stmt)
+                        stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
                     body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
                 return body
             else:
@@ -64,9 +65,9 @@ class UnrollStatements(ast.NodeTransformer):
             body = []
             for i in range(self.factor):
                 stmt = deepcopy(node)
-                stmt = util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt)
                 for var in self.unrolled_vars:
-                    stmt = util.replace_symbol(var, C.SymbolRef(var + str(i)), stmt)
+                    stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
+                stmt = util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt)
                 body.append(stmt)
             return body
         return node

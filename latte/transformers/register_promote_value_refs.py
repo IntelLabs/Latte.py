@@ -10,34 +10,34 @@ import latte.util as util
 SIMDWIDTH = 8
 
 class RegisterPromoteValueRefs(ast.NodeTransformer):
-    def __init__(self, ensemble, direction, batch_size, target_loop_var, vectorize):
+    def __init__(self, ensemble, direction, batch_size, target_loop_var):
         self.ensemble = ensemble
         self.target = "value" if direction == "forward" else "grad"
         self.batch_size = batch_size
-        self.vectorize = vectorize
+        self.seen = {}
+        self._vars = []
         self.target_loop_var = target_loop_var
 
-    def visit_Subscript(self, node):
+    def visit_BinaryOp(self, node):
         """
         Promote array reference ensemble_name$field[...] to register reference
         $field
 
         $field is either "value" or "grad" depending on the current direction
         """
-        if node.value.id.endswith(self.target):
-            return ast.Name(self.target, node.ctx)
+        if isinstance(node.op, C.Op.ArrayRef):
+            if node.codegen() in self.seen:
+                return C.SymbolRef(self.seen[node.codegen()][0])
+            curr_node = node
+            while not isinstance(curr_node, C.SymbolRef):
+                curr_node = curr_node.left
+            if curr_node.name.endswith(self.target):
+                var = self.target + "_" + str(len(self.seen))
+                self.seen[node.codegen()] = (var, node)
+                return C.SymbolRef(var)
+        node.left = self.visit(node.left)
+        node.right = self.visit(node.right)
         return node
-
-    def _gen_nested_index_expr(self, target, idxs):
-        """
-        Generates a nested indexing expression target[i1][i2][i3] for a list of
-        idxs = [i1, i2, i3]
-        """
-        idx_expr = C.ArrayRef(target, idxs[0])
-        for idx in idxs[1:]:
-            idx_expr = C.ArrayRef(idx_expr, idx)
-        return idx_expr
-
 
     def visit_For(self, node):
         """
@@ -46,44 +46,23 @@ class RegisterPromoteValueRefs(ast.NodeTransformer):
         target is either "value" or "grad" depending on direction
         """
         node.body = [self.visit(s) for s in node.body]
-        if isinstance(node.target, ast.Name) and \
-                node.target.id == self.target_loop_var:
-
-            idxs = [C.SymbolRef("_neuron_index_{}".format(i)) for i in
-                    range(self.ensemble.ndim + 1)]
-
-            idx_expr = self._gen_nested_index_expr(
-                C.SymbolRef(self.ensemble.name+self.target), idxs)
-
-            if self.vectorize:
-                # Insert a vectorized load for the current value of target[idx...]
-                node.body.insert(0, 
+        if node.init.left.name == self.target_loop_var:
+            for var, seen in self.seen.values():
+                node.body.insert(0,
                     C.Assign(
-                        C.SymbolRef(self.target, simd.types.m256()), 
-                        simd_macros.mm256_load_ps(idx_expr)
-                    ))
-            else:
-                node.body.insert(0, 
-                    C.Assign(
-                        C.SymbolRef(self.target, ctypes.c_float()), 
-                        idx_expr
+                        C.SymbolRef(var, ctypes.c_float()), 
+                        seen
                     ))
 
             # we only store the value register as "grad" is only read by definition
             if self.target == "value":
-                if self.vectorize:
-                    node.body.append( 
-                        simd_macros.mm256_store_ps(
-                            idx_expr,
-                            C.SymbolRef(self.target)
-                        ))
-                else:
+                for var, seen in self.seen.values():
                     node.body.append( 
                         C.Assign(
-                            idx_expr,
-                            C.SymbolRef(self.target)
+                            seen,
+                            C.SymbolRef(var)
                         ))
         return node
 
-def register_promote_value_refs(ast, ensemble, direction, batch_size, target_loop_var, vectorize):
-    return RegisterPromoteValueRefs(ensemble, direction, batch_size, target_loop_var, vectorize).visit(ast)
+def register_promote_value_refs(ast, ensemble, direction, batch_size, target_loop_var):
+    return RegisterPromoteValueRefs(ensemble, direction, batch_size, target_loop_var).visit(ast)
