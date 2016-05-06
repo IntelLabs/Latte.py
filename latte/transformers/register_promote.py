@@ -99,6 +99,10 @@ class InvariantLoadStoreLifter(ast.NodeTransformer):
                     not util.contains_symbol(stmt, loop_var) and \
                     not any(util.contains_symbol(stmt, dep) for dep in deps):
                 pre_stmts.append(stmt)
+            elif isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and stmt.left.type is not None and \
+                    not util.contains_symbol(stmt, loop_var) and \
+                    not any(util.contains_symbol(stmt, dep) for dep in deps):
+                pre_stmts.append(stmt)
             else:
                 new_body.append(stmt)
                 if isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and stmt.left.type is not None:
