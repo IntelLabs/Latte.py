@@ -1,3 +1,6 @@
 *.swp
 __pycache__
 Latte.egg-info
+build
+dist
+.cache
