@@ -1,0 +1,4 @@
+-e git://github.com/ucb-sejits/ctree.git#egg=ctree
+numpy
+astor
+pytest

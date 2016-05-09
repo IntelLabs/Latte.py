@@ -1,6 +1,23 @@
 import ast
 import ctree.c.nodes as C
 from ctree.transformations import PyBasicConversions
+from ctree.types import (
+    codegen_type,
+    register_type_recognizers,
+    register_type_codegenerators,
+)
+
+class CBLAS_LAYOUT:
+    pass
+
+class CBLAS_TRANSPOSE:
+    pass
+
+register_type_codegenerators({
+    CBLAS_LAYOUT: lambda t: "CBLAS_LAYOUT",
+    CBLAS_TRANSPOSE: lambda t: "CBLAS_TRANSPOSE",
+})
+
 
 class ConvertSGEMMCalls(ast.NodeTransformer):
     """
@@ -12,8 +29,8 @@ class ConvertSGEMMCalls(ast.NodeTransformer):
         if node.func.id == "sgemm":
             node.func.id = "cblas_sgemm"
             for i in range(2):
-                node.args[i] = C.Constant(112) if node.args[i].id == "True" else C.Constant(111) 
-            node.args.insert(0, C.Constant(101))
+                node.args[i] = C.Cast(CBLAS_TRANSPOSE(), C.Constant(112) if node.args[i].id == "True" else C.Constant(111))
+            node.args.insert(0, C.Cast(CBLAS_LAYOUT(), C.Constant(101)))
         return node
 
 def convert_sgemm_calls(ast):
