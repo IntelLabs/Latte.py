@@ -102,9 +102,17 @@ class Vectorizer(ast.NodeTransformer):
             if node.target.right.name != self.loop_var:
                 target = self.visit(deepcopy(node.target))
                 curr_node = node.target
+                idx = 1
                 while curr_node.left.right.name != self.loop_var:
                     curr_node = curr_node.left
+                    idx += 1
                 curr_node.left = curr_node.left.left
+                while not isinstance(curr_node, C.SymbolRef):
+                    curr_node = curr_node.left
+                if curr_node.name in self.transposed_buffers and self.transposed_buffers[curr_node.name] != idx:
+                    raise NotImplementedError()
+                self.transposed_buffers[curr_node.name] = idx
+                curr_node.name += "_transposed"
                 return simd_macros.mm256_store_ps(
                         node.target,
                         C.BinaryOp(target, node.op, node.value))
@@ -142,8 +150,7 @@ class Vectorizer(ast.NodeTransformer):
                     if curr_node.name in self.transposed_buffers and self.transposed_buffers[curr_node.name] != idx:
                         raise NotImplementedError()
                     self.transposed_buffers[curr_node.name] = idx
-                    if "grad_" not in curr_node.name:
-                        curr_node.name += "_transposed"
+                    curr_node.name += "_transposed"
                     return simd_macros.mm256_load_ps(node)
                 else:
                     return simd_macros.mm256_load_ps(node.left)
@@ -157,11 +164,22 @@ class Vectorizer(ast.NodeTransformer):
                 node.left.type = simd.types.m256()
                 return node
             elif util.contains_symbol(node.left, self.loop_var):
-                curr_node = node
-                while curr_node.left.right.name != self.loop_var:
-                    curr_node = curr_node.left
-                curr_node.left = curr_node.left.left
-                return simd_macros.mm256_store_ps(node.left, node.right)
+                if node.left.right.name != self.loop_var:
+                    curr_node = node
+                    idx = 1
+                    while curr_node.left.right.name != self.loop_var:
+                        curr_node = curr_node.left
+                        idx += 1
+                    curr_node.left = curr_node.left.left
+                    while not isinstance(curr_node, C.SymbolRef):
+                        curr_node = curr_node.left
+                    if curr_node.name in self.transposed_buffers and self.transposed_buffers[curr_node.name] != idx:
+                        raise NotImplementedError()
+                    self.transposed_buffers[curr_node.name] = idx
+                    curr_node.name += "_transposed"
+                    return simd_macros.mm256_store_ps(node.left, node.right)
+                else:
+                    return simd_macros.mm256_store_ps(node.left.left, node.right)
             node.left = self.visit(node.left)
             return node
         node.left = self.visit(node.left)

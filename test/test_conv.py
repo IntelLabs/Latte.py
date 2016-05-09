@@ -96,7 +96,7 @@ def test_forward_backward():
     check_equal(actual_converted, expected_bot_grad)
 
     weights_grad = net.buffers[conv2.name + "grad_weights"]
-    weights_converted = util.convert_6d_4d_tr(weights_grad)
+    weights_converted = util.convert_6d_4d(weights_grad)
     check_equal(weights_converted, expected_weights_grad, 1e-3)
 
     # bias_grad = net.buffers[conv2.name + "grad_bias"]

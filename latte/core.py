@@ -13,6 +13,8 @@ import ctree.c.nodes as C
 from ctree.templates.nodes import StringTemplate
 import ctypes
 import latte.transformers as transformers
+# import logging
+# logging.basicConfig(level=20)
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -280,8 +282,6 @@ class Net:
                 # func_def = transformers.interleave_loads(func_def)
 
         for buffer_name, trans_dim in transposed_buffers.items():
-            if "grad_" in buffer_name:
-                continue
             curr_body = []
             shape = self.buffers[buffer_name].shape
             if buffer_name in vectorized_buffers:
@@ -308,14 +308,20 @@ class Net:
                 idx.append(C.SymbolRef("x" + str(i)))
                 curr_body = curr_body[-1].body
             idx += [C.Constant(0), C.Constant(0)]
-            curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
-                [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
-                 C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
-            func_def.defn.insert(0, node)
+            if "grad_" in buffer_name:
+                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
+                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
+                func_def.defn.append(node)
+            else:
+                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
+                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
+                func_def.defn.insert(0, node)
             shape_str = "".join("[{}]".format(d) for d in shape)
 
             func_def.defn.insert(0, StringTemplate(
-                "float $arg_name$shape;",
+                "float $arg_name$shape = {};",
                 {
                     "arg_name": C.SymbolRef(buffer_name + "_transposed"), 
                     "shape": C.SymbolRef(shape_str),
@@ -346,8 +352,8 @@ class Net:
         # func_def.defn.insert(0, StringTemplate("#pragma omp parallel \n{\n"))
         # func_def.defn[-1].pragma = "omp for collapse(2)"
         # func_def.defn.append(StringTemplate("\n}\n"))
-        c_file = C.CFile(func_name, [include, func_def])
-        print(ctree.util.highlight(c_file.codegen()))
+        c_file = C.CFile(func_name, [include, func_def], path=".compiled")
+        # print(ctree.util.highlight(c_file.codegen()))
         module = ctree.nodes.Project([c_file]).codegen()
         fn = module.get_callable(func_name, type_sig)
 
