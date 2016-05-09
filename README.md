@@ -1,25 +1,14 @@
-# Basic Setup
+Documentation is built with mkdocs.  This must be done on a local system with a
+web browser, or a remote system configured to forward port 8000 for viewing.
+Note that this documentation can be viewed without installing the Latte Python
+package or any of its dependencies (i.e. this can be done on your laptop for
+documentation viewing and editing even if you develop on a remote server)
 
-Download and install Python 3 if not available on your system.  I find
-Miniconda (from Anaconda) to be the simplest, lightweight solution for
-cross-platform Python management.  It also simplifies configuration by
-using a local Python installation that won't conflict with other users.
-
+To generate and view documentation:
+```bash
+# Install mkdocs
+pip install mkdocs
+# Run server to view documentation
+mkdocs serve
+# View documentation at 127.0.0.1:8000
 ```
-wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh
-```
-
-For development, install Latte's current working directory as a "symbolic"
-package.  This simplifies testing as it tells Python to load the latest changes
-to any files you are working on.
-```
-pip install -e .
-```
-
-# Tests
-```
-py.test test
-```
-Checkout the [py.test documentation](http://pytest.org/latest/index.html) for
-more detailed usage documentation.
