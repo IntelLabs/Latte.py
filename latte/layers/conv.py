@@ -1,10 +1,10 @@
 import numpy as np
-from ..neuron import Neuron
+from ..neuron import Neuron, BiasNeuron
 from ..ensemble import Ensemble
 import itertools
 
 class ConvNeuron(Neuron):
-    def __init__(self, weights, grad_weights, bias, grad_bias):
+    def __init__(self, weights, grad_weights):
         super().__init__()
         self.inputs = []
         self.grad_inputs = []
@@ -12,23 +12,18 @@ class ConvNeuron(Neuron):
         self.weights = weights
         self.grad_weights = grad_weights
 
-        self.bias = bias
-        self.grad_bias = grad_bias
-
     def forward(self):
-        for j, q in enumerate_dim(self.inputs, 1):
-            for k, r in enumerate_dim(self.inputs, 2):
-                for i, p in enumerate_dim(self.inputs, 0):
-                    self.value += self.inputs[p, q, r] * self.weights[i, j, k]
-        # self.value += self.bias[0]
+        for j in range_dim(self.inputs, 1):
+            for k in range_dim(self.inputs, 2):
+                for i in range_dim(self.inputs, 0):
+                    self.value += self.inputs[i, j, k] * self.weights[i, j, k]
 
     def backward(self):
-        for i, p in enumerate_dim(self.inputs, 0):
-            for j, q in enumerate_dim(self.inputs, 1):
-                for k, r in enumerate_dim(self.inputs, 2):
-                    self.grad_inputs[p, q, r] += self.grad * self.weights[i, j, k]
-                    self.grad_weights[i, j, k] += self.grad * self.inputs[p, q, r]
-        # self.grad_bias[0] += self.grad
+        for i in range_dim(self.inputs, 0):
+            for j in range_dim(self.inputs, 1):
+                for k in range_dim(self.inputs, 2):
+                    self.grad_inputs[i, j, k] += self.grad * self.weights[i, j, k]
+                    self.grad_weights[i, j, k] += self.grad * self.inputs[i, j, k]
 
 
 def compute_output_shape(input_shape, kernel, pad, stride):
@@ -65,13 +60,11 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
             kernel_w).astype(np.float32) * (2 * scale) - scale
     grad_weights = np.zeros_like(weights)
 
-    bias = np.zeros((num_filters, 8), dtype=np.float32)
-    grad_bias = np.zeros_like(bias)
     neurons = np.empty((num_filters, output_height, output_width), dtype='object')
     for o, y, x in itertools.product(range(num_filters), range(output_height), range(output_width)):
-        neurons[o, y, x] = ConvNeuron(weights[o], grad_weights[o], bias[o], grad_bias[o])
+        neurons[o, y, x] = ConvNeuron(weights[o], grad_weights[o])
 
-    ens = net.init_ensemble(neurons)
+    conv_ens = net.init_ensemble(neurons)
 
     input_shape = input_ensemble.shape
 
@@ -80,6 +73,17 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
         in_x = x*stride_w - pad
         return range(input_channels), range(in_y,in_y+kernel_h), range(in_x,in_x+kernel_w)
 
-    net.add_connections(input_ensemble, ens, mapping)
+    net.add_connections(input_ensemble, conv_ens, mapping)
 
-    return ens
+    bias = np.zeros((num_filters, 1), dtype=np.float32)
+    grad_bias = np.zeros_like(bias)
+
+    bias_neurons = np.empty((num_filters, output_height, output_width), dtype='object')
+    for o, y, x in itertools.product(range(num_filters), range(output_height), range(output_width)):
+        bias_neurons[o, y, x] = BiasNeuron(bias[o], grad_bias[o])
+
+    bias_ens = net.init_activation_ensemble(bias_neurons)
+
+    net.add_one_to_one_connections(conv_ens, bias_ens)
+
+    return conv_ens, bias_ens

@@ -63,6 +63,12 @@ class LoopToVectorizeFinder(ast.NodeVisitor):
         if isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
             self.var = node.target.right.name
 
+    def visit_BinaryOp(self, node):
+        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.BinaryOp) and isinstance(node.left.op, C.Op.ArrayRef):
+            self.var = node.left.right.name
+            return
+        self.visit(node.left)
+        self.visit(node.right)
 
 def get_loop_to_vectorize(ast):
     visitor = LoopToVectorizeFinder()

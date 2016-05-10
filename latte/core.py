@@ -2,7 +2,7 @@ import numpy as np
 import numbers
 import itertools
 import ast
-from .ensemble import Ensemble, DataEnsemble
+from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble
 import latte.util as util
 import astor
 from itertools import product
@@ -101,6 +101,9 @@ class Task:
     def __call__(self):
         self.fn(*self.args)
 
+def one_to_one(*args):
+    return tuple(range(a,a+1) for a in args)
+
 class Net:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -120,8 +123,17 @@ class Net:
         self.ensembles.append(ens)
         return ens
 
+    def init_activation_ensemble(self, neurons):
+        ens = ActivationEnsemble(neurons)
+        self.ensembles.append(ens)
+        return ens
+
     def add_connections(self, source_ens, sink_ens, mapping, reshape=None):
         self.connections.append(Connection(source_ens, sink_ens, mapping, reshape))
+
+    def add_one_to_one_connections(self, source_ens, sink_ens):
+        reshape = source_ens.shape + (1,)
+        self.connections.append(Connection(source_ens, sink_ens, one_to_one, reshape))
 
     def _get_uniformity(self, ensemble, field):
         _shape = ensemble.shape
@@ -139,8 +151,7 @@ class Net:
         neuron = ensemble.neurons.flat[0]
         for field in vars(neuron):
             if field in ["value", "grad"]:
-                _shape = (self.batch_size, ) + ensemble.shape
-                self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
+                pass
             elif field in ["inputs", "grad_inputs"]:
                 conn = self.connections_map[ensemble][0]
                 source_name = conn.source.name
@@ -184,6 +195,18 @@ class Net:
                         buff[_index] = getattr(ensemble.neurons[index], field)
                 else:
                     raise NotImplementedError(field)
+
+        for field in ["value", "grad"]:
+            if isinstance(ensemble, ActivationEnsemble):
+                target_map = {
+                    "value": "inputs",
+                    "grad": "grad_inputs"
+                }
+                target_buf = self.buffers[ensemble.name + target_map[field]]
+                self.buffers[ensemble.name + field] = target_buf.reshape(target_buf.shape[:-1])
+            else:
+                _shape = (self.batch_size, ) + ensemble.shape
+                self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
 
     def compile(self):
         task_groups = {}
@@ -280,6 +303,7 @@ class Net:
                 func_def = transformers.unroll_inner_neuron_loop(func_def, unroll_target_loop_var, unroll_factor)
                 func_def = transformers.promote_single_use_registers(func_def)
                 # func_def = transformers.interleave_loads(func_def)
+        print(func_def)
 
         for buffer_name, trans_dim in transposed_buffers.items():
             curr_body = []
