@@ -48,8 +48,7 @@ class SingleUsePromotor(ast.NodeTransformer):
                     value = stmt.left.name
                     counter = 0
                     for _stmt in node.body[i+1:]:
-                        if util.contains_symbol(_stmt, value):
-                            counter += 1
+                        counter += util.count_symbol_instances(_stmt, value)
                     if counter > 1:
                         new_body.append(stmt)
                     else:

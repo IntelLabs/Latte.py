@@ -214,6 +214,12 @@ class Net:
         for connection in self.connections:
             self.connections_map[connection.sink].append(connection)
 
+        forward_body = []
+        forward_args = set()
+
+        backward_body = []
+        backward_args = set()
+
         for ensemble in self.ensembles:
             self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
@@ -222,11 +228,38 @@ class Net:
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                func, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
-                self.forward_tasks.append(Task(func, args))
+                body, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
+                forward_args = forward_args.union(args)
+                forward_body += body
 
-                func, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
-                self.backward_tasks.insert(0, Task(func, args))
+                body, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
+                backward_args = backward_args.union(args)
+                backward_body += body
+
+        for args, direction, body, tasks in zip([forward_args, backward_args], 
+                                                ["forward", "backward"],
+                                                [forward_body, backward_body],
+                                                [self.forward_tasks, self.backward_tasks]):
+            args = list(args)
+            type_sig = []
+            arg_bufs = []
+            params = []
+            for arg in args:
+                buf = self.buffers[arg.arg]
+                type_sig.append(np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape))
+                arg_bufs.append(buf)
+                params.append(
+                    C.SymbolRef("_" + arg.arg, 
+                        np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()))
+
+            type_sig = ctypes.CFUNCTYPE(None, *type_sig)
+            c_file = C.CFile(direction, [
+                include, 
+                C.FunctionDecl(None, C.SymbolRef(direction), params, body)
+            ], path=".compiled")
+            module = ctree.nodes.Project([c_file]).codegen()
+            fn = module.get_callable(direction, type_sig)
+            tasks.append(Task(fn, arg_bufs))
 
     def _synthesize_ast(self, ensemble, fn, direction):
         fn_def = util.get_ast(fn).body[0]
@@ -303,7 +336,6 @@ class Net:
                 func_def = transformers.unroll_inner_neuron_loop(func_def, unroll_target_loop_var, unroll_factor)
                 func_def = transformers.promote_single_use_registers(func_def)
                 # func_def = transformers.interleave_loads(func_def)
-        print(func_def)
 
         for buffer_name, trans_dim in transposed_buffers.items():
             curr_body = []
@@ -352,13 +384,9 @@ class Net:
                 }))
 
         type_sig = []
-        for arg in func_def.params:
-            name = arg.name
-            arg.type = ctypes.POINTER(ctypes.c_float)()
-            # arg._restrict = True
-            arg.name = "_{}".format(name)
+        for arg in args:
+            name = arg.arg
             buf = self.buffers[name]
-            type_sig.append(np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape))
             buf_shape = buf.shape
             if name.endswith("value") or name.endswith("grad"): # or "inputs" in name:
                 buf_shape = (max(buf_shape[1] // SIMDWIDTH, 1), *buf_shape[2:], SIMDWIDTH)
@@ -372,17 +400,7 @@ class Net:
             else:
                 buf_shape = buf_shape[1:]
             self._insert_cast(func_def.defn, buf_shape, name)
-        type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-        # func_def.defn.insert(0, StringTemplate("#pragma omp parallel \n{\n"))
-        # func_def.defn[-1].pragma = "omp for collapse(2)"
-        # func_def.defn.append(StringTemplate("\n}\n"))
-        c_file = C.CFile(func_name, [include, func_def], path=".compiled")
-        # print(ctree.util.highlight(c_file.codegen()))
-        module = ctree.nodes.Project([c_file]).codegen()
-        fn = module.get_callable(func_name, type_sig)
-
-        _args = [self.buffers[arg.arg] for arg in args]
-        return fn, _args
+        return func_def.defn, args
 
     def _insert_cast(self, body, shape, name):
         shape_str = "".join("[{}]".format(d) for d in shape)
