@@ -23,7 +23,7 @@ def reference_conv_forward(_input, weights, bias, pad, stride):
                         for i, p in enumerate(range(in_y, out_y)):
                             for j, q in enumerate(range(in_x, out_x)):
                                 output[n, o, y, x] += weights[o, c, i, j] * _input[n, c, p, q]
-                    # output[n, o, y, x] += bias[o][0]
+                    output[n, o, y, x] += bias[o][0]
     return output
 
 def reference_conv_backward(top_grad, _input, weights, pad, stride):
@@ -59,15 +59,16 @@ def test_forward_backward():
     channels, height, width = 16, 16, 16
     pad = 0
     data, data_value = MemoryDataLayer(net, (channels, height, width))
-    conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)
-    conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad)
+    conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)
+    conv2, conv2bias = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad)
 
     data_value[:, :, :] = np.random.rand(8, channels, height, width)
 
     net.compile()
 
     weights = net.buffers[conv1.name + "weights"]
-    bias    = net.buffers[conv1.name + "bias"]
+    bias    = net.buffers[conv1bias.name + "bias"]
+    np.copyto(bias, np.random.rand(*bias.shape))
     weights_converted = util.convert_6d_4d(weights)
 
     net.forward()
@@ -96,8 +97,8 @@ def test_forward_backward():
     check_equal(actual_converted, expected_bot_grad)
 
     weights_grad = net.buffers[conv2.name + "grad_weights"]
-    weights_converted = util.convert_6d_4d_tr(weights_grad)
+    weights_converted = util.convert_6d_4d(weights_grad)
     check_equal(weights_converted, expected_weights_grad, 1e-3)
 
-    # bias_grad = net.buffers[conv2.name + "grad_bias"]
-    # check_equal(bias_grad, expected_bias_grad)
+    bias_grad = net.buffers[conv2bias.name + "grad_bias"]
+    check_equal(bias_grad, expected_bias_grad)

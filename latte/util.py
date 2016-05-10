@@ -132,6 +132,23 @@ def contains_symbol(ast, symbol):
     checker.visit(ast)
     return checker.result
 
+class SymbolCounter(ast.NodeVisitor):
+    def __init__(self, sym):
+        self.count = 0
+        self.sym = sym
+
+    def visit_SymbolRef(self, node):
+        if node.name == self.sym:
+            self.count += 1
+
+def count_symbol_instances(ast, symbol):
+    checker = SymbolCounter(symbol)
+    checker.visit(ast)
+    return checker.count
+
+
+
+
 class ReplaceName(ast.NodeTransformer):
     def __init__(self, old, new):
         self.old = old

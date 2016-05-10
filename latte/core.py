@@ -2,7 +2,7 @@ import numpy as np
 import numbers
 import itertools
 import ast
-from .ensemble import Ensemble, DataEnsemble
+from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble
 import latte.util as util
 import astor
 from itertools import product
@@ -13,6 +13,8 @@ import ctree.c.nodes as C
 from ctree.templates.nodes import StringTemplate
 import ctypes
 import latte.transformers as transformers
+# import logging
+# logging.basicConfig(level=20)
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -99,6 +101,9 @@ class Task:
     def __call__(self):
         self.fn(*self.args)
 
+def one_to_one(*args):
+    return tuple(range(a,a+1) for a in args)
+
 class Net:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -118,8 +123,17 @@ class Net:
         self.ensembles.append(ens)
         return ens
 
+    def init_activation_ensemble(self, neurons):
+        ens = ActivationEnsemble(neurons)
+        self.ensembles.append(ens)
+        return ens
+
     def add_connections(self, source_ens, sink_ens, mapping, reshape=None):
         self.connections.append(Connection(source_ens, sink_ens, mapping, reshape))
+
+    def add_one_to_one_connections(self, source_ens, sink_ens):
+        reshape = source_ens.shape + (1,)
+        self.connections.append(Connection(source_ens, sink_ens, one_to_one, reshape))
 
     def _get_uniformity(self, ensemble, field):
         _shape = ensemble.shape
@@ -137,8 +151,7 @@ class Net:
         neuron = ensemble.neurons.flat[0]
         for field in vars(neuron):
             if field in ["value", "grad"]:
-                _shape = (self.batch_size, ) + ensemble.shape
-                self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
+                pass
             elif field in ["inputs", "grad_inputs"]:
                 conn = self.connections_map[ensemble][0]
                 source_name = conn.source.name
@@ -183,11 +196,29 @@ class Net:
                 else:
                     raise NotImplementedError(field)
 
+        for field in ["value", "grad"]:
+            if isinstance(ensemble, ActivationEnsemble):
+                target_map = {
+                    "value": "inputs",
+                    "grad": "grad_inputs"
+                }
+                target_buf = self.buffers[ensemble.name + target_map[field]]
+                self.buffers[ensemble.name + field] = target_buf.reshape(target_buf.shape[:-1])
+            else:
+                _shape = (self.batch_size, ) + ensemble.shape
+                self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
+
     def compile(self):
         task_groups = {}
         self.connections_map = {ensemble: [] for ensemble in self.ensembles}
         for connection in self.connections:
             self.connections_map[connection.sink].append(connection)
+
+        forward_body = []
+        forward_args = set()
+
+        backward_body = []
+        backward_args = set()
 
         for ensemble in self.ensembles:
             self._init_buffers(ensemble)
@@ -197,11 +228,38 @@ class Net:
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                func, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
-                self.forward_tasks.append(Task(func, args))
+                body, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
+                forward_args = forward_args.union(args)
+                forward_body += body
 
-                func, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
-                self.backward_tasks.insert(0, Task(func, args))
+                body, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
+                backward_args = backward_args.union(args)
+                backward_body += body
+
+        for args, direction, body, tasks in zip([forward_args, backward_args], 
+                                                ["forward", "backward"],
+                                                [forward_body, backward_body],
+                                                [self.forward_tasks, self.backward_tasks]):
+            args = list(args)
+            type_sig = []
+            arg_bufs = []
+            params = []
+            for arg in args:
+                buf = self.buffers[arg.arg]
+                type_sig.append(np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape))
+                arg_bufs.append(buf)
+                params.append(
+                    C.SymbolRef("_" + arg.arg, 
+                        np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()))
+
+            type_sig = ctypes.CFUNCTYPE(None, *type_sig)
+            c_file = C.CFile(direction, [
+                include, 
+                C.FunctionDecl(None, C.SymbolRef(direction), params, body)
+            ], path=".compiled")
+            module = ctree.nodes.Project([c_file]).codegen()
+            fn = module.get_callable(direction, type_sig)
+            tasks.append(Task(fn, arg_bufs))
 
     def _synthesize_ast(self, ensemble, fn, direction):
         fn_def = util.get_ast(fn).body[0]
@@ -280,8 +338,6 @@ class Net:
                 # func_def = transformers.interleave_loads(func_def)
 
         for buffer_name, trans_dim in transposed_buffers.items():
-            if "grad_" in buffer_name:
-                continue
             curr_body = []
             shape = self.buffers[buffer_name].shape
             if buffer_name in vectorized_buffers:
@@ -308,27 +364,29 @@ class Net:
                 idx.append(C.SymbolRef("x" + str(i)))
                 curr_body = curr_body[-1].body
             idx += [C.Constant(0), C.Constant(0)]
-            curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
-                [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
-                 C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
-            func_def.defn.insert(0, node)
+            if "grad_" in buffer_name:
+                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
+                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
+                func_def.defn.append(node)
+            else:
+                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
+                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
+                func_def.defn.insert(0, node)
             shape_str = "".join("[{}]".format(d) for d in shape)
 
             func_def.defn.insert(0, StringTemplate(
-                "float $arg_name$shape;",
+                "float $arg_name$shape = {};",
                 {
                     "arg_name": C.SymbolRef(buffer_name + "_transposed"), 
                     "shape": C.SymbolRef(shape_str),
                 }))
 
         type_sig = []
-        for arg in func_def.params:
-            name = arg.name
-            arg.type = ctypes.POINTER(ctypes.c_float)()
-            # arg._restrict = True
-            arg.name = "_{}".format(name)
+        for arg in args:
+            name = arg.arg
             buf = self.buffers[name]
-            type_sig.append(np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape))
             buf_shape = buf.shape
             if name.endswith("value") or name.endswith("grad"): # or "inputs" in name:
                 buf_shape = (max(buf_shape[1] // SIMDWIDTH, 1), *buf_shape[2:], SIMDWIDTH)
@@ -342,17 +400,7 @@ class Net:
             else:
                 buf_shape = buf_shape[1:]
             self._insert_cast(func_def.defn, buf_shape, name)
-        type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-        # func_def.defn.insert(0, StringTemplate("#pragma omp parallel \n{\n"))
-        # func_def.defn[-1].pragma = "omp for collapse(2)"
-        # func_def.defn.append(StringTemplate("\n}\n"))
-        c_file = C.CFile(func_name, [include, func_def])
-        print(ctree.util.highlight(c_file.codegen()))
-        module = ctree.nodes.Project([c_file]).codegen()
-        fn = module.get_callable(func_name, type_sig)
-
-        _args = [self.buffers[arg.arg] for arg in args]
-        return fn, _args
+        return func_def.defn, args
 
     def _insert_cast(self, body, shape, name):
         shape_str = "".join("[{}]".format(d) for d in shape)

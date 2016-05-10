@@ -1,6 +1,7 @@
 import ast
 import inspect
 import latte.util as util
+import latte
 import ctree.c.nodes as C
 import ctypes
 
@@ -50,9 +51,12 @@ class NeuronTransformer(ast.NodeTransformer):
                 # increment ndim for fields that have a batch dimension
                 ndim += 1
             elif node.attr in ["inputs", "grad_inputs"]:
-                # only generate batch index for inputs/grad_inputs because
-                # the user will provide rest of indices in expression
-                ndim = 1
+                if isinstance(self.ensemble, latte.ensemble.ActivationEnsemble):
+                    ndim += 1
+                else:
+                    # only generate batch index for inputs/grad_inputs because
+                    # the user will provide rest of indices in expression
+                    ndim = 1
             else:
                 # fields that don't have a batch dimension start at an offset 1
                 # as 0 is the batch dimension

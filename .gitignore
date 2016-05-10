@@ -4,3 +4,4 @@ Latte.egg-info
 build
 dist
 .cache
+.compiled

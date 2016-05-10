@@ -35,16 +35,15 @@ def test_forward_backward():
 
     net.backward()
     weights = net.buffers[fc2.name + "weights"]
-    weights_converted = util.convert_3d_2d(weights)
+    # weights_converted = util.convert_3d_2d(weights)
 
     bot_grad = net.buffers[fc1.name + "grad"]
-    expected_bot_grad = np.dot(top_grad, weights_converted)
+    expected_bot_grad = np.dot(top_grad, weights)
     check_equal(bot_grad, expected_bot_grad)
 
     weights_grad = net.buffers[fc2.name + "grad_weights"]
     expected_weights_grad = np.dot(top_grad.transpose(), actual)
-    weights_grad_converted = util.convert_3d_2d(weights_grad)
-    check_equal(weights_grad_converted, expected_weights_grad)
+    check_equal(weights_grad, expected_weights_grad)
 
     # bias_grad = net.buffers[fc2.name + "grad_bias"]
     # expected_bias_grad = np.sum(top_grad, 0).reshape(24, 1)

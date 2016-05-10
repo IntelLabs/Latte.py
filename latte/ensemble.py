@@ -44,3 +44,5 @@ class DataEnsemble(Ensemble):
         else:
             np.copyto(value, self.value)
 
+class ActivationEnsemble(Ensemble):
+    pass

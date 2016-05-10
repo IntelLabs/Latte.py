@@ -77,9 +77,10 @@ def register_promote_vector_loads_stores(ast):
 
 class InvariantLoadStoreLifter(ast.NodeTransformer):
     def visit(self, node):
+        node = super().visit(node)
         if hasattr(node, 'body'):
             node.body = util.flatten(node.body)
-        return super().visit(node)
+        return node
 
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
