@@ -89,3 +89,19 @@ class LoopUnroller(ast.NodeTransformer):
 
 def unroll_inner_neuron_loop(ast, target_var, factor):
     return LoopUnroller(target_var, factor).visit(ast)
+
+
+class ConstantLoopUnroller(ast.NodeTransformer):
+    def visit_For(self, node):
+        node.body = util.flatten([self.visit(s) for s in node.body])
+        if node.pragma is not None and node.pragma == "unroll":
+            length = node.test.right.value
+            loop_var = node.init.left.name
+            to_return = []
+            for i in range(length):
+                to_return.append(C.Block([util.replace_symbol(loop_var, C.Constant(i), deepcopy(s)) for s in node.body]))
+            return to_return
+        return node
+
+def unroll_constant_loops(ast):
+    return ConstantLoopUnroller().visit(ast)

@@ -5,28 +5,38 @@ import time
 def main():
     batch_size = 32
     net = Net(batch_size)
-    channels, height, width = 256, 14, 14
+    channels, height, width = 256, 66, 66
     pad = 0
-    ofm = 512
+    ofm = 256
+    print("Benchmark Config")
+    print("    batch_size = {}".format(batch_size))
+    print("    channels = {}".format(channels))
+    print("    height = {}".format(height))
+    print("    width = {}".format(width))
+    print("    ofm = {}".format(ofm))
     data, data_value = MemoryDataLayer(net, (channels, height, width))
-    conv1 = ConvLayer(net, data, num_filters=ofm, kernel=3, stride=1, pad=pad)
+    conv1, conv1bias = ConvLayer(net, data, num_filters=ofm, kernel=3, stride=1, pad=pad)
 
     data_value[:, :, :] = np.random.rand(batch_size, channels, height, width)
 
+    print("Compiling...")
     net.compile()
 
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)
 
     # warmup
+    print("Warming up...")
     for _ in range(3):
         net.forward_tasks[1]()
-        net.backward_tasks[0]()
+        # net.backward_tasks[0]()
 
     forward_t_total = 0.0
     backward_t_total = 0.0
     num_trials = 2
+    print("Running trials")
     for _ in range(num_trials):
+        print("    {}".format(_))
         t = time.time()
         net.forward_tasks[1]()
         forward_t_total += time.time() - t 
@@ -36,8 +46,13 @@ def main():
 
 
     _, ofm, oh, ow = net.buffers[conv1.name + "value"].shape
-    gflops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3)) * num_trials * 1e-9
-    print("GFLOPS/s : fp = {}, bp = {}".format(gflops / forward_t_total, (gflops * 2) / backward_t_total))
+    flops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3))
+    forward_flops = flops + batch_size * ofm * oh * ow
+    backward_flops = 2 * flops + batch_size * ofm * oh * ow
+    print("FP    : {} ms, {} GFLOPS/s".format(forward_t_total / num_trials * 1000, 
+                                             (forward_flops * num_trials * 1e-9) / forward_t_total))
+    print("BP+WU : {} ms, {} GFLOPS/s".format(backward_t_total / num_trials * 1000, 
+                                             (backward_flops * num_trials * 1e-9) / backward_t_total))
 
 if __name__ == '__main__':
     main()

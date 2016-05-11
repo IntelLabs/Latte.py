@@ -8,10 +8,11 @@ import ctypes
 class RangeDim(ast.AST):
     _fields = ['child_for']
 
-    def __init__(self, child_for, mapping):
+    def __init__(self, child_for, mapping, ensemble):
         super().__init__()
         self.child_for = child_for
         self.mapping = mapping
+        self.ensemble = ensemble
 
 
 class NeuronTransformer(ast.NodeTransformer):
@@ -103,7 +104,7 @@ class NeuronTransformer(ast.NodeTransformer):
         if isinstance(_range, ast.Call) and _range.func.id in ["enumerate_dim", "range_dim"]:
             node.body = [self.visit(s) for s in node.body]
             node.body = util.flatten(node.body)
-            return RangeDim(node, self.connections[0].mapping)
+            return RangeDim(node, self.connections[0].mapping, self.ensemble)
             # grab closure variables and inline them into the mapping ast
             closure_vars = inspect.getclosurevars(self.connections[0].mapping)
             mapping_func = util.get_ast(self.connections[0].mapping).body[0]

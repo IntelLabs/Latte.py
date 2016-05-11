@@ -15,13 +15,15 @@ def reference_conv_forward(_input, weights, bias, pad, stride):
         for o in range(output_channels):
             for y in range(output_height):
                 for x in range(output_width):
-                    in_y = max(y*stride_h - pad, 0)
-                    in_x = max(x*stride_w - pad, 0)
-                    out_y = min(in_y + kernel_h, in_height)
-                    out_x = min(in_x + kernel_w, in_width)
+                    in_y = y*stride_h - pad
+                    in_x = x*stride_w - pad
+                    out_y = in_y + kernel_h
+                    out_x = in_x + kernel_w
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y)):
+                            p = min(max(p, 0), in_height - 1)
                             for j, q in enumerate(range(in_x, out_x)):
+                                q = min(max(q, 0), in_width - 1)
                                 output[n, o, y, x] += weights[o, c, i, j] * _input[n, c, p, q]
                     output[n, o, y, x] += bias[o][0]
     return output
@@ -57,7 +59,7 @@ def check_equal(actual, expected, atol=1e-6):
 def test_forward_backward():
     net = Net(8)
     channels, height, width = 16, 16, 16
-    pad = 0
+    pad = 1
     data, data_value = MemoryDataLayer(net, (channels, height, width))
     conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)
     conv2, conv2bias = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad)

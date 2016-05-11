@@ -35,7 +35,7 @@ class VectorLoadReplacer(ast.NodeTransformer):
 class VectorLoadStoresRegisterPromoter(ast.NodeTransformer):
     _tmp = -1
     def _gen_register(self):
-        self._tmp += 1
+        VectorLoadStoresRegisterPromoter._tmp += 1
         return "___x" + str(self._tmp)
 
     def visit(self, node):

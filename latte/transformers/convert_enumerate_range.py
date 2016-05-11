@@ -61,6 +61,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
     def visit_RangeDim(self, node):
         iter = node.child_for.iter
         mapping_func = util.get_ast(node.mapping).body[0]
+        ensemble = node.ensemble
         ndim = len(mapping_func.args.args)
         dim = iter.args[1].n
         length = len(node.mapping(*[1 for _ in range(ndim)])[dim])
@@ -137,7 +138,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                         [])
                 )
                 if length % latte.core.TILE_SIZE == 0:
-                    length = C.SymbolRef("TILE_SIZE")
+                    length = latte.core.TILE_SIZE
                 else:
                     raise NotImplementedError()
                 new_body = []
@@ -174,15 +175,23 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     # Assume everything in mapping is an int
                     # FIXME: Do we need to support other kinds of expressions?
                     stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
-                body.append(C.Assign(C.SymbolRef(input_offset, ctypes.c_int()), 
-                                     C.Add(C.SymbolRef(loop_var), C.Constant(offset))))
+                # body.append(
+                #     C.Assign(C.SymbolRef(input_offset, ctypes.c_int()), 
+                #         C.Add(C.SymbolRef(loop_var), C.Constant(offset))))
+                body.append(
+                    C.Assign(C.SymbolRef(input_offset, ctypes.c_int()), 
+                        C.FunctionCall(C.SymbolRef("MIN"), 
+                            [C.FunctionCall(C.SymbolRef("MAX"), 
+                                [C.Add(C.SymbolRef(loop_var), C.Constant(offset)), 
+                                 C.Constant(0)]), 
+                             C.Constant(ensemble.shape[dim] - 1)])))
             body += [self.visit(s) for s in node.child_for.body]
             return C.For(
                 C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
                 C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
                 C.PostInc(C.SymbolRef(loop_var)),
                 body,
-                "unroll({})".format(length)
+                "unroll_and_jam"
             )
         raise NotImplementedError()
 

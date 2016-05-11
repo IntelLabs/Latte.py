@@ -19,6 +19,19 @@ class OuterLoopTiler(ast.NodeTransformer):
 
         node.body = [self.visit(s) for s in node.body]
 
+        # if node.init.left.name == "_neuron_index_{}".format(self.ndim):
+        #     node.body = [C.For(
+        #         C.Assign(C.SymbolRef("_neuron_index_1_inner", ctypes.c_int()), C.Constant(0)),
+        #         C.Lt(C.SymbolRef("_neuron_index_1_inner"), C.Constant(latte.core.SIMDWIDTH)),
+        #         C.PostInc(C.SymbolRef("_neuron_index_1_inner")),
+        #         node.body
+        #     )]
+        tile_size = 16
+        # if node.init.left.name in ["_neuron_index_{}".format(i) for i in range(2, self.ndim + 1)]:
+        #     node.init.left.name += "_outer"
+        #     node.incr.target.name += "_outer"
+        #     node.test.left.name += "_outer"
+        #     node.test.right.value //= tile_size
         if node.init.left.name == "_neuron_index_{}".format(self.ndim):
             node.body = [C.For(
                 C.Assign(C.SymbolRef("_neuron_index_1_inner", ctypes.c_int()), C.Constant(0)),
@@ -26,6 +39,15 @@ class OuterLoopTiler(ast.NodeTransformer):
                 C.PostInc(C.SymbolRef("_neuron_index_1_inner")),
                 node.body
             )]
+            # for i in reversed(range(2, self.ndim + 1)):
+            #     loopvar = "_neuron_index_{}".format(i)
+            #     node.body = [C.For(
+            #         C.Assign(C.SymbolRef(loopvar, ctypes.c_int()), C.Mul(C.SymbolRef(loopvar + "_outer"), C.Constant(tile_size))),
+            #         C.Lt(C.SymbolRef(loopvar), C.Mul(C.Add(C.SymbolRef(loopvar + "_outer"), C.Constant(1)), C.Constant(tile_size))),
+            #         C.PostInc(C.SymbolRef(loopvar)),
+            #         node.body
+            #     )]
+
         return node
 
     def visit_BinaryOp(self, node):

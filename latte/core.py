@@ -18,7 +18,7 @@ import latte.transformers as transformers
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
-UNROLL_FACTOR = 16
+UNROLL_FACTOR = 12
 
 include = StringTemplate("""
 #include <immintrin.h>
@@ -215,9 +215,11 @@ class Net:
             self.connections_map[connection.sink].append(connection)
 
         forward_body = []
+        forward_casts = []
         forward_args = set()
 
         backward_body = []
+        backward_casts = []
         backward_args = set()
 
         for ensemble in self.ensembles:
@@ -228,18 +230,21 @@ class Net:
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                body, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
+                casts, body, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
                 forward_args = forward_args.union(args)
+                forward_casts += casts
                 forward_body += body
 
-                body, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
+                casts, body, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
                 backward_args = backward_args.union(args)
+                backward_casts += casts
                 backward_body += body
 
-        for args, direction, body, tasks in zip([forward_args, backward_args], 
-                                                ["forward", "backward"],
-                                                [forward_body, backward_body],
-                                                [self.forward_tasks, self.backward_tasks]):
+        for args, direction, body, casts, tasks in zip([forward_args, backward_args], 
+                                                       ["forward", "backward"],
+                                                       [forward_body, backward_body],
+                                                       [forward_casts, backward_casts],
+                                                       [self.forward_tasks, self.backward_tasks]):
             args = list(args)
             type_sig = []
             arg_bufs = []
@@ -255,8 +260,9 @@ class Net:
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
             c_file = C.CFile(direction, [
                 include, 
-                C.FunctionDecl(None, C.SymbolRef(direction), params, body)
+                C.FunctionDecl(None, C.SymbolRef(direction), params, casts + body)
             ], path=".compiled")
+            # c_file = transformers.simple_fusion(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
             tasks.append(Task(fn, arg_bufs))
@@ -300,6 +306,7 @@ class Net:
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
         func_def, tiled_buffers = transformers.tile_outer_loop(func_def, ensemble.ndim)
+        # func_def = transformers.interchange_tiled_loops(func_def)
 
         for key in tiled_buffers.keys():
             if key in vectorized_buffers:
@@ -315,9 +322,19 @@ class Net:
             unroll_target_loop_var = "_neuron_index_1_inner"
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
         func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
+        # func_def = transformers.interchange_inner_loop(func_def)
         func_def = transformers.register_promote_vector_loads_stores(func_def)
         func_def = transformers.lift_invariant_load_stores(func_def)
         func_def = transformers.fma_replace(func_def)
+        # func_def = transformers.unroll_constant_loops(func_def)
+
+        for loop in func_def.defn:
+            count = 1
+            curr_loop = loop
+            while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
+                count += 1
+                curr_loop = curr_loop.body[0]
+            loop.pragma = "omp parallel for collapse({})".format(count)
 
         unroll = True
         if unroll:
@@ -334,7 +351,7 @@ class Net:
                         break
             if unroll_factor > 1:
                 func_def = transformers.unroll_inner_neuron_loop(func_def, unroll_target_loop_var, unroll_factor)
-                func_def = transformers.promote_single_use_registers(func_def)
+                # func_def = transformers.promote_single_use_registers(func_def)
                 # func_def = transformers.interleave_loads(func_def)
 
         for buffer_name, trans_dim in transposed_buffers.items():
@@ -384,6 +401,7 @@ class Net:
                 }))
 
         type_sig = []
+        casts = []
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
@@ -399,8 +417,10 @@ class Net:
               buf_shape = tuple(buf_shape[1:])
             else:
                 buf_shape = buf_shape[1:]
-            self._insert_cast(func_def.defn, buf_shape, name)
-        return func_def.defn, args
+            # casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+            self._insert_cast(casts, buf_shape, name)
+            # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
+        return casts, func_def.defn, args
 
     def _insert_cast(self, body, shape, name):
         shape_str = "".join("[{}]".format(d) for d in shape)
