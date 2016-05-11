@@ -18,6 +18,16 @@ class DataNeuron(Neuron):
     def backward(self):
         pass
 
+class WeightedNeuron(Neuron):
+    def __init__(self, weights, grad_weights):
+        super().__init__()
+        self.inputs = []
+        self.grad_inputs = []
+
+        self.weights = weights
+        self.grad_weights = grad_weights
+
+
 class BiasNeuron(Neuron):
     def __init__(self, bias, grad_bias):
         self.inputs = []
