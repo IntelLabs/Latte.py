@@ -42,13 +42,15 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride):
             for y in range(output_height):
                 for x in range(output_width):
                     bias_grad[o] += top_grad[n, o, y, x]
-                    in_y = max(y*stride_h - pad, 0)
-                    in_x = max(x*stride_w - pad, 0)
-                    out_y = min(in_y + kernel_h, in_height)
-                    out_x = min(in_x + kernel_w, in_width)
+                    in_y = y*stride_h - pad
+                    in_x = x*stride_w - pad
+                    out_y = in_y + kernel_h
+                    out_x = in_x + kernel_w
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y)):
+                            p = min(max(p, 0), in_height - 1)
                             for j, q in enumerate(range(in_x, out_x)):
+                                q = min(max(q, 0), in_width - 1)
                                 weights_grad[o, c, i , j] += top_grad[n, o, y, x] * _input[n, c, p, q]
                                 bot_grad[n, c, p, q] += weights[o, c, i, j] * top_grad[n, o, y, x]
     return bot_grad, weights_grad, bias_grad
@@ -80,7 +82,20 @@ def test_forward_backward():
 
     actual  = net.buffers[conv1.name + "value"]
     actual_converted = util.convert_5d_4d(actual)
-    check_equal(actual_converted, expected, 1e-5)
+    for row1, row2 in zip(actual_converted, expected):
+        for x, y in zip(row1, row2):
+            count = 0
+            for i, j in zip(x, y):
+                if not np.allclose(i, j, atol=1e-4):
+                    print("==========================")
+                    print("count = ", count)
+                    print(i)
+                    print("--------------------------")
+                    print(j)
+                    print("==========================")
+                    exit(1)
+                count += 1
+    check_equal(actual_converted, expected, 1e-4)
 
     top_grad = net.buffers[conv2.name + "grad"]
     np.copyto(top_grad, np.random.rand(*top_grad.shape))
