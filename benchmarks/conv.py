@@ -5,8 +5,8 @@ import time
 def main():
     batch_size = 32
     net = Net(batch_size)
-    channels, height, width = 256, 66, 66
-    pad = 0
+    channels, height, width = 256, 64, 64
+    pad = 1
     ofm = 256
     print("Benchmark Config")
     print("    batch_size = {}".format(batch_size))
