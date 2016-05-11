@@ -1,5 +1,5 @@
 import numpy as np
-from ..neuron import Weighted
+from ..neuron import WeightedNeuron
 from ..ensemble import Ensemble
 
 class FCNeuron(WeightedNeuron):
