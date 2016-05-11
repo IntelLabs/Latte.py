@@ -21,10 +21,11 @@ class ConvertEnumerateRange(ast.NodeTransformer):
     """
     converts for ... in enumerate(range(...)) into a valid C for loop
     """
-    def __init__(self):
+    def __init__(self, direction):
         super().__init__()
         self.blocked_loops = []
         self.tiled_buffers = {}
+        self.direction = direction
 
     def visit(self, node):
         node = super().visit(node)
@@ -34,7 +35,8 @@ class ConvertEnumerateRange(ast.NodeTransformer):
 
     def visit_For(self, node):
         if isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
-            node.target.id == "_neuron_index_1":
+            (self.direction == "forward" and node.target.id == "_neuron_index_1") or \
+            (self.direction == "backward" and node.target.id == "_neuron_index_0"):
             new_body = []
             for statement in node.body:
                 result = self.visit(statement)
@@ -195,8 +197,8 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             )
         raise NotImplementedError()
 
-def convert_enumerate_ranges(ast):
-    visitor = ConvertEnumerateRange()
+def convert_enumerate_ranges(ast, direction):
+    visitor = ConvertEnumerateRange(direction)
     ast = visitor.visit(ast)
     return ast, visitor.tiled_buffers
 

@@ -13,8 +13,11 @@ import ctree.c.nodes as C
 from ctree.templates.nodes import StringTemplate
 import ctypes
 import latte.transformers as transformers
+import os
 # import logging
 # logging.basicConfig(level=20)
+
+os.environ["KMP_AFFINITY"] = "compact,0,0,granularity=fine"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -299,7 +302,7 @@ class Net:
 
         func_def = transformers.convert_tuple_subscripts(func_def)
 
-        func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def)
+        func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction)
 
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
@@ -329,12 +332,13 @@ class Net:
         # func_def = transformers.unroll_constant_loops(func_def)
 
         for loop in func_def.defn:
-            count = 1
-            curr_loop = loop
-            while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
-                count += 1
-                curr_loop = curr_loop.body[0]
-            loop.pragma = "omp parallel for collapse({})".format(count)
+            # count = 1
+            # curr_loop = loop
+            # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
+            #     count += 1
+            #     curr_loop = curr_loop.body[0]
+            # loop.pragma = "omp parallel for collapse({})".format(count)
+            loop.pragma = "omp parallel for collapse(2)"
 
         unroll = True
         if unroll:
