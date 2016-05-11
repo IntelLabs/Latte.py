@@ -27,6 +27,18 @@ pip install -e .
 Now changes will be automatically imported without having to reinstall
 the package.
 
+## Configuring target compiler
+Configure the target compiler using the file `~/.ctree.cfg`, for example:
+```
+[c]
+CC = icpc
+CFLAGS = -fPIC -O3 -std=c++11 -openmp
+LDFLAGS = -mkl
+
+[log]
+pygments_style = native
+```
+
 # Testing
 Latte **py.test** package for testing purposes.  The entire test suite
 can be run with with:
