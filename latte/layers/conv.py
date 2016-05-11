@@ -1,17 +1,9 @@
 import numpy as np
-from ..neuron import Neuron, BiasNeuron
+from ..neuron import WeightedNeuron, BiasNeuron
 from ..ensemble import Ensemble
 import itertools
 
-class ConvNeuron(Neuron):
-    def __init__(self, weights, grad_weights):
-        super().__init__()
-        self.inputs = []
-        self.grad_inputs = []
-
-        self.weights = weights
-        self.grad_weights = grad_weights
-
+class ConvNeuron(WeightedNeuron):
     def forward(self):
         for j in range_dim(self.inputs, 1):
             for k in range_dim(self.inputs, 2):
