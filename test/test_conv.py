@@ -82,20 +82,7 @@ def test_forward_backward():
 
     actual  = net.buffers[conv1.name + "value"]
     actual_converted = util.convert_5d_4d(actual)
-    for row1, row2 in zip(actual_converted, expected):
-        for x, y in zip(row1, row2):
-            count = 0
-            for i, j in zip(x, y):
-                if not np.allclose(i, j, atol=1e-4):
-                    print("==========================")
-                    print("count = ", count)
-                    print(i)
-                    print("--------------------------")
-                    print(j)
-                    print("==========================")
-                    exit(1)
-                count += 1
-    check_equal(actual_converted, expected, 1e-4)
+    check_equal(actual_converted, expected)
 
     top_grad = net.buffers[conv2.name + "grad"]
     np.copyto(top_grad, np.random.rand(*top_grad.shape))
@@ -113,9 +100,11 @@ def test_forward_backward():
     actual_converted = util.convert_5d_4d(bot_grad)
     check_equal(actual_converted, expected_bot_grad)
 
-    weights_grad = net.buffers[conv2.name + "grad_weights"]
+    weights_grad = np.sum(net.buffers[conv2.name + "grad_weights"], axis=0)
+    # weights_grad = net.buffers[conv2.name + "grad_weights"][0]
     weights_converted = util.convert_6d_4d(weights_grad)
-    check_equal(weights_converted, expected_weights_grad, 1e-3)
+    check_equal(weights_converted, expected_weights_grad)
 
-    bias_grad = net.buffers[conv2bias.name + "grad_bias"]
+    bias_grad = np.sum(net.buffers[conv2bias.name + "grad_bias"], axis=0)
+    # bias_grad = net.buffers[conv2bias.name + "grad_bias"][0]
     check_equal(bias_grad, expected_bias_grad)

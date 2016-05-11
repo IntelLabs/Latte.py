@@ -63,6 +63,8 @@ class NeuronTransformer(ast.NodeTransformer):
                 # as 0 is the batch dimension
                 offset = 1
             args = []
+            if "grad_" in node.attr and not node.attr.endswith("inputs"):
+                args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
             for i in range(ndim):
                 # only append this dimension if it is not fixed in self.buffer_dim_info
                 # (used for shared values)
