@@ -17,8 +17,9 @@ import os
 # import logging
 # logging.basicConfig(level=20)
 import multiprocessing
+import inspect
 
-num_threads = os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count())
+num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
 os.environ["KMP_AFFINITY"] = "compact,0,0,granularity=fine"
@@ -31,6 +32,7 @@ include = StringTemplate("""
 #include <immintrin.h>
 #include <mkl.h>
 #include <stdio.h>
+#include <cmath>
 #include <omp.h>
 #define SIMDWIDTH 8
 #define TILE_SIZE 8
@@ -269,14 +271,20 @@ class Net:
                         np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()))
 
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-            c_file = C.CFile(direction, [
+            c_file = C.CFile(direction + self._uniqueid(), [
                 include, 
                 C.FunctionDecl(None, C.SymbolRef(direction), params, casts + body)
             ], path=".compiled")
+            c_file._ext = "cpp"
             # c_file = transformers.simple_fusion(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
             tasks.append(Task(fn, arg_bufs))
+
+    unique_id = -1
+    def _uniqueid(self):
+        Net.unique_id += 1
+        return str(self.unique_id)
 
     def _synthesize_ast(self, ensemble, fn, direction):
         fn_def = util.get_ast(fn).body[0]
@@ -288,7 +296,11 @@ class Net:
 
         # Reverse iteration space for row major indexing
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
-        shape = ensemble.shape
+        loop_vars[-2] += "_outer"
+        loop_vars.insert(0, "_neuron_index_1_inner")
+        shape = list(ensemble.shape)
+        shape[0] //= SIMDWIDTH
+        shape.append(SIMDWIDTH)
         loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
 
         body = fn_def.body
@@ -297,6 +309,7 @@ class Net:
         # This allows statements to be pattern matched independently
         # Fusion will merge the loops eventually (unless they are pattern matched)
         nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in body]
+
 
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
         func_name = util.generate_unique_function_name()
@@ -307,23 +320,78 @@ class Net:
 
         func_def = transformers.pattern_match_gemm(func_def)
         func_def = transformers.simple_fusion(func_def)
+        for loop in func_def.body:
+            loop = loop.body[0]
+            for dim in range(ensemble.ndim):
+                loop = loop.body[0]
+            mapping = self.connections_map[ensemble][0].mapping
+            mapping_func = util.get_ast(mapping).body[0]
 
+            closure_vars = inspect.getclosurevars(mapping)
+            for var, value in closure_vars.nonlocals.items():
+                mapping_func = util.inline_variable(var, value, mapping_func)
+
+            for i, arg in enumerate(mapping_func.args.args):
+                i += 1  # offset batch
+                mapping_func = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), mapping_func)
+            body = [
+                ast.Assign([ast.Name("_neuron_index_1", ast.Load())],
+                    ast.BinOp(ast.BinOp(ast.Name("_neuron_index_1_outer", ast.Load()),
+                        ast.Mult(), ast.Num(SIMDWIDTH)),
+                    ast.Add(), ast.Name("_neuron_index_1_inner", ast.Load())))
+            ]
+            for dim in range(1, ensemble.ndim):
+                if mapping == one_to_one:
+                    offset = -1
+                else:
+                    range_expr = mapping_func.body[-1].value.elts[dim]
+                    if len(range_expr.args) == 2:
+                        offset = range_expr.args[0]
+                    elif len(range_expr.args) == 3:
+                        raise NotImplementedError()
+                    else:
+                        offset = ast.Num(0)
+                    # if dim == 0:
+                    #     offset = ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))
+                input_offset = "_input_offset_{}".format(dim + 1)
+                if isinstance(offset, ast.Name):
+                    body += transformers.convert_enumerate_range.get_dependent_statements(mapping_func.body[:-1], offset.id)
+                elif offset == -1:
+                    offset = ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
+                body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
+            if mapping == one_to_one:
+                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], ast.Name("_neuron_index_1_outer", ast.Load())))
+                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], ast.Name("_neuron_index_1_inner", ast.Load())))
+            else:
+                range_expr = mapping_func.body[-1].value.elts[0]
+                if len(range_expr.args) == 2:
+                    offset = range_expr.args[0]
+                elif len(range_expr.args) == 3:
+                    raise NotImplementedError()
+                else:
+                    offset = ast.Num(0)
+                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
+                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
+            loop.body = body + loop.body
         func_def = transformers.convert_tuple_subscripts(func_def)
 
         func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction)
 
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
+        func_def = transformers.BasicTypeInference().visit(func_def)
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
-        func_def, tiled_buffers = transformers.tile_outer_loop(func_def, ensemble.ndim)
+        vectorized_buffers[ensemble.name+"inputs"] = [(2, SIMDWIDTH)]
+        vectorized_buffers[ensemble.name+"grad_inputs"] = [(2, SIMDWIDTH)]
+        # func_def, tiled_buffers = transformers.tile_outer_loop(func_def, ensemble.ndim)
         # func_def = transformers.interchange_tiled_loops(func_def)
 
-        for key in tiled_buffers.keys():
-            if key in vectorized_buffers:
-                vectorized_buffers[key].append((tiled_buffers[key], TILE_SIZE))
-            else:
-                vectorized_buffers[key] = [(tiled_buffers[key], TILE_SIZE)]
+        # for key in tiled_buffers.keys():
+        #     if key in vectorized_buffers:
+        #         vectorized_buffers[key].append((tiled_buffers[key], TILE_SIZE))
+        #     else:
+        #         vectorized_buffers[key] = [(tiled_buffers[key], TILE_SIZE)]
 
         candidate = transformers.get_loop_to_vectorize(func_def)
 
@@ -332,12 +400,13 @@ class Net:
         else:
             unroll_target_loop_var = "_neuron_index_1_inner"
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
-        func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
-        # func_def = transformers.interchange_inner_loop(func_def)
-        func_def = transformers.register_promote_vector_loads_stores(func_def)
-        func_def = transformers.lift_invariant_load_stores(func_def)
-        func_def = transformers.fma_replace(func_def)
-        # func_def = transformers.unroll_constant_loops(func_def)
+        if candidate is not None:
+            func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
+            # func_def = transformers.interchange_inner_loop(func_def)
+            func_def = transformers.register_promote_vector_loads_stores(func_def)
+            func_def = transformers.lift_invariant_load_stores(func_def)
+            func_def = transformers.fma_replace(func_def)
+            # func_def = transformers.unroll_constant_loops(func_def)
 
         for loop in func_def.defn:
             # count = 1
@@ -346,10 +415,11 @@ class Net:
             #     count += 1
             #     curr_loop = curr_loop.body[0]
             # loop.pragma = "omp parallel for collapse({})".format(count)
-            loop.pragma = "omp parallel for collapse(2)"
+            # loop.pragma = "omp parallel for collapse(2)"
+            loop.pragma = "omp parallel for"
 
         unroll = True
-        if unroll:
+        if candidate is not None and unroll:
             if unroll_target_loop_var == "_neuron_index_1_inner":
                 unroll_factor = SIMDWIDTH
             else:
@@ -366,113 +436,120 @@ class Net:
                 # func_def = transformers.promote_single_use_registers(func_def)
                 # func_def = transformers.interleave_loads(func_def)
 
-        for buffer_name, trans_dim in transposed_buffers.items():
-            curr_body = []
-            shape = self.buffers[buffer_name].shape
-            if buffer_name in vectorized_buffers:
-                shape = list(shape)
-                for (dim, factor) in vectorized_buffers[buffer_name]:
-                    dim_to_vectorize = len(shape) - dim - 1
-                    shape[dim_to_vectorize] //= factor
-                    shape.append(factor)
-            if "grad_" in buffer_name:
-                # node = C.For(
-                #     C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                #     C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                #     C.PostInc(C.SymbolRef("x0")),
-                #     curr_body,
-                #     "omp parallel for simd"
-                # )
-                # idx = [ C.SymbolRef("x0")]
-                # for i, d in enumerate(shape[1:]):
-                #     i += 1  # offset range
-                #     curr_body.append(C.For(
-                #         C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                #         C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                #         C.PostInc(C.SymbolRef("x" + str(i))),
-                #         []
-                #     ))
-                #     idx.append(C.SymbolRef("x" + str(i)))
-                #     curr_body = curr_body[-1].body
-                # curr_body.append(
-                #      C.AddAssign(
-                #          util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), [C.Constant(0)] + idx[1:]),
-                #         util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)))
-
-                # func_def.defn.append(node)
+        if candidate is not None:
+            for buffer_name, trans_dim in transposed_buffers.items():
                 curr_body = []
+                shape = self.buffers[buffer_name].shape
+                if buffer_name in vectorized_buffers:
+                    shape = list(shape)
+                    for (dim, factor) in vectorized_buffers[buffer_name]:
+                        dim_to_vectorize = len(shape) - dim - 1
+                        shape[dim_to_vectorize] //= factor
+                        shape.append(factor)
+                if "grad_" in buffer_name:
+                    # node = C.For(
+                    #     C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
+                    #     C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
+                    #     C.PostInc(C.SymbolRef("x0")),
+                    #     curr_body,
+                    #     "omp parallel for simd"
+                    # )
+                    # idx = [ C.SymbolRef("x0")]
+                    # for i, d in enumerate(shape[1:]):
+                    #     i += 1  # offset range
+                    #     curr_body.append(C.For(
+                    #         C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
+                    #         C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
+                    #         C.PostInc(C.SymbolRef("x" + str(i))),
+                    #         []
+                    #     ))
+                    #     idx.append(C.SymbolRef("x" + str(i)))
+                    #     curr_body = curr_body[-1].body
+                    # curr_body.append(
+                    #      C.AddAssign(
+                    #          util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), [C.Constant(0)] + idx[1:]),
+                    #         util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)))
 
-                node = C.For(
-                    C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                    C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                    C.PostInc(C.SymbolRef("x0")),
-                    curr_body
-                )
-                idx = [C.SymbolRef("x0")]
-                for i, d in enumerate(shape[1:-trans_dim-1]):
-                    i += 1  # offset range
-                    curr_body.append(C.For(
-                        C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                        C.PostInc(C.SymbolRef("x" + str(i))),
-                        []
-                    ))
-                    idx.append(C.SymbolRef("x" + str(i)))
-                    curr_body = curr_body[-1].body
-                idx += [C.Constant(0), C.Constant(0)]
-                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
-                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
-                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
-                func_def.defn.append(node)
-            else:
-                node = C.For(
-                    C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                    C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                    C.PostInc(C.SymbolRef("x0")),
-                    curr_body
-                )
-                idx = [C.SymbolRef("x0")]
-                for i, d in enumerate(shape[1:-trans_dim-1]):
-                    i += 1  # offset range
-                    curr_body.append(C.For(
-                        C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                        C.PostInc(C.SymbolRef("x" + str(i))),
-                        []
-                    ))
-                    idx.append(C.SymbolRef("x" + str(i)))
-                    curr_body = curr_body[-1].body
-                idx += [C.Constant(0), C.Constant(0)]
-                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
-                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
-                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
-                func_def.defn.insert(0, node)
-            shape_str = "".join("[{}]".format(d) for d in shape)
+                    # func_def.defn.append(node)
+                    curr_body = []
 
-            args.append(ast.arg(buffer_name + "_transposed", None))
-            self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-            # func_def.defn.insert(0, StringTemplate(
-            #     "float $arg_name$shape = {};",
-            #     {
-            #         "arg_name": C.SymbolRef(buffer_name + "_transposed"), 
-            #         "shape": C.SymbolRef(shape_str),
-            #     }))
+                    node = C.For(
+                        C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
+                        C.PostInc(C.SymbolRef("x0")),
+                        curr_body
+                    )
+                    idx = [C.SymbolRef("x0")]
+                    for i, d in enumerate(shape[1:-trans_dim-1]):
+                        i += 1  # offset range
+                        curr_body.append(C.For(
+                            C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
+                            C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
+                            C.PostInc(C.SymbolRef("x" + str(i))),
+                            []
+                        ))
+                        idx.append(C.SymbolRef("x" + str(i)))
+                        curr_body = curr_body[-1].body
+                    idx += [C.Constant(0), C.Constant(0)]
+                    curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                        [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
+                         C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
+                    func_def.defn.append(node)
+                else:
+                    node = C.For(
+                        C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
+                        C.PostInc(C.SymbolRef("x0")),
+                        curr_body
+                    )
+                    idx = [C.SymbolRef("x0")]
+                    for i, d in enumerate(shape[1:-trans_dim-1]):
+                        i += 1  # offset range
+                        curr_body.append(C.For(
+                            C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
+                            C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
+                            C.PostInc(C.SymbolRef("x" + str(i))),
+                            []
+                        ))
+                        idx.append(C.SymbolRef("x" + str(i)))
+                        curr_body = curr_body[-1].body
+                    idx += [C.Constant(0), C.Constant(0)]
+                    curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                        [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
+                         C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
+                    func_def.defn.insert(0, node)
+                shape_str = "".join("[{}]".format(d) for d in shape)
+
+                args.append(ast.arg(buffer_name + "_transposed", None))
+                self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
+                # func_def.defn.insert(0, StringTemplate(
+                #     "float $arg_name$shape = {};",
+                #     {
+                #         "arg_name": C.SymbolRef(buffer_name + "_transposed"), 
+                #         "shape": C.SymbolRef(shape_str),
+                #     }))
 
         type_sig = []
         casts = []
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
-            buf_shape = buf.shape
-            if name.endswith("value") or name.endswith("grad"): # or "inputs" in name:
+            buf_shape =list(buf.shape)
+            if "grad_" in name and "grad_inputs" not in name:
+                buf_shape[1] //= SIMDWIDTH
+                buf_shape.append(SIMDWIDTH)
+            elif not (name.endswith("value") or name.endswith("grad") or "inputs" in name):
+                buf_shape[0] //= SIMDWIDTH
+                buf_shape.append(SIMDWIDTH)
+
+            if name.endswith("value") or name.endswith("grad") or "inputs" in name:
                 buf_shape = (max(buf_shape[1] // SIMDWIDTH, 1), *buf_shape[2:], SIMDWIDTH)
             elif name in vectorized_buffers:
-              buf_shape = list(buf_shape)
-              for (dim, factor) in vectorized_buffers[name]:
-                  dim_to_vectorize = len(buf_shape) - dim - 1
-                  buf_shape[dim_to_vectorize] //= factor
-                  buf_shape.append(factor)
-              buf_shape = tuple(buf_shape[1:])
+                for (dim, factor) in vectorized_buffers[name]:
+                    dim_to_vectorize = len(buf_shape) - dim - 1
+                    buf_shape[dim_to_vectorize] //= factor
+                    buf_shape.append(factor)
+                buf_shape = tuple(buf_shape[1:])
             else:
                 buf_shape = buf_shape[1:]
             # casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))

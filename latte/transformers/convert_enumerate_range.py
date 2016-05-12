@@ -34,7 +34,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
         return node
 
     def visit_For(self, node):
-        if isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
+        if False and isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
             (self.direction == "forward" and node.target.id == "_neuron_index_1") or \
             (self.direction == "backward" and node.target.id == "_neuron_index_0"):
             new_body = []
@@ -132,17 +132,17 @@ class ConvertEnumerateRange(ast.NodeTransformer):
         elif isinstance(iter, ast.Call) and iter.func.id == "range_dim":
             loop_var = node.child_for.target.id
             if dim == 0:
-                self.blocked_loops.append(
-                    C.For(
-                        C.Assign(C.SymbolRef(loop_var + "_tile", ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef(loop_var + "_tile"), C.Constant(length // latte.core.TILE_SIZE)),
-                        C.PostInc(C.SymbolRef(loop_var + "_tile")),
-                        [])
-                )
-                if length % latte.core.TILE_SIZE == 0:
-                    length = latte.core.TILE_SIZE
-                else:
-                    raise NotImplementedError()
+                # self.blocked_loops.append(
+                #     C.For(
+                #         C.Assign(C.SymbolRef(loop_var + "_tile", ctypes.c_int()), C.Constant(0)),
+                #         C.Lt(C.SymbolRef(loop_var + "_tile"), C.Constant(length // latte.core.TILE_SIZE)),
+                #         C.PostInc(C.SymbolRef(loop_var + "_tile")),
+                #         [])
+                # )
+                # if length % latte.core.TILE_SIZE == 0:
+                #     length = latte.core.TILE_SIZE
+                # else:
+                #     raise NotImplementedError()
                 new_body = []
                 for statement in node.child_for.body:
                     result, tiled_buffers = util.tile_array_refs(loop_var, statement)
@@ -169,32 +169,55 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 offset = 0
 
             body = []
+            input_offset = "_input_offset_{}".format(dim + 1)
+            node.child_for.body = [UpdateInputIndices(input_offset + "_index", input_offset).visit(s) for s in node.child_for.body]
             if offset != 0:
-                input_offset = self._gen_tmp()
-                node.child_for.body = [UpdateInputIndices(input_offset, loop_var).visit(s) for s in node.child_for.body]
-                body = get_dependent_statements(mapping_func.body[:-1], offset.id)
-                for stmt in body:
-                    # Assume everything in mapping is an int
-                    # FIXME: Do we need to support other kinds of expressions?
-                    stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
+                # input_offset = self._gen_tmp()
+                # body = get_dependent_statements(mapping_func.body[:-1], offset.id)
+                # for stmt in body:
+                #     # Assume everything in mapping is an int
+                #     # FIXME: Do we need to support other kinds of expressions?
+                #     stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
                 # body.append(
-                #     C.Assign(C.SymbolRef(input_offset, ctypes.c_int()), 
-                #         C.Add(C.SymbolRef(loop_var), C.Constant(offset))))
+                #     C.Assign(C.SymbolRef(input_offset), 
+                #         C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset))))
                 body.append(
-                    C.Assign(C.SymbolRef(input_offset, ctypes.c_int()), 
+                    C.Assign(C.SymbolRef(input_offset + "_index", ctypes.c_int()), 
                         C.FunctionCall(C.SymbolRef("MIN"), 
                             [C.FunctionCall(C.SymbolRef("MAX"), 
-                                [C.Add(C.SymbolRef(loop_var), C.Constant(offset)), 
+                                [C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset)),
                                  C.Constant(0)]), 
                              C.Constant(ensemble.shape[dim] - 1)])))
+            else:
+                body.append(
+                    C.Assign(C.SymbolRef(input_offset + "_index", ctypes.c_int()),
+                             C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset))))
             body += [self.visit(s) for s in node.child_for.body]
-            return C.For(
-                C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
-                C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
-                C.PostInc(C.SymbolRef(loop_var)),
-                body,
-                "unroll_and_jam"
-            )
+            if dim == 0:
+                body = [UpdateInputIndices(input_offset + "_inner_index", input_offset + "_inner").visit(s) for s in body]
+                body.insert(0, (
+                    C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
+                             C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))
+                return C.For(
+                    C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
+                    C.Lt(C.SymbolRef(loop_var), C.Constant(length // latte.core.SIMDWIDTH)),
+                    C.PostInc(C.SymbolRef(loop_var)),
+                    [C.For(
+                        C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.core.SIMDWIDTH)),
+                        C.PostInc(C.SymbolRef(loop_var + "_inner")),
+                        body
+                    )],
+                    # "unroll_and_jam"
+                )
+            else:
+                return C.For(
+                    C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
+                    C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
+                    C.PostInc(C.SymbolRef(loop_var)),
+                    body,
+                    # "unroll_and_jam"
+                )
         raise NotImplementedError()
 
 def convert_enumerate_ranges(ast, direction):

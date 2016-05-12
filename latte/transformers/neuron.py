@@ -70,6 +70,11 @@ class NeuronTransformer(ast.NodeTransformer):
                 # (used for shared values)
                 if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
                     args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
+                    if i + offset == 1:
+                        args[-1].id += "_outer"
+
+            if node.attr in ["value", "grad"]:
+                args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
 
             # return updated indedxing expression
             return ast.Subscript(ast.Name(name, ast.Load()), 
@@ -93,6 +98,12 @@ class NeuronTransformer(ast.NodeTransformer):
             else:
                 raise NotImplementedError(node.slice.value)
             # return child node
+            if "inputs" in value.value.id or "grad_inputs" in value.value.id:
+                ndim = self.ensemble.ndim
+                value.slice.value.elts[1:ndim + 1] = [ast.Name("_input_offset_{}".format(i + 1), ast.Load()) for i in range(len(value.slice.value.elts[1:ndim + 1]))]
+                value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
+            else:
+                value.slice.value.elts.append(ast.Name("_neuron_index_1_inner", ast.Load()))
             return value
         else:
             raise NotImplementedError()
@@ -106,7 +117,7 @@ class NeuronTransformer(ast.NodeTransformer):
         if isinstance(_range, ast.Call) and _range.func.id in ["enumerate_dim", "range_dim"]:
             node.body = [self.visit(s) for s in node.body]
             node.body = util.flatten(node.body)
-            return RangeDim(node, self.connections[0].mapping, self.ensemble)
+            return RangeDim(node, self.connections[0].mapping, self.connections[0].source)
             # grab closure variables and inline them into the mapping ast
             closure_vars = inspect.getclosurevars(self.connections[0].mapping)
             mapping_func = util.get_ast(self.connections[0].mapping).body[0]

@@ -93,8 +93,8 @@ class TileArrayRefs(ast.NodeTransformer):
                 curr_node = curr_node.left
             self.tiled_buffers[curr_node.id] = idx
 
-            node = replace_name(ast.Name(self.idx, ast.Load()), ast.Name(self.idx+"_tile", ast.Load()), node)
-            return C.ArrayRef(node, C.SymbolRef(self.idx))
+            # node = replace_name(ast.Name(self.idx, ast.Load()), ast.Name(self.idx+"_tile", ast.Load()), node)
+            return C.ArrayRef(node, C.SymbolRef(self.idx + "_inner"))
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
         return node
@@ -269,7 +269,7 @@ def convert_6d_4d(arr):
                     for v2 in range(8):
                         for v in range(8):
                             arr_converted[ofm * 8 + v, ifm * 8 + v2, y, x] = \
-                                arr_reshaped[ofm, ifm, y, x, v2, v]
+                                arr_reshaped[ofm, ifm, y, x, v, v2]
     return arr_converted
 
 def convert_6d_4d_tr(arr):
@@ -298,14 +298,15 @@ def convert_5d_4d(arr):
                         arr_converted[n, ifm * 8 + v, y, x] = arr_reshaped[n, ifm, y, x, v]
     return arr_converted
 
-def convert_3d_2d(arr):
+def convert_4d_2d(arr):
     shape = arr.shape
     arr_converted = np.zeros_like(arr)
-    arr_reshaped = arr.reshape(shape[0] // 8, shape[1], 8)
+    arr_reshaped = arr.reshape(shape[0] // 8, shape[1] // 8, 8, 8)
     for n in range(shape[0] // 8):
-        for i in range(shape[1]):
+        for i in range(shape[1] // 8):
             for v in range(8):
-                arr_converted[n * 8 + v, i] = arr_reshaped[n, i, v]
+                for v2 in range(8):
+                    arr_converted[n * 8 + v, i * 8 + v2] = arr_reshaped[n, i, v, v2]
     return arr_converted
 
 # class Unpack(ast.NodeTransformer):

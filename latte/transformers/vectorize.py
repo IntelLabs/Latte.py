@@ -80,17 +80,23 @@ class LoopToVectorizeFinder(ast.NodeVisitor):
         if self.var is not None:
             return 
         super().visit(node)
+    
+    def visit_For(self, node):
+        if not any([isinstance(s, C.For) for s in node.body]):
+            pass
+            # print(node)
+        [self.visit(s) for s in node.body]
 
-    def visit_AugAssign(self, node):
-        if isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
-            self.var = node.target.right.name
+    # def visit_AugAssign(self, node):
+    #     if isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
+    #         self.var = node.target.right.name
 
-    def visit_BinaryOp(self, node):
-        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.BinaryOp) and isinstance(node.left.op, C.Op.ArrayRef):
-            self.var = node.left.right.name
-            return
-        self.visit(node.left)
-        self.visit(node.right)
+    # def visit_BinaryOp(self, node):
+    #     if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.BinaryOp) and isinstance(node.left.op, C.Op.ArrayRef):
+    #         self.var = node.left.right.name
+    #         return
+    #     self.visit(node.left)
+    #     self.visit(node.right)
 
 def get_loop_to_vectorize(ast):
     visitor = LoopToVectorizeFinder()
