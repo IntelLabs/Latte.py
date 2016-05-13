@@ -62,11 +62,11 @@ class ConvertEnumerateRange(ast.NodeTransformer):
 
     def visit_RangeDim(self, node):
         iter = node.child_for.iter
-        mapping_func = util.get_ast(node.mapping).body[0]
+        # mapping_func = util.get_ast(node.mapping).body[0]
         ensemble = node.ensemble
-        ndim = len(mapping_func.args.args)
+        ndim = node.mapping.ndim
         dim = iter.args[1].n
-        length = len(node.mapping(*[1 for _ in range(ndim)])[dim])
+        length = len(node.mapping.shape[dim])
         if isinstance(iter, ast.Call) and iter.func.id == "enumerate_dim":
             raise NotImplementedError()
             # # grab closure variables and inline them into the mapping ast
@@ -150,37 +150,16 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
                 node.child_for.body = new_body
 
-            closure_vars = inspect.getclosurevars(node.mapping)
-            for var, value in closure_vars.nonlocals.items():
-                mapping_func = util.inline_variable(var, value, mapping_func)
-
-            # replace argument variables with loop variables corresponding to 
-            # the current _neuron_index
-            for i, arg in enumerate(mapping_func.args.args):
-                i += 1  # offset batch
-                mapping_func = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), mapping_func)
-
-            range_expr = mapping_func.body[-1].value.elts[dim]
-            if len(range_expr.args) == 2:
-                offset = range_expr.args[0]
-            elif len(range_expr.args) == 3:
-                raise NotImplementedError()
-            else:
-                offset = 0
+            offset = node.mapping.get_offset(dim)
 
             body = []
             input_offset = "_input_offset_{}".format(dim + 1)
             node.child_for.body = [UpdateInputIndices(input_offset + "_index", input_offset).visit(s) for s in node.child_for.body]
-            if offset != 0:
-                # input_offset = self._gen_tmp()
-                # body = get_dependent_statements(mapping_func.body[:-1], offset.id)
-                # for stmt in body:
-                #     # Assume everything in mapping is an int
-                #     # FIXME: Do we need to support other kinds of expressions?
-                #     stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
-                # body.append(
-                #     C.Assign(C.SymbolRef(input_offset), 
-                #         C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset))))
+            if isinstance(offset, ast.Num) and offset.n == 0:
+                body.append(
+                    C.Assign(C.SymbolRef(input_offset + "_index", ctypes.c_int()),
+                             C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset))))
+            else:
                 body.append(
                     C.Assign(C.SymbolRef(input_offset + "_index", ctypes.c_int()), 
                         C.FunctionCall(C.SymbolRef("MIN"), 
@@ -188,10 +167,6 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                                 [C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset)),
                                  C.Constant(0)]), 
                              C.Constant(ensemble.shape[dim] - 1)])))
-            else:
-                body.append(
-                    C.Assign(C.SymbolRef(input_offset + "_index", ctypes.c_int()),
-                             C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset))))
             body += [self.visit(s) for s in node.child_for.body]
             if dim == 0:
                 body = [UpdateInputIndices(input_offset + "_inner_index", input_offset + "_inner").visit(s) for s in body]

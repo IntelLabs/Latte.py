@@ -12,6 +12,7 @@ def reference_pooling_forward(_input, kernel, pad, stride):
     output_width = ((in_width - kernel_w + 2 * pad_w) // stride_w) + 1
     output_height = ((in_height - kernel_h + 2 * pad_h) // stride_h) + 1
     output = np.zeros((batch_size, in_channels, output_height, output_width), dtype=np.float32)
+    output_mask = np.zeros((batch_size, in_channels, output_height, output_width, 2), dtype=np.float32)
     for n in range(batch_size):
         for o in range(in_channels):
             for y in range(output_height):
@@ -21,15 +22,18 @@ def reference_pooling_forward(_input, kernel, pad, stride):
                     out_y = in_y + kernel_h
                     out_x = in_x + kernel_w
                     maxval = float('-inf')
+                    idx = ()
                     for p in range(in_y, out_y):
                         p = min(max(p, 0), in_height - 1)
                         for q in range(in_x, out_x):
                             q = min(max(q, 0), in_width - 1)
                             curr = _input[n, o, p, q]
                             if curr > maxval:
+                                idx = (p, q)
                                 maxval = curr
                     output[n, o, y, x] = maxval
-    return output
+                    output_mask[n, o, y, x, :] = idx
+    return output, output_mask
 
 def reference_conv_backward(top_grad, _input, pad, stride):
     stride_h, stride_w = stride, stride
@@ -69,11 +73,13 @@ def test_forward_backward():
 
     net.forward()
 
-    expected = reference_pooling_forward(data_value, 2, pad, 2)
+    expected, expected_mask = reference_pooling_forward(data_value, 2, pad, 2)
 
     actual  = net.buffers[pool1.name + "value"]
+    # actual_mask  = net.buffers[pool1.name + "mask"]
     actual_converted = util.convert_5d_4d(actual)
-    check_equal(actual_converted, expected, 1e-5)
+    check_equal(actual_converted, expected)
+    # check_equal(actual_mask, expected_mask)
 
     # top_grad = net.buffers[pool1.name + "grad"]
     # np.copyto(top_grad, np.random.rand(*top_grad.shape))

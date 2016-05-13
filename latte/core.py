@@ -95,11 +95,35 @@ void transpose(float *in, float *out)
 extern "C"
 """)
 
+class Mapping:
+    def __init__(self, mapping_func):
+        self.mapping_func = mapping_func
+        ast = util.get_ast(mapping_func).body[0]
+
+        closure_vars = inspect.getclosurevars(mapping_func)
+        for var, value in closure_vars.nonlocals.items():
+            ast = util.inline_variable(var, value, ast)
+        self.ast = ast
+        self.ndim = len(self.ast.args.args)
+        self.shape = mapping_func(*[1 for _ in range(self.ndim)])
+
+    def get_offset(self, dim):
+        if self.mapping_func == one_to_one:
+            return ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
+        range_expr = self.ast.body[-1].value.elts[dim]
+        if len(range_expr.args) == 2:
+            return range_expr.args[0]
+        elif len(range_expr.args) == 3:
+            raise NotImplementedError()
+        else:
+            return ast.Num(0)
+
+
 class Connection:
     def __init__(self, source_ens, sink_ens, mapping, reshape):
         self.source = source_ens
         self.sink = sink_ens
-        self.mapping = mapping
+        self.mapping = Mapping(mapping)
         self.mapping_inserted = False
         self.reshape = reshape
 
@@ -325,34 +349,27 @@ class Net:
             for dim in range(ensemble.ndim):
                 loop = loop.body[0]
             mapping = self.connections_map[ensemble][0].mapping
-            mapping_func = util.get_ast(mapping).body[0]
-
-            closure_vars = inspect.getclosurevars(mapping)
-            for var, value in closure_vars.nonlocals.items():
-                mapping_func = util.inline_variable(var, value, mapping_func)
+            mapping_func = mapping.ast
 
             for i, arg in enumerate(mapping_func.args.args):
                 i += 1  # offset batch
                 mapping_func = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), mapping_func)
             body = [
+                # _neuron_index_1 = _neuron_index_1_outer * SIMDWIDTH + _neuron_index_1_inner
                 ast.Assign([ast.Name("_neuron_index_1", ast.Load())],
-                    ast.BinOp(ast.BinOp(ast.Name("_neuron_index_1_outer", ast.Load()),
-                        ast.Mult(), ast.Num(SIMDWIDTH)),
-                    ast.Add(), ast.Name("_neuron_index_1_inner", ast.Load())))
+                    ast.BinOp(
+                        ast.BinOp(
+                            ast.Name("_neuron_index_1_outer", ast.Load()),
+                            ast.Mult(), 
+                            ast.Num(SIMDWIDTH)
+                        ),
+                        ast.Add(), 
+                        ast.Name("_neuron_index_1_inner", ast.Load())
+                    )
+                )
             ]
             for dim in range(1, ensemble.ndim):
-                if mapping == one_to_one:
-                    offset = -1
-                else:
-                    range_expr = mapping_func.body[-1].value.elts[dim]
-                    if len(range_expr.args) == 2:
-                        offset = range_expr.args[0]
-                    elif len(range_expr.args) == 3:
-                        raise NotImplementedError()
-                    else:
-                        offset = ast.Num(0)
-                    # if dim == 0:
-                    #     offset = ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))
+                offset = mapping.get_offset(dim)
                 input_offset = "_input_offset_{}".format(dim + 1)
                 if isinstance(offset, ast.Name):
                     body += transformers.convert_enumerate_range.get_dependent_statements(mapping_func.body[:-1], offset.id)
@@ -363,13 +380,7 @@ class Net:
                 body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], ast.Name("_neuron_index_1_outer", ast.Load())))
                 body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], ast.Name("_neuron_index_1_inner", ast.Load())))
             else:
-                range_expr = mapping_func.body[-1].value.elts[0]
-                if len(range_expr.args) == 2:
-                    offset = range_expr.args[0]
-                elif len(range_expr.args) == 3:
-                    raise NotImplementedError()
-                else:
-                    offset = ast.Num(0)
+                offset = mapping.get_offset(0)
                 body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
                 body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
             loop.body = body + loop.body

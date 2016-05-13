@@ -9,7 +9,7 @@ class MaxNeuron(Neuron):
         self.inputs = []
         self.grad_inputs = []
 
-        self.maxidx = np.zeros((3,))
+        self.mask = np.zeros((2,))
 
     def forward(self):
         max_value = -INFINITY
@@ -17,10 +17,8 @@ class MaxNeuron(Neuron):
             for k in range_dim(self.inputs, 2):
                 if self.inputs[0,j,k] > max_value:
                     max_value = self.inputs[0,j,k]
-                    # can we make this cleaner? 
-                    # self.maxidx[0] = i
-                    # self.maxidx[1] = j
-                    # self.maxidx[2] = k  
+                    # self.mask[0] = j
+                    # self.mask[1] = k
         self.value = max_value
         
 
