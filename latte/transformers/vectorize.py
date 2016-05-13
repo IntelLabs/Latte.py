@@ -228,7 +228,7 @@ class Vectorizer(ast.NodeTransformer):
             args = []
             for arg in node.args:
                 if isinstance(arg, C.Constant):
-                    args.append(StringTemplate("{" + ",".join(str(arg.value) for _ in range(latte.core.SIMDWIDTH)) + "}"))
+                    args.append(C.SymbolRef("{" + ",".join(str(arg.value) for _ in range(latte.core.SIMDWIDTH)) + "}"))
                 else:
                     args.append(arg)
             node.args = args

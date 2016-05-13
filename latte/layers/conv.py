@@ -5,9 +5,9 @@ import itertools
 
 class ConvNeuron(WeightedNeuron):
     def forward(self):
-        for i in range_dim(self.inputs, 0):
-            for j in range_dim(self.inputs, 1):
-                for k in range_dim(self.inputs, 2):
+        for j in range_dim(self.inputs, 1):
+            for k in range_dim(self.inputs, 2):
+                for i in range_dim(self.inputs, 0):
                     self.value += self.inputs[i, j, k] * self.weights[i, j, k]
 
     def backward(self):

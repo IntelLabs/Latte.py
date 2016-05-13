@@ -452,10 +452,10 @@ class Net:
             #     count += 1
             #     curr_loop = curr_loop.body[0]
             # loop.pragma = "omp parallel for collapse({})".format(count)
-            # loop.pragma = "omp parallel for collapse(2)"
-            loop.pragma = "omp parallel for"
+            loop.pragma = "omp parallel for collapse(2)"
+            # loop.pragma = "omp parallel for"
 
-        unroll = False
+        unroll = True
         if candidate is not None and unroll:
             if unroll_target_loop_var == "_neuron_index_1_inner":
                 unroll_factor = SIMDWIDTH

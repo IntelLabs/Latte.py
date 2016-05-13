@@ -35,8 +35,8 @@ class ConvertEnumerateRange(ast.NodeTransformer):
         return node
 
     def visit_For(self, node):
-        if False and isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
-            (self.direction == "forward" and node.target.id == "_neuron_index_1") or \
+        if isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
+            (self.direction == "forward" and node.target.id == "_neuron_index_1_outer") or \
             (self.direction == "backward" and node.target.id == "_neuron_index_0"):
             new_body = []
             for statement in node.body:
@@ -170,17 +170,19 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 # body.insert(0, (
                 #     C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
                 #              C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))
-                return C.For(
+                self.blocked_loops.append(C.For(
                     C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length // latte.core.SIMDWIDTH)),
                     C.PostInc(C.SymbolRef(loop_var)),
-                    [C.For(
-                        C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.core.SIMDWIDTH)),
-                        C.PostInc(C.SymbolRef(loop_var + "_inner")),
-                        body
-                    )],
+                    [],
                     # "unroll_and_jam"
+                ))
+                return C.For(
+                    C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
+                    C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.core.SIMDWIDTH)),
+                    C.PostInc(C.SymbolRef(loop_var + "_inner")),
+                    body,
+                    "unroll_and_jam({})".format(latte.core.SIMDWIDTH)
                 )
             else:
                 return C.For(
@@ -188,7 +190,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
                     C.PostInc(C.SymbolRef(loop_var)),
                     body,
-                    # "unroll_and_jam"
+                    "unroll_and_jam({})".format(length)
                 )
         raise NotImplementedError()
 

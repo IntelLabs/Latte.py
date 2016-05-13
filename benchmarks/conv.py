@@ -25,34 +25,40 @@ def main():
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)
 
+    run_backward = False
+
     # warmup
     print("Warming up...")
     for _ in range(3):
         net.forward_tasks[1]()
-        # net.backward_tasks[0]()
+        if run_backward:
+            net.backward_tasks[0]()
 
     forward_t_total = 0.0
     backward_t_total = 0.0
-    num_trials = 2
+    num_trials = 10
     print("Running trials")
     for _ in range(num_trials):
         print("    {}".format(_))
         t = time.time()
         net.forward_tasks[1]()
         forward_t_total += time.time() - t 
-        t = time.time()
-        net.backward_tasks[0]()
-        backward_t_total += time.time() - t 
+        if run_backward:
+            t = time.time()
+            net.backward_tasks[0]()
+            backward_t_total += time.time() - t 
 
 
-    _, ofm, oh, ow = net.buffers[conv1.name + "value"].shape
+    _, ofm_outer, oh, ow, ofm_inner = net.buffers[conv1.name + "value"].shape
+    ofm = ofm_outer * ofm_inner
     flops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3))
     forward_flops = flops + batch_size * ofm * oh * ow
     backward_flops = 2 * flops + batch_size * ofm * oh * ow
     print("FP    : {} ms, {} GFLOPS/s".format(forward_t_total / num_trials * 1000, 
                                              (forward_flops * num_trials * 1e-9) / forward_t_total))
-    print("BP+WU : {} ms, {} GFLOPS/s".format(backward_t_total / num_trials * 1000, 
-                                             (backward_flops * num_trials * 1e-9) / backward_t_total))
+    if run_backward:
+        print("BP+WU : {} ms, {} GFLOPS/s".format(backward_t_total / num_trials * 1000, 
+                                                 (backward_flops * num_trials * 1e-9) / backward_t_total))
 
 if __name__ == '__main__':
     main()
