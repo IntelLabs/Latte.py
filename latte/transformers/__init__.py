@@ -118,6 +118,7 @@ def interchange_inner_loop(ast):
 import ctypes
 import ctree
 import copy
+import ctree.np
 class BasicTypeInference(ast.NodeTransformer):
     def __init__(self):
         self.seen = {}
@@ -147,7 +148,10 @@ class BasicTypeInference(ast.NodeTransformer):
             return ctree.types.get_ctype(node.value)
         elif isinstance(node, C.BinaryOp):
             if isinstance(node.op, C.Op.ArrayRef):
-                return ctypes.c_float()
+                while not isinstance(node, C.SymbolRef):
+                    node = node.left
+                pointer_type = self._get_type(node)
+                return ctree.types.get_c_type_from_numpy_dtype(pointer_type._dtype_)()
             else:
                 left = self._get_type(node.left)
                 right = self._get_type(node.right)

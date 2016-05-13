@@ -404,6 +404,9 @@ class Net:
 
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
+        for arg in func_def.params:
+            buf = self.buffers[arg.name]
+            arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
         func_def = transformers.BasicTypeInference().visit(func_def)
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
@@ -580,19 +583,20 @@ class Net:
             else:
                 buf_shape = buf_shape[1:]
             # casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-            self._insert_cast(casts, buf_shape, name)
+            self._insert_cast(casts, buf_shape, name, buf.dtype)
             # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
         return casts, func_def.defn, args
 
-    def _insert_cast(self, body, shape, name):
+    def _insert_cast(self, body, shape, name, dtype):
         shape_str = "".join("[{}]".format(d) for d in shape)
 
         body.insert(0, StringTemplate(
-            "float (* __restrict $arg_name)$shape = (float (*)$cast) _$arg_name;",
+            "$type (* __restrict $arg_name)$shape = ($type (*)$cast) _$arg_name;",
             {
                 "arg_name": C.SymbolRef(name), 
                 "shape": C.SymbolRef(shape_str),
-                "cast": C.SymbolRef(shape_str)
+                "cast": C.SymbolRef(shape_str),
+                "type": C.SymbolRef(ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(dtype)()))
             }))
 
     def forward(self):

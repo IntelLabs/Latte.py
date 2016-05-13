@@ -11,7 +11,7 @@ class MaxNeuron(Neuron):
         self.inputs = []
         self.grad_inputs = []
 
-        self.mask = np.zeros((2,), dtype=np.float32)
+        self.mask = np.zeros((2,), dtype=np.int32)
 
     def forward(self):
         max_value = -INFINITY
@@ -25,9 +25,9 @@ class MaxNeuron(Neuron):
         
 
     def backward(self):
-        pass
-        # self.grad_inputs[self.maxidx[0], self.maxidx[1], self.maxidx[2]] += self.grad
-
+        j = self.mask[0]
+        k = self.mask[1]
+        self.grad_inputs[0,j,k] += self.grad
 
 def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     assert input_ensemble.ndim == 3, "PoolingLayer only supports 3-d input"

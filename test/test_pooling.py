@@ -12,7 +12,7 @@ def reference_pooling_forward(_input, kernel, pad, stride):
     output_width = ((in_width - kernel_w + 2 * pad_w) // stride_w) + 1
     output_height = ((in_height - kernel_h + 2 * pad_h) // stride_h) + 1
     output = np.zeros((batch_size, in_channels, output_height, output_width), dtype=np.float32)
-    output_mask = np.zeros((batch_size, in_channels, output_height, output_width, 2), dtype=np.float32)
+    output_mask = np.zeros((batch_size, in_channels, output_height, output_width, 2), dtype=np.int32)
     for n in range(batch_size):
         for o in range(in_channels):
             for y in range(output_height):
@@ -35,26 +35,20 @@ def reference_pooling_forward(_input, kernel, pad, stride):
                     output_mask[n, o, y, x, :] = idx
     return output, output_mask
 
-def reference_conv_backward(top_grad, _input, pad, stride):
+def reference_pooling_backward(top_grad, _input, mask, stride=2, kernel=2, pad=0):
     stride_h, stride_w = stride, stride
     pad_h, pad_w = pad, pad
     batch_size, in_channels, in_height, in_width = _input.shape
-    output_channels, _, kernel_h, kernel_w = weights.shape
     _, output_channels, output_height, output_width = top_grad.shape
     bot_grad = np.zeros_like(_input)
     for n in range(batch_size):
         for o in range(output_channels):
             for y in range(output_height):
                 for x in range(output_width):
-                    bias_grad[o] += top_grad[n, o, y, x]
-                    in_y = max(y*stride_h - pad, 0)
-                    in_x = max(x*stride_w - pad, 0)
-                    out_y = min(in_y + kernel_h, in_height)
-                    out_x = min(in_x + kernel_w, in_width)
-                    for c in range(in_channels):
-                        for i, p in enumerate(range(in_y, out_y)):
-                            for j, q in enumerate(range(in_x, out_x)):
-                                bot_grad[n, c, p, q] += top_grad[n, o, y, x]
+                    i, j = mask[n, o, y, x]
+                    in_y = min(max(y*stride_h - pad, 0) + i, in_height - 1)
+                    in_x = min(max(x*stride_w - pad, 0) + j, in_width - 1)
+                    bot_grad[n,o,in_y,in_x] += top_grad[n, o, y, x]
     return bot_grad
 
 def check_equal(actual, expected, atol=1e-6):
@@ -82,18 +76,15 @@ def test_forward_backward():
     actual_mask = util.convert_6d_5d(actual_mask)
     check_equal(actual_mask, expected_mask)
 
-    # top_grad = net.buffers[pool1.name + "grad"]
-    # np.copyto(top_grad, np.random.rand(*top_grad.shape))
-    # top_grad_converted = util.convert_5d_4d(top_grad)
+    top_grad = net.buffers[pool1.name + "grad"]
+    np.copyto(top_grad, np.random.rand(*top_grad.shape))
+    top_grad_converted = util.convert_5d_4d(top_grad)
 
-    # net.backward()
+    net.backward()
 
-    # expected_bot_grad = \
-    #     reference_conv_backward(top_grad_converted, actual_converted, pad, 1)
+    expected_bot_grad = \
+        reference_pooling_backward(top_grad_converted, data_value, expected_mask, stride=2, kernel=2, pad=0)
 
-    # bot_grad = net.buffers[conv1.name + "grad"]
-    # actual_converted = util.convert_5d_4d(bot_grad)
-    # check_equal(actual_converted, expected_bot_grad)
-    # bot_grad = net.buffers[pool1.name + "grad"]
-    # actual_converted = util.convert_5d_4d(bot_grad)
-    # check_equal(actual_converted, expected_bot_grad)
+    bot_grad = net.buffers[data.name + "grad"]
+    actual_converted = util.convert_5d_4d(bot_grad)
+    check_equal(actual_converted, expected_bot_grad)
