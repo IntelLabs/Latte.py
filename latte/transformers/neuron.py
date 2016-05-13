@@ -42,22 +42,28 @@ class NeuronTransformer(ast.NodeTransformer):
             # name is ensemble name + attribute
             name = self.ensemble.name + node.attr
 
-            # mark as seen
-            self.seen_vars.add(name)
-
             ndim = self.ensemble.ndim
             offset = 0
+            if node.attr.endswith("input"):
+                name += "s"
+                self.seen_vars.add(name)
+                assert isinstance(self.ensemble, latte.ensemble.ActivationEnsemble)
+                args = [ast.Name("_neuron_index_{}".format(i), ast.Load()) for i in range(ndim + 1)]
+                args[1].id += "_outer"
+                args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
+                return ast.Subscript(ast.Name(name, ast.Load()), 
+                                     ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
+
+            # mark as seen
+            self.seen_vars.add(name)
 
             if node.attr in self.ensemble.batch_fields:
                 # increment ndim for fields that have a batch dimension
                 ndim += 1
             elif node.attr in ["inputs", "grad_inputs"]:
-                if isinstance(self.ensemble, latte.ensemble.ActivationEnsemble):
-                    ndim += 1
-                else:
-                    # only generate batch index for inputs/grad_inputs because
-                    # the user will provide rest of indices in expression
-                    ndim = 1
+                # only generate batch index for inputs/grad_inputs because
+                # the user will provide rest of indices in expression
+                ndim = 1
             else:
                 # fields that don't have a batch dimension start at an offset 1
                 # as 0 is the batch dimension
@@ -107,8 +113,6 @@ class NeuronTransformer(ast.NodeTransformer):
                         ast.Name("_input_offset_{}".format(i + 1), ast.Load())) 
                     for i, value in enumerate(value.slice.value.elts[1:ndim + 1])
                 ]
-                if isinstance(self.ensemble, latte.ensemble.ActivationEnsemble):
-                    value.slice.value.elts.append(ast.Name("_neuron_index_1_inner", ast.Load()))
             else:
                 value.slice.value.elts.append(ast.Name("_neuron_index_1_inner", ast.Load()))
             return value

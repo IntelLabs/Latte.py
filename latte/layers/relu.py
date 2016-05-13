@@ -9,13 +9,13 @@ class ReLUNeuron(Neuron):
         self.grad_inputs = []
 
     def forward(self):
-        self.value = max(self.inputs[0], 0.0)
+        self.value = max(self.input, 0.0)
 
     def backward(self):
-        if self.inputs[0] > 0.0:
-            self.grad_inputs[0] = self.grad
+        if self.input > 0.0:
+            self.grad_input = self.grad
         else:
-            self.grad_inputs[0] = 0.0
+            self.grad_input = 0.0
 
 def ReLULayer(net, input_ensemble):
     

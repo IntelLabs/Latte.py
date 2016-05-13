@@ -20,6 +20,7 @@ def test_forward_backward():
     weights = net.buffers[fc1.name + "weights"]
     weights_converted = util.convert_4d_2d(weights)
     actual  = net.buffers[fc1.name + "value"]
+    actual = actual.reshape((actual.shape[0], actual.shape[1] * actual.shape[2]))
     expected = np.dot(data_value.reshape((8, 24 * 24)), weights_converted.transpose())
     # for n in range(8):
     #     expected[n, :] += bias
@@ -28,6 +29,7 @@ def test_forward_backward():
 
     top_grad = net.buffers[fc2.name + "grad"]
     np.copyto(top_grad, np.random.rand(*top_grad.shape))
+    top_grad = top_grad.reshape((top_grad.shape[0], top_grad.shape[1] * top_grad.shape[2]))
 
     net.backward()
     weights = net.buffers[fc2.name + "weights"]
@@ -35,6 +37,7 @@ def test_forward_backward():
 
     bot_grad = net.buffers[fc1.name + "grad"]
     expected_bot_grad = np.dot(top_grad, weights_converted)
+    bot_grad = bot_grad.reshape((bot_grad.shape[0], bot_grad.shape[1] * bot_grad.shape[2]))
     check_equal(bot_grad, expected_bot_grad)
 
     weights_grad = np.sum(net.buffers[fc2.name + "grad_weights"], axis=0)

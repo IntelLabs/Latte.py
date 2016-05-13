@@ -74,35 +74,35 @@ def tile_outer_loop(ast, ndim):
 
 class LoopToVectorizeFinder(ast.NodeVisitor):
     def __init__(self):
-        self.var = None
+        self.stores = []
 
-    def visit(self, node):
-        if self.var is not None:
-            return 
-        super().visit(node)
-    
-    def visit_For(self, node):
-        if not any([isinstance(s, C.For) for s in node.body]):
-            pass
-            # print(node)
-        [self.visit(s) for s in node.body]
+    def visit_AugAssign(self, node):
+        if isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
+            self.stores.append(node.target)
 
-    # def visit_AugAssign(self, node):
-    #     if isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
-    #         self.var = node.target.right.name
+    def visit_BinaryOp(self, node):
+        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.BinaryOp) and isinstance(node.left.op, C.Op.ArrayRef):
+            self.stores.append(node.left)
 
-    # def visit_BinaryOp(self, node):
-    #     if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.BinaryOp) and isinstance(node.left.op, C.Op.ArrayRef):
-    #         self.var = node.left.right.name
-    #         return
-    #     self.visit(node.left)
-    #     self.visit(node.right)
-
-def get_loop_to_vectorize(ast):
+def get_loop_to_vectorize(tree):
     visitor = LoopToVectorizeFinder()
-    visitor.visit(ast)
-    return visitor.var
+    visitor.visit(tree)
+    stores = visitor.stores
+    if len(stores) == 1:
+        if isinstance(stores[0].right, C.SymbolRef):
+            return stores[0].right.name
+    return None
 
+
+class RemoveIndexExprs(ast.NodeTransformer):
+    def __init__(self, var):
+        self.var = var
+
+    def visit_BinaryOp(self, node):
+        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.SymbolRef) and \
+                util.contains_symbol(node.right, self.var):
+            return C.Constant(0)
+        return node
 
 class Vectorizer(ast.NodeTransformer):
     def __init__(self, loop_var):
@@ -119,6 +119,7 @@ class Vectorizer(ast.NodeTransformer):
         node.body = [self.visit(s) for s in node.body]
         if node.init.left.name == self.loop_var:
             body = node.body
+            body = [RemoveIndexExprs(self.loop_var).visit(s) for s in node.body]
             # if len(self.transposed_buffers) > 0:
             #     for buffer_name in self.transposed_buffers:
             #         body.insert(0, 
@@ -154,18 +155,18 @@ class Vectorizer(ast.NodeTransformer):
                 return simd_macros.mm256_store_ps(
                         node.target.left,
                         C.BinaryOp(self.visit(node.target), node.op, node.value))
-        elif isinstance(node.op, C.Op.Add) and isinstance(node.value, C.BinaryOp) and \
-                isinstance(node.value.op, C.Op.Mul):
-            # if not isinstance(node.target, C.SymbolRef):
-            #     node.value = C.FunctionCall(C.SymbolRef("vsum"), [node.value])
-            #     return node
-            # else:
-                return C.Assign(node.target, C.FunctionCall(C.SymbolRef("_mm256_fmadd_ps"), [node.value.left, node.value.right, node.target]))
+        # elif isinstance(node.op, C.Op.Add) and isinstance(node.value, C.BinaryOp) and \
+        #         isinstance(node.value.op, C.Op.Mul):
+        #     # if not isinstance(node.target, C.SymbolRef):
+        #     #     node.value = C.FunctionCall(C.SymbolRef("vsum"), [node.value])
+        #     #     return node
+        #     # else:
+        #         return C.Assign(node.target, C.FunctionCall(C.SymbolRef("_mm256_fmadd_ps"), [node.value.left, node.value.right, node.target]))
         elif isinstance(node.op, C.Op.Add) and isinstance(node.value, C.FunctionCall):
             # TODO: Verfiy it's a vector intrinsic
             return C.Assign(node.target, C.FunctionCall(C.SymbolRef("_mm256_add_ps"), [node.value, node.target]))
         elif isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
-            raise NotImplementedError()
+            raise NotImplementedError(node)
         node.target = self.visit(node.target)
         return node
 
@@ -218,6 +219,19 @@ class Vectorizer(ast.NodeTransformer):
             return node
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
+        return node
+
+    def visit_FunctionCall(self, node):
+        node.args = [self.visit(a) for a in node.args]
+        if node.func.name in ["fmax", "fmin"]:
+            node.func.name = "_mm256_" + node.func.name[1:] + "_ps"
+            args = []
+            for arg in node.args:
+                if isinstance(arg, C.Constant):
+                    args.append(StringTemplate("{" + ",".join(str(arg.value) for _ in range(latte.core.SIMDWIDTH)) + "}"))
+                else:
+                    args.append(arg)
+            node.args = args
         return node
 
 def vectorize_loop(ast, loopvar):

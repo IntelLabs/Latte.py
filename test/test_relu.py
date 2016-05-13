@@ -30,7 +30,7 @@ def test_forward_backward():
     top_grad_value = util.convert_5d_4d(top_grad_value)
 
     net.backward()
-    bot_grad = net.buffers[data.name + "grad"]
+    bot_grad = net.buffers[relu1.name + "grad_inputs"]
     bot_grad = util.convert_5d_4d(bot_grad)
     
     expected_bot_grad = (data_value > 0.0) * top_grad_value

@@ -269,16 +269,27 @@ def collect_stores(ast):
 
 def convert_6d_4d(arr):
     shape = arr.shape
-    arr_converted = np.zeros_like(arr)
-    arr_reshaped = arr.reshape(shape[0] // 8, shape[1] // 8, shape[2], shape[3], 8, 8)
-    for ofm in range(shape[0] // 8):
-        for ifm in range(shape[1] // 8):
+    converted_shape = (shape[0] * shape[5], shape[1] * shape[4], shape[2], shape[3])
+    arr_converted = np.zeros(converted_shape)
+    for ofm in range(shape[0]):
+        for ifm in range(shape[1]):
             for y in range(shape[2]):
                 for x in range(shape[3]):
-                    for v2 in range(8):
-                        for v in range(8):
-                            arr_converted[ofm * 8 + v, ifm * 8 + v2, y, x] = \
-                                arr_reshaped[ofm, ifm, y, x, v, v2]
+                    for v2 in range(shape[4]):
+                        for v in range(shape[5]):
+                            arr_converted[ofm * shape[5] + v, ifm * shape[4] + v2, y, x] = \
+                                arr[ofm, ifm, y, x, v, v2]
+    return arr_converted
+
+def convert_3d_2d(arr):
+    shape = arr.shape
+    converted_shape = (shape[0] * shape[2], shape[1])
+    arr_converted = np.zeros(converted_shape)
+    for x in range(shape[0]):
+        for y in range(shape[1]):
+            for v in range(shape[2]):
+                arr_converted[x * shape[2] + v, y] = \
+                    arr[x, y, v]
     return arr_converted
 
 def convert_6d_4d_tr(arr):
@@ -297,38 +308,35 @@ def convert_6d_4d_tr(arr):
     
 def convert_5d_4d(arr):
     shape = arr.shape
-    arr_converted = np.zeros_like(arr)
-    arr_reshaped = arr.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
+    arr_converted = np.zeros((shape[0], shape[1] * shape[4], shape[2], shape[3]))
     for n in range(shape[0]):
-        for ifm in range(shape[1] // 8):
+        for ifm in range(shape[1]):
             for y in range(shape[2]):
                 for x in range(shape[3]):
-                    for v in range(8):
-                        arr_converted[n, ifm * 8 + v, y, x] = arr_reshaped[n, ifm, y, x, v]
+                    for v in range(shape[4]):
+                        arr_converted[n, ifm * shape[4] + v, y, x] = arr[n, ifm, y, x, v]
     return arr_converted
     
 def convert_6d_5d(arr):
     shape = arr.shape
-    arr_converted = np.zeros_like(arr)
-    arr_reshaped = arr.reshape(shape[0], shape[1] // 8, shape[2], shape[3], shape[4], 8)
+    arr_converted = np.zeros((shape[0], shape[1] * shape[5], *shape[2:-1]))
     for n in range(shape[0]):
-        for ifm in range(shape[1] // 8):
+        for ifm in range(shape[1]):
             for y in range(shape[2]):
                 for x in range(shape[3]):
                     for z in range(shape[4]):
-                        for v in range(8):
-                            arr_converted[n, ifm * 8 + v, y, x, z] = arr_reshaped[n, ifm, y, x, z, v]
+                        for v in range(shape[5]):
+                            arr_converted[n, ifm * shape[5] + v, y, x, z] = arr[n, ifm, y, x, z, v]
     return arr_converted
 
 def convert_4d_2d(arr):
     shape = arr.shape
-    arr_converted = np.zeros_like(arr)
-    arr_reshaped = arr.reshape(shape[0] // 8, shape[1] // 8, 8, 8)
-    for n in range(shape[0] // 8):
-        for i in range(shape[1] // 8):
-            for v in range(8):
-                for v2 in range(8):
-                    arr_converted[n * 8 + v, i * 8 + v2] = arr_reshaped[n, i, v, v2]
+    arr_converted = np.zeros((shape[0] * shape[2], shape[1] * shape[3]))
+    for n in range(shape[0]):
+        for i in range(shape[1]):
+            for v in range(shape[2]):
+                for v2 in range(shape[3]):
+                    arr_converted[n * shape[2] + v, i * shape[3] + v2] = arr[n, i, v, v2]
     return arr_converted
 
 # class Unpack(ast.NodeTransformer):

@@ -77,6 +77,7 @@ def test_forward_backward():
 
     net.forward()
 
+    bias = util.convert_3d_2d(bias)
     expected = reference_conv_forward(data_value, weights_converted, bias,
             pad, 1)
 
@@ -103,8 +104,9 @@ def test_forward_backward():
     weights_grad = np.sum(net.buffers[conv2.name + "grad_weights"], axis=0)
     # weights_grad = net.buffers[conv2.name + "grad_weights"][0]
     weights_converted = util.convert_6d_4d(weights_grad)
-    check_equal(weights_converted, expected_weights_grad)
+    check_equal(weights_converted, expected_weights_grad, 1e-5)
 
     bias_grad = np.sum(net.buffers[conv2bias.name + "grad_bias"], axis=0)
+    bias_grad = util.convert_3d_2d(bias_grad)
     # bias_grad = net.buffers[conv2bias.name + "grad_bias"][0]
     check_equal(bias_grad, expected_bias_grad)

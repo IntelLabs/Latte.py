@@ -2,6 +2,7 @@ import ast
 import ctree.c.nodes as C
 import ctree
 import latte.util as util
+import astor
 
 class VectorLoadCollector(ast.NodeVisitor):
     def __init__(self):
@@ -84,12 +85,16 @@ class InvariantLoadStoreLifter(ast.NodeTransformer):
 
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
+        if node.init.left.name == "_neuron_index_0":
+            # Don't lift out of outer most loop
+            return node
         pre_stmts = []
         new_body = []
         post_stmts = []
         loop_var = node.init.left.name
         deps = set()
         for stmt in node.body:
+            # print(astor.dump_tree(stmt))
             if isinstance(stmt, C.FunctionCall) and "_mm" in stmt.func.name and \
                 "_store" in stmt.func.name and \
                 not util.contains_symbol(stmt, loop_var) and \

@@ -149,6 +149,7 @@ class Net:
         self.backward_tasks = []
         self.connections_map = {}
         self.buffer_dim_info = {}
+        self.reshaped_buffers = {}
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -167,8 +168,7 @@ class Net:
         self.connections.append(Connection(source_ens, sink_ens, mapping, reshape))
 
     def add_one_to_one_connections(self, source_ens, sink_ens):
-        reshape = source_ens.shape + (1,)
-        self.connections.append(Connection(source_ens, sink_ens, one_to_one, reshape))
+        self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
 
     def _get_uniformity(self, ensemble, field):
         _shape = ensemble.shape
@@ -255,7 +255,7 @@ class Net:
                     "grad": "grad_inputs"
                 }
                 target_buf = self.buffers[ensemble.name + target_map[field]]
-                self.buffers[ensemble.name + field] = target_buf.reshape(target_buf.shape[:-1])
+                self.buffers[ensemble.name + field] = target_buf
             else:
                 _shape = (self.batch_size, ) + ensemble.shape
                 self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
@@ -455,7 +455,7 @@ class Net:
             # loop.pragma = "omp parallel for collapse(2)"
             loop.pragma = "omp parallel for"
 
-        unroll = True
+        unroll = False
         if candidate is not None and unroll:
             if unroll_target_loop_var == "_neuron_index_1_inner":
                 unroll_factor = SIMDWIDTH
@@ -473,16 +473,49 @@ class Net:
                 # func_def = transformers.promote_single_use_registers(func_def)
                 # func_def = transformers.interleave_loads(func_def)
 
+        type_sig = []
+        casts = []
+        for arg in args:
+            name = arg.arg
+            buf = self.buffers[name]
+            buf_shape = list(buf.shape)
+            if buf.ctypes._data not in self.reshaped_buffers:
+                # if candidate is not None and name in transposed_buffers:
+                #     dim = transposed_buffers[name]
+                #     buf_shape[dim] //= SIMDWIDTH
+                #     buf_shape.append(SIMDWIDTH)
+                if "grad_" in name and "grad_inputs" not in name or \
+                        name.replace(ensemble.name, "") in ensemble.batch_fields or \
+                        "inputs" in name:
+                    buf_shape[1] //= SIMDWIDTH
+                    buf_shape.append(SIMDWIDTH)
+                elif "inputs" not in name:
+                    buf_shape[0] //= SIMDWIDTH
+                    buf_shape.append(SIMDWIDTH)
+                if name in tiled_buffers and not name.endswith("inputs"):
+                    dim = len(buf_shape) - tiled_buffers[name] - 1
+                    buf_shape[dim] //= SIMDWIDTH
+                    buf_shape.append(SIMDWIDTH)
+
+                self.reshaped_buffers[buf.ctypes._data] = buf_shape
+                self.buffers[name] = buf.reshape(buf_shape)
+            else:
+                buf_shape = self.reshaped_buffers[buf.ctypes._data]
+                self.buffers[name] = buf.reshape(buf_shape)
+            # casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+            self._insert_cast(casts, buf_shape[1:], name, buf.dtype)
+            # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
+
         if candidate is not None:
             for buffer_name, trans_dim in transposed_buffers.items():
                 curr_body = []
                 shape = self.buffers[buffer_name].shape
-                if buffer_name in vectorized_buffers:
-                    shape = list(shape)
-                    for (dim, factor) in vectorized_buffers[buffer_name]:
-                        dim_to_vectorize = len(shape) - dim - 1
-                        shape[dim_to_vectorize] //= factor
-                        shape.append(factor)
+                # if buffer_name in vectorized_buffers:
+                #     shape = list(shape)
+                #     for (dim, factor) in vectorized_buffers[buffer_name]:
+                #         dim_to_vectorize = len(shape) - dim - 1
+                #         shape[dim_to_vectorize] //= factor
+                #         shape.append(factor)
                 if "grad_" in buffer_name:
                     # node = C.For(
                     #     C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
@@ -559,41 +592,13 @@ class Net:
 
                 args.append(ast.arg(buffer_name + "_transposed", None))
                 self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
+                self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
                 # func_def.defn.insert(0, StringTemplate(
                 #     "float $arg_name$shape = {};",
                 #     {
                 #         "arg_name": C.SymbolRef(buffer_name + "_transposed"), 
                 #         "shape": C.SymbolRef(shape_str),
                 #     }))
-
-        type_sig = []
-        casts = []
-        for arg in args:
-            name = arg.arg
-            buf = self.buffers[name]
-            buf_shape = list(buf.shape)
-            if "grad_" in name and "grad_inputs" not in name or \
-                    name.replace(ensemble.name, "") in ensemble.batch_fields or \
-                    "inputs" in name:
-                buf_shape[1] //= SIMDWIDTH
-                buf_shape.append(SIMDWIDTH)
-            else:
-                buf_shape[0] //= SIMDWIDTH
-                buf_shape.append(SIMDWIDTH)
-
-            if name.endswith("value") or name.endswith("grad") or "inputs" in name:
-                buf_shape = buf_shape[1:]
-            elif name in vectorized_buffers:
-                for (dim, factor) in vectorized_buffers[name]:
-                    dim_to_vectorize = len(buf_shape) - dim - 1
-                    buf_shape[dim_to_vectorize] //= factor
-                    buf_shape.append(factor)
-                buf_shape = tuple(buf_shape[1:])
-            else:
-                buf_shape = buf_shape[1:]
-            # casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-            self._insert_cast(casts, buf_shape, name, buf.dtype)
-            # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
         return casts, func_def.defn, args
 
     def _insert_cast(self, body, shape, name, dtype):

@@ -39,7 +39,7 @@ class BiasNeuron(Neuron):
         self.grad_bias = grad_bias
 
     def forward(self):
-        self.value = self.inputs[0] + self.bias[0]
+        self.value = self.input + self.bias[0]
 
     def backward(self):
         self.grad_bias[0] += self.grad
