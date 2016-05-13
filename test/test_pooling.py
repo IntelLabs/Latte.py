@@ -84,6 +84,6 @@ def test_forward_backward():
     expected_bot_grad = \
         reference_conv_backward(top_grad_converted, actual_converted, pad, 1)
 
-    bot_grad = net.buffers[conv1.name + "grad"]
+    bot_grad = net.buffers[pool1.name + "grad"]
     actual_converted = util.convert_5d_4d(bot_grad)
     check_equal(actual_converted, expected_bot_grad)
