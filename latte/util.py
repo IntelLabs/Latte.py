@@ -6,6 +6,7 @@ import collections
 import ctree.c.nodes as C
 import numpy as np
 import latte
+from copy import deepcopy
 
 def aligned(a, alignment=64):
     if (a.ctypes.data % alignment) == 0:
@@ -74,6 +75,14 @@ def inline_variable(variable, value, ast):
     return InlineVariable(variable, value).visit(ast)
 
 
+class AppendAllNames(ast.NodeTransformer):
+    def __init__(self, suffix):
+        self.suffix = suffix
+
+    def visit_Name(self, node):
+        node.id += self.suffix
+        return node
+
 class TileArrayRefs(ast.NodeTransformer):
     def __init__(self, idx):
         super().__init__()
@@ -85,16 +94,16 @@ class TileArrayRefs(ast.NodeTransformer):
             contains_name(node, self.idx):
             idx = 0
             curr_node = node
-            while not isinstance(curr_node.right, ast.Name) or \
-                    curr_node.right.id != self.idx:
+            while not contains_name(curr_node.right, self.idx):
                 idx += 1
                 curr_node = curr_node.left
+            idx_expr = deepcopy(curr_node.right)
             while not isinstance(curr_node, ast.Name):
                 curr_node = curr_node.left
             self.tiled_buffers[curr_node.id] = idx
 
-            # node = replace_name(ast.Name(self.idx, ast.Load()), ast.Name(self.idx+"_tile", ast.Load()), node)
-            return C.ArrayRef(node, C.SymbolRef(self.idx + "_inner"))
+            idx_expr = AppendAllNames("_inner").visit(idx_expr)
+            return C.ArrayRef(node, idx_expr)
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
         return node

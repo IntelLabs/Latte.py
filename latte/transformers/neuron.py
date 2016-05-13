@@ -100,12 +100,15 @@ class NeuronTransformer(ast.NodeTransformer):
             # return child node
             if "inputs" in value.value.id or "grad_inputs" in value.value.id:
                 ndim = self.ensemble.ndim
+                if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
+                    value.slice.value.elts.append(ast.BinOp(ast.Num(0), ast.Add(), ast.Name("_input_offset_1_inner", ast.Load())))
                 value.slice.value.elts[1:ndim + 1] = [
                     ast.BinOp(value, ast.Add(), 
                         ast.Name("_input_offset_{}".format(i + 1), ast.Load())) 
                     for i, value in enumerate(value.slice.value.elts[1:ndim + 1])
                 ]
-                value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
+                if isinstance(self.ensemble, latte.ensemble.ActivationEnsemble):
+                    value.slice.value.elts.append(ast.Name("_neuron_index_1_inner", ast.Load()))
             else:
                 value.slice.value.elts.append(ast.Name("_neuron_index_1_inner", ast.Load()))
             return value

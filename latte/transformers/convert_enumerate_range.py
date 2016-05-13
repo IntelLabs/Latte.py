@@ -5,6 +5,7 @@ import ctypes
 import latte.core
 import inspect
 from ctree.transformations import PyBasicConversions
+import astor
 
 def get_dependent_statements(statements, target):
     deps = set([target])
@@ -153,26 +154,22 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             offset = node.mapping.get_offset(dim)
 
             body = []
-            input_offset = "_input_offset_{}".format(dim + 1)
-            node.child_for.body = [UpdateInputIndices(input_offset + "_index", input_offset).visit(s) for s in node.child_for.body]
-            if isinstance(offset, ast.Num) and offset.n == 0:
-                body.append(
-                    C.Assign(C.SymbolRef(input_offset + "_index", ctypes.c_int()),
-                             C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset))))
-            else:
-                body.append(
-                    C.Assign(C.SymbolRef(input_offset + "_index", ctypes.c_int()), 
-                        C.FunctionCall(C.SymbolRef("MIN"), 
-                            [C.FunctionCall(C.SymbolRef("MAX"), 
-                                [C.Add(C.SymbolRef(loop_var), C.SymbolRef(input_offset)),
-                                 C.Constant(0)]), 
-                             C.Constant(ensemble.shape[dim] - 1)])))
+            if not (isinstance(offset, ast.Num) and offset.n == 0):
+                def gen_clamp(index):
+                    return C.FunctionCall(C.SymbolRef("MIN"), 
+                        [C.FunctionCall(C.SymbolRef("MAX"), 
+                            [index,
+                             C.Constant(0)]), 
+                         C.Constant(ensemble.shape[dim] - 1)])
+                node.child_for.body = [ClampInputIndex(loop_var, gen_clamp).visit(s) for s in node.child_for.body]
+                if dim == 0:
+                    node.child_for.body = [ClampInputIndex(loop_var + "_inner", gen_clamp).visit(s) for s in node.child_for.body]
             body += [self.visit(s) for s in node.child_for.body]
             if dim == 0:
-                body = [UpdateInputIndices(input_offset + "_inner_index", input_offset + "_inner").visit(s) for s in body]
-                body.insert(0, (
-                    C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
-                             C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))
+                # body = [UpdateInputIndices(input_offset + "_inner_index", input_offset + "_inner").visit(s) for s in body]
+                # body.insert(0, (
+                #     C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
+                #              C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))
                 return C.For(
                     C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length // latte.core.SIMDWIDTH)),
@@ -200,10 +197,10 @@ def convert_enumerate_ranges(ast, direction):
     ast = visitor.visit(ast)
     return ast, visitor.tiled_buffers
 
-class UpdateInputIndices(ast.NodeTransformer):
-    def __init__(self, new_var, old_var):
-        self.new_var = new_var
-        self.old_var = old_var
+class ClampInputIndex(ast.NodeTransformer):
+    def __init__(self, loop_var, gen_clamp):
+        self.loop_var = loop_var
+        self.gen_clamp = gen_clamp
 
     def visit_BinaryOp(self, node):
         if isinstance(node.op, C.Op.ArrayRef):
@@ -212,10 +209,9 @@ class UpdateInputIndices(ast.NodeTransformer):
                 curr_node = curr_node.left
             if curr_node.id.endswith("inputs"):
                 curr_node = node
-                while (isinstance(curr_node.right, ast.Name) and curr_node.right.id != self.old_var) or \
-                      (isinstance(curr_node.right, C.SymbolRef) and curr_node.right.name != self.old_var):
+                while not util.contains_name(curr_node.right, self.loop_var):
                     curr_node = curr_node.left
-                curr_node.right.id = self.new_var
+                curr_node.right = self.gen_clamp(curr_node.right)
                 return node
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)

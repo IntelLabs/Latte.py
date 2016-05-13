@@ -145,6 +145,9 @@ class BasicTypeInference(ast.NodeTransformer):
         elif isinstance(node, C.UnaryOp):
             return self._get_type(node.arg)
         elif isinstance(node, C.Constant):
+            if isinstance(node.value, int):
+                # promote all longs to int
+                return ctypes.c_int()
             return ctree.types.get_ctype(node.value)
         elif isinstance(node, C.BinaryOp):
             if isinstance(node.op, C.Op.ArrayRef):

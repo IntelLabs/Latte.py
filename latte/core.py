@@ -109,7 +109,8 @@ class Mapping:
 
     def get_offset(self, dim):
         if self.mapping_func == one_to_one:
-            return ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
+            # return ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
+            return ast.Num(0)
         range_expr = self.ast.body[-1].value.elts[dim]
         if len(range_expr.args) == 2:
             return range_expr.args[0]
@@ -404,6 +405,14 @@ class Net:
 
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
+
+        # convert loopvars from long to int
+        for loop in func_def.defn:
+            loop.init.left.type = ctypes.c_int()
+            for dim in range(ensemble.ndim + 1):
+                loop = loop.body[0]
+                loop.init.left.type = ctypes.c_int()
+
         for arg in func_def.params:
             buf = self.buffers[arg.name]
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()

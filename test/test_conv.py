@@ -82,7 +82,7 @@ def test_forward_backward():
 
     actual  = net.buffers[conv1.name + "value"]
     actual_converted = util.convert_5d_4d(actual)
-    check_equal(actual_converted, expected)
+    check_equal(actual_converted, expected, 1e-5)
 
     top_grad = net.buffers[conv2.name + "grad"]
     np.copyto(top_grad, np.random.rand(*top_grad.shape))
