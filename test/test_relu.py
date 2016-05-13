@@ -13,7 +13,7 @@ def test_forward_backward():
     data, data_value = MemoryDataLayer(net, (channels, height, width))
     relu1 = ReLULayer(net, data)
     
-    data_value[:, :, :] = np.random.rand(8, channels, height, width)
+    data_value[:, :, :, :] = np.random.rand(8, channels, height, width)
 
     net.compile()
     net.forward()
@@ -21,10 +21,17 @@ def test_forward_backward():
     expected = (data_value > 0.0) * data_value
 
     actual  = net.buffers[relu1.name + "value"]
+    actual = util.convert_5d_4d(actual)
     check_equal(actual, expected)
 
-    net.backward()
-    
     top_grad = net.buffers[relu1.name + "grad"]
-    expected_bot_grad = (data_value > 0.0) * top_grad
-    check_equal(top_grad, expected_bot_grad)
+    top_grad_value = np.random.rand(*top_grad.shape)
+    np.copyto(top_grad, top_grad_value)
+    top_grad_value = util.convert_5d_4d(top_grad_value)
+
+    net.backward()
+    bot_grad = net.buffers[data.name + "grad"]
+    bot_grad = util.convert_5d_4d(bot_grad)
+    
+    expected_bot_grad = (data_value > 0.0) * top_grad_value
+    check_equal(bot_grad, expected_bot_grad)

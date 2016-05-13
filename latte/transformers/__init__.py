@@ -153,9 +153,17 @@ class BasicTypeInference(ast.NodeTransformer):
                 right = self._get_type(node.right)
                 return ctree.types.get_common_ctype([left, right])
         elif isinstance(node, C.FunctionCall):
-            if node.func.name in ["MAX", "MIN"]:
+            if node.func.name in ["MAX", "MIN", "max", "min"]:
                 return ctree.types.get_common_ctype([self._get_type(a) for a in node.args])
         raise NotImplementedError(ast.dump(node))
+    
+    def visit_FunctionCall(self, node):
+        if node.func.name in ["max", "min"] and isinstance(self._get_type(node), ctypes.c_float):
+            # convert to fmax/fmin
+            node.func.name = "f" + node.func.name
+        else:
+            node.args = [self.visit(a) for a in node.args]
+        return node
 
     def visit_BinaryOp(self, node):
         node.left = self.visit(node.left)
