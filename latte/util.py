@@ -297,6 +297,19 @@ def convert_5d_4d(arr):
                     for v in range(8):
                         arr_converted[n, ifm * 8 + v, y, x] = arr_reshaped[n, ifm, y, x, v]
     return arr_converted
+    
+def convert_6d_5d(arr):
+    shape = arr.shape
+    arr_converted = np.zeros_like(arr)
+    arr_reshaped = arr.reshape(shape[0], shape[1] // 8, shape[2], shape[3], shape[4], 8)
+    for n in range(shape[0]):
+        for ifm in range(shape[1] // 8):
+            for y in range(shape[2]):
+                for x in range(shape[3]):
+                    for z in range(shape[4]):
+                        for v in range(8):
+                            arr_converted[n, ifm * 8 + v, y, x, z] = arr_reshaped[n, ifm, y, x, z, v]
+    return arr_converted
 
 def convert_4d_2d(arr):
     shape = arr.shape

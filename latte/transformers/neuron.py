@@ -48,7 +48,7 @@ class NeuronTransformer(ast.NodeTransformer):
             ndim = self.ensemble.ndim
             offset = 0
 
-            if node.attr in ["value", "grad"]:
+            if node.attr in self.ensemble.batch_fields:
                 # increment ndim for fields that have a batch dimension
                 ndim += 1
             elif node.attr in ["inputs", "grad_inputs"]:

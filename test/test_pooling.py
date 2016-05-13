@@ -23,13 +23,13 @@ def reference_pooling_forward(_input, kernel, pad, stride):
                     out_x = in_x + kernel_w
                     maxval = float('-inf')
                     idx = ()
-                    for p in range(in_y, out_y):
+                    for i, p in enumerate(range(in_y, out_y)):
                         p = min(max(p, 0), in_height - 1)
-                        for q in range(in_x, out_x):
+                        for j, q in enumerate(range(in_x, out_x)):
                             q = min(max(q, 0), in_width - 1)
                             curr = _input[n, o, p, q]
                             if curr > maxval:
-                                idx = (p, q)
+                                idx = (i, j)
                                 maxval = curr
                     output[n, o, y, x] = maxval
                     output_mask[n, o, y, x, :] = idx
@@ -67,7 +67,7 @@ def test_forward_backward():
     data, data_value = MemoryDataLayer(net, (channels, height, width))
     pool1 = MaxPoolingLayer(net, data, kernel=2, stride=2, pad=pad)
     
-    data_value[:, :, :] = np.random.rand(8, channels, height, width)
+    data_value[:, :, :, :] = np.random.rand(8, channels, height, width)
 
     net.compile()
 
@@ -76,10 +76,11 @@ def test_forward_backward():
     expected, expected_mask = reference_pooling_forward(data_value, 2, pad, 2)
 
     actual  = net.buffers[pool1.name + "value"]
-    # actual_mask  = net.buffers[pool1.name + "mask"]
+    actual_mask  = net.buffers[pool1.name + "mask"]
     actual_converted = util.convert_5d_4d(actual)
     check_equal(actual_converted, expected)
-    # check_equal(actual_mask, expected_mask)
+    actual_mask = util.convert_6d_5d(actual_mask)
+    check_equal(actual_mask, expected_mask)
 
     # top_grad = net.buffers[pool1.name + "grad"]
     # np.copyto(top_grad, np.random.rand(*top_grad.shape))

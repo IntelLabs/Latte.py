@@ -1,6 +1,8 @@
 import numpy as np
 
 class Neuron:
+    batch_fields = ["value", "grad"]
+
     def __init__(self):
         self.value = 0.0
         self.grad = 0.0

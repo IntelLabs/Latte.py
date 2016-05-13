@@ -217,19 +217,33 @@ class Net:
                             _iter.append(range(1))
                     shape += value.shape
 
+                    if field in neuron.batch_fields:
+                        shape.insert(0, self.batch_size)
+
                     buff = util.empty(shape, value.dtype)
                     self.buffers[ensemble.name + field] = buff
                     self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
+                    if field in neuron.batch_fields:
+                        # Never uniform across batch dimension
+                        self.buffer_dim_info[ensemble.name + field].insert(0, False)
 
                     if "grad_" in field:
                         self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
                     else:
                         for index in itertools.product(*_iter):
                             _index = []
-                            for i in range(len(uniform_across_dim)):
-                                if not uniform_across_dim[i]:
-                                    _index.append(index[i])
-                            buff[_index] = getattr(ensemble.neurons[index], field)
+                            if field in neuron.batch_fields:
+                                # skip batch dimension
+                                for i in range(len(uniform_across_dim[1:])):
+                                    if not uniform_across_dim[i + 1]:
+                                        _index.append(index[i])
+                                for i in range(self.batch_size):
+                                    buff[i, _index] = getattr(ensemble.neurons[index], field)
+                            else:
+                                for i in range(len(uniform_across_dim)):
+                                    if not uniform_across_dim[i]:
+                                        _index.append(index[i])
+                                buff[_index] = getattr(ensemble.neurons[index], field)
                 else:
                     raise NotImplementedError(field)
 
@@ -545,16 +559,18 @@ class Net:
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
-            buf_shape =list(buf.shape)
-            if "grad_" in name and "grad_inputs" not in name:
+            buf_shape = list(buf.shape)
+            if "grad_" in name and "grad_inputs" not in name or \
+                    name.replace(ensemble.name, "") in ensemble.batch_fields or \
+                    "inputs" in name:
                 buf_shape[1] //= SIMDWIDTH
                 buf_shape.append(SIMDWIDTH)
-            elif not (name.endswith("value") or name.endswith("grad") or "inputs" in name):
+            else:
                 buf_shape[0] //= SIMDWIDTH
                 buf_shape.append(SIMDWIDTH)
 
             if name.endswith("value") or name.endswith("grad") or "inputs" in name:
-                buf_shape = (max(buf_shape[1] // SIMDWIDTH, 1), *buf_shape[2:], SIMDWIDTH)
+                buf_shape = buf_shape[1:]
             elif name in vectorized_buffers:
                 for (dim, factor) in vectorized_buffers[name]:
                     dim_to_vectorize = len(buf_shape) - dim - 1

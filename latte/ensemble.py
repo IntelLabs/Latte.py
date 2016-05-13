@@ -10,6 +10,10 @@ class Ensemble:
         self.name = "ensemble{}".format(ENSEMBLE_COUNTER)
 
     @property
+    def batch_fields(self):
+        return self.neurons.flat[0].batch_fields
+
+    @property
     def shape(self):
         return self.neurons.shape
 
