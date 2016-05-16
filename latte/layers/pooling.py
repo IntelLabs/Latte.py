@@ -22,7 +22,6 @@ class MaxNeuron(Neuron):
                     self.mask[0] = j
                     self.mask[1] = k
         self.value = max_value
-        
 
     def backward(self):
         j = self.mask[0]

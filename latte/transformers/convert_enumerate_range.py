@@ -182,7 +182,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.core.SIMDWIDTH)),
                     C.PostInc(C.SymbolRef(loop_var + "_inner")),
                     body,
-                    "unroll_and_jam({})".format(latte.core.SIMDWIDTH)
+                    # "unroll_and_jam({})".format(latte.core.SIMDWIDTH)
                 )
             else:
                 return C.For(
@@ -190,7 +190,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
                     C.PostInc(C.SymbolRef(loop_var)),
                     body,
-                    "unroll_and_jam({})".format(length)
+                    # "unroll_and_jam({})".format(length)
                 )
         raise NotImplementedError()
 

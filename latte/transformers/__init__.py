@@ -180,3 +180,111 @@ class BasicTypeInference(ast.NodeTransformer):
         node.right = self.visit(node.right)
         return node
 
+
+class SimpleConstantPropogation(ast.NodeTransformer):
+    def __init__(self):
+        self.seen = {}
+
+    def _get_value(self, node):
+        if isinstance(node, C.Constant):
+            return node.value
+        elif isinstance(node, C.SymbolRef) and node.name in self.seen:
+            return self.seen[node.name]
+        return None
+
+    def visit_For(self, node):
+        # Skip loopvar inits
+        node.body = [self.visit(s) for s in node.body]
+        return node
+
+    def visit_SymbolRef(self, node):
+        if node.name in self.seen:
+            return C.Constant(self.seen[node.name])
+        return node
+
+    def visit_BinaryOp(self, node):
+        node.left = self.visit(node.left)
+        node.right = self.visit(node.right)
+        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.SymbolRef):
+            value = self._get_value(node.right)
+            if value is not None:
+                self.seen[node.left.name] = value
+                return C.Constant(0)
+        elif isinstance(node.op, C.Op.Div):
+            left = self._get_value(node.left)
+            right = self._get_value(node.right)
+            if left is not None and right is not None:
+                if isinstance(left, int) and isinstance(right, int):
+                    return C.Constant(left // right)
+                else:
+                    return C.Constant(left / right)
+        elif isinstance(node.op, C.Op.Mul):
+            left = self._get_value(node.left)
+            right = self._get_value(node.right)
+            if left is not None and right is not None:
+                return C.Constant(left * right)
+            elif left == 0 or right == 0:
+                return C.Constant(0)
+        elif isinstance(node.op, C.Op.Mod):
+            left = self._get_value(node.left)
+            right = self._get_value(node.right)
+            if left is not None and right is not None:
+                return C.Constant(left % right)
+        elif isinstance(node.op, C.Op.Add):
+            left = self._get_value(node.left)
+            right = self._get_value(node.right)
+            if left is not None and right is not None:
+                return C.Constant(left + right)
+            elif left == 0:
+                return node.right
+            elif right == 0:
+                return node.left
+        elif isinstance(node.op, C.Op.Sub):
+            left = self._get_value(node.left)
+            right = self._get_value(node.right)
+            if left is not None and right is not None:
+                return C.Constant(left - right)
+        return node
+
+class InnerLoopPusher(ast.NodeTransformer):
+    def visit_For(self, node):
+        if node.init.left.name == "_neuron_index_1_inner":
+            curr_node = node
+            outer_body = node.body[:-1]
+            node.body = [node.body[-1]]
+            while isinstance(curr_node.body[-1], C.For):
+                tmp_init = curr_node.init
+                tmp_test = curr_node.test
+                tmp_incr = curr_node.incr
+                tmp_pragma = curr_node.pragma
+                curr_node.init = curr_node.body[-1].init
+                curr_node.test = curr_node.body[-1].test
+                curr_node.incr = curr_node.body[-1].incr
+                curr_node.pragma = curr_node.body[-1].pragma
+                curr_node.body[-1].init = tmp_init
+                curr_node.body[-1].test = tmp_test
+                curr_node.body[-1].incr = tmp_incr
+                curr_node.body[-1].pragma = tmp_pragma
+                curr_node = curr_node.body[-1]
+            curr_node.body = outer_body + curr_node.body
+            curr_node.pragma = "unroll"
+            return node
+
+        node.body = [self.visit(s) for s in node.body]
+        return node
+
+
+
+def push_inner_loop_down(ast):
+    return InnerLoopPusher().visit(ast)
+
+
+class PragmaSIMDInserter(ast.NodeTransformer):
+    def visit_For(self, node):
+        node.body = [self.visit(s) for s in node.body]
+        if node.init.left.name.endswith("_inner"):
+            node.pragma = "simd"
+        return node
+
+def insert_pragma_simd(ast):
+    return PragmaSIMDInserter().visit(ast)

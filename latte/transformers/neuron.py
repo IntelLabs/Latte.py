@@ -71,6 +71,7 @@ class NeuronTransformer(ast.NodeTransformer):
             args = []
             if "grad_" in node.attr and not node.attr.endswith("inputs"):
                 args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
+                # args.append(ast.Num(0))
             for i in range(ndim):
                 # only append this dimension if it is not fixed in self.buffer_dim_info
                 # (used for shared values)

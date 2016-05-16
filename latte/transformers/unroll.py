@@ -77,14 +77,34 @@ class LoopUnroller(ast.NodeTransformer):
         super().__init__()
         self.target_var = target_var
         self.factor = factor
+    if False:
+        def visit(self, node):
+            """
+            Support replacing nodes with a list of nodes by flattening `body`
+            fields.
+            """
+            node = super().visit(node)
+            if hasattr(node, 'body'):
+                node.body = util.flatten(node.body)
+            return node
 
-    def visit_For(self, node):
-        node.body = [self.visit(s) for s in node.body]
-        if node.init.left.name == self.target_var:
-            node.incr = C.AddAssign(C.SymbolRef(self.target_var), C.Constant(self.factor))
-            visitor = UnrollStatements(self.target_var, self.factor)
-            node.body = util.flatten([visitor.visit(s) for s in node.body])
-        return node
+        def visit_For(self, node):
+            node.body = [self.visit(s) for s in node.body]
+            if node.init.left.name == self.target_var:
+                node.incr = C.AddAssign(C.SymbolRef(self.target_var), C.Constant(self.factor))
+                visitor = UnrollStatements(self.target_var, self.factor)
+                node.body = util.flatten([visitor.visit(s) for s in node.body])
+                if node.test.right.value == self.factor:
+                    return [util.replace_symbol(node.init.left.name, C.Constant(0), s) for s in node.body]
+            return node
+    else:
+        def visit_For(self, node):
+            node.body = [self.visit(s) for s in node.body]
+            if node.init.left.name == self.target_var:
+                node.incr = C.AddAssign(C.SymbolRef(self.target_var), C.Constant(self.factor))
+                visitor = UnrollStatements(self.target_var, self.factor)
+                node.body = util.flatten([visitor.visit(s) for s in node.body])
+            return node
 
 
 def unroll_inner_neuron_loop(ast, target_var, factor):

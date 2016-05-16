@@ -25,7 +25,7 @@ def main():
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)
 
-    run_backward = False
+    run_backward = True
 
     # warmup
     print("Warming up...")

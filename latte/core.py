@@ -22,7 +22,7 @@ import inspect
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
-os.environ["KMP_AFFINITY"] = "compact,0,0,granularity=fine"
+os.environ["KMP_AFFINITY"] = "compact"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -417,12 +417,11 @@ class Net:
             buf = self.buffers[arg.name]
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
         func_def = transformers.BasicTypeInference().visit(func_def)
+        func_def = transformers.SimpleConstantPropogation().visit(func_def)
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
         vectorized_buffers[ensemble.name+"inputs"] = [(2, SIMDWIDTH)]
         vectorized_buffers[ensemble.name+"grad_inputs"] = [(2, SIMDWIDTH)]
-        # func_def, tiled_buffers = transformers.tile_outer_loop(func_def, ensemble.ndim)
-        # func_def = transformers.interchange_tiled_loops(func_def)
 
         # for key in tiled_buffers.keys():
         #     if key in vectorized_buffers:
@@ -439,7 +438,10 @@ class Net:
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
         if candidate is not None:
             func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
+            # func_def = transformers.push_inner_loop_down(func_def)
             # func_def = transformers.interchange_inner_loop(func_def)
+            # func_def, _ = transformers.tile_outer_loop(func_def, ensemble.ndim)
+            # func_def = transformers.interchange_tiled_loops(func_def)
             func_def = transformers.register_promote_vector_loads_stores(func_def)
             func_def = transformers.lift_invariant_load_stores(func_def)
             func_def = transformers.fma_replace(func_def)
@@ -451,7 +453,7 @@ class Net:
             # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
             #     count += 1
             #     curr_loop = curr_loop.body[0]
-            # loop.pragma = "omp parallel for collapse({})".format(count)
+            # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
             loop.pragma = "omp parallel for collapse(2)"
             # loop.pragma = "omp parallel for"
 
@@ -472,6 +474,8 @@ class Net:
                 func_def = transformers.unroll_inner_neuron_loop(func_def, unroll_target_loop_var, unroll_factor)
                 # func_def = transformers.promote_single_use_registers(func_def)
                 # func_def = transformers.interleave_loads(func_def)
+        else:
+            func_def = transformers.insert_pragma_simd(func_def)
 
         type_sig = []
         casts = []
@@ -570,7 +574,8 @@ class Net:
                         C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
                         C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
                         C.PostInc(C.SymbolRef("x0")),
-                        curr_body
+                        curr_body,
+                        "omp parallel for collapse({})".format(2 if len(shape) - trans_dim - 1 > 2 else 1)
                     )
                     idx = [C.SymbolRef("x0")]
                     for i, d in enumerate(shape[1:-trans_dim-1]):
