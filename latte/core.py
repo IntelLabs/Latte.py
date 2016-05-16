@@ -18,6 +18,9 @@ import os
 # logging.basicConfig(level=20)
 import multiprocessing
 import inspect
+from latte.mapping import Mapping, one_to_one
+from latte.connection import Connection
+from latte.task import Task
 
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
@@ -29,50 +32,6 @@ TILE_SIZE = SIMDWIDTH
 UNROLL_FACTOR = 12
 
 include = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/includes.tmpl.c")
-
-class Mapping:
-    def __init__(self, mapping_func):
-        self.mapping_func = mapping_func
-        ast = util.get_ast(mapping_func).body[0]
-
-        closure_vars = inspect.getclosurevars(mapping_func)
-        for var, value in closure_vars.nonlocals.items():
-            ast = util.inline_variable(var, value, ast)
-        self.ast = ast
-        self.ndim = len(self.ast.args.args)
-        self.shape = mapping_func(*[1 for _ in range(self.ndim)])
-
-    def get_offset(self, dim):
-        if self.mapping_func == one_to_one:
-            # return ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
-            return ast.Num(0)
-        range_expr = self.ast.body[-1].value.elts[dim]
-        if len(range_expr.args) == 2:
-            return range_expr.args[0]
-        elif len(range_expr.args) == 3:
-            raise NotImplementedError()
-        else:
-            return ast.Num(0)
-
-
-class Connection:
-    def __init__(self, source_ens, sink_ens, mapping, reshape):
-        self.source = source_ens
-        self.sink = sink_ens
-        self.mapping = Mapping(mapping)
-        self.mapping_inserted = False
-        self.reshape = reshape
-
-class Task:
-    def __init__(self, fn, args):
-        self.fn = fn
-        self.args = args
-
-    def __call__(self):
-        self.fn(*self.args)
-
-def one_to_one(*args):
-    return tuple(range(a,a+1) for a in args)
 
 class Net:
     def __init__(self, batch_size):
@@ -326,7 +285,7 @@ class Net:
                 elif offset == -1:
                     offset = ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
                 body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
-            if mapping == one_to_one:
+            if mapping.is_one_to_one():
                 body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], ast.Name("_neuron_index_1_outer", ast.Load())))
                 body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], ast.Name("_neuron_index_1_inner", ast.Load())))
             else:
