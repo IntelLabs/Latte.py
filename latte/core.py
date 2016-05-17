@@ -283,6 +283,85 @@ class Net:
             # func_def = transformers.promote_single_use_registers(func_def)
             # func_def = transformers.interleave_loads(func_def)
 
+    def _reshape_buffer(self, args, ensemble, tiled_buffers):
+        for arg in args:
+            name = arg.arg
+            buf = self.buffers[name]
+            buf_shape = list(buf.shape)
+            if buf.ctypes._data not in self.reshaped_buffers:
+                if "grad_" in name and "grad_inputs" not in name or \
+                        name.replace(ensemble.name, "") in ensemble.batch_fields or \
+                        "inputs" in name:
+                    buf_shape[1] //= SIMDWIDTH
+                    buf_shape.append(SIMDWIDTH)
+                elif "inputs" not in name:
+                    buf_shape[0] //= SIMDWIDTH
+                    buf_shape.append(SIMDWIDTH)
+                if name in tiled_buffers and not name.endswith("inputs"):
+                    dim = len(buf_shape) - tiled_buffers[name] - 1
+                    buf_shape[dim] //= SIMDWIDTH
+                    buf_shape.append(SIMDWIDTH)
+
+                self.reshaped_buffers[buf.ctypes._data] = buf_shape
+                self.buffers[name] = buf.reshape(buf_shape)
+            else:
+                buf_shape = self.reshaped_buffers[buf.ctypes._data]
+                self.buffers[name] = buf.reshape(buf_shape)
+
+    def _gen_transposes(self, body, transposed_buffers):
+        for buffer_name, trans_dim in transposed_buffers.items():
+            curr_body = []
+            shape = self.buffers[buffer_name].shape
+            if "grad_" in buffer_name:
+                curr_body = []
+
+                node = C.For(
+                    C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
+                    C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
+                    C.PostInc(C.SymbolRef("x0")),
+                    curr_body
+                )
+                idx = [C.SymbolRef("x0")]
+                for i, d in enumerate(shape[1:-trans_dim-1]):
+                    i += 1  # offset range
+                    curr_body.append(C.For(
+                        C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
+                        C.PostInc(C.SymbolRef("x" + str(i))),
+                        []
+                    ))
+                    idx.append(C.SymbolRef("x" + str(i)))
+                    curr_body = curr_body[-1].body
+                idx += [C.Constant(0), C.Constant(0)]
+                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
+                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
+                body.append(node)
+            else:
+                node = C.For(
+                    C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
+                    C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
+                    C.PostInc(C.SymbolRef("x0")),
+                    curr_body,
+                    "omp parallel for collapse({})".format(2 if len(shape) - trans_dim - 1 > 2 else 1)
+                )
+                idx = [C.SymbolRef("x0")]
+                for i, d in enumerate(shape[1:-trans_dim-1]):
+                    i += 1  # offset range
+                    curr_body.append(C.For(
+                        C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
+                        C.PostInc(C.SymbolRef("x" + str(i))),
+                        []
+                    ))
+                    idx.append(C.SymbolRef("x" + str(i)))
+                    curr_body = curr_body[-1].body
+                idx += [C.Constant(0), C.Constant(0)]
+                curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
+                    [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
+                     C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
+                body.insert(0, node)
+
     def _synthesize_ast(self, ensemble, fn, direction):
         # get_ast returns a ast.Module, grab the first item for the function
         fn_def = util.get_ast(fn).body[0]
@@ -420,131 +499,27 @@ class Net:
 
         type_sig = []
         casts = []
+        self._reshape_buffer(args, ensemble, tiled_buffers)
+
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
-            buf_shape = list(buf.shape)
-            if buf.ctypes._data not in self.reshaped_buffers:
-                # if candidate is not None and name in transposed_buffers:
-                #     dim = transposed_buffers[name]
-                #     buf_shape[dim] //= SIMDWIDTH
-                #     buf_shape.append(SIMDWIDTH)
-                if "grad_" in name and "grad_inputs" not in name or \
-                        name.replace(ensemble.name, "") in ensemble.batch_fields or \
-                        "inputs" in name:
-                    buf_shape[1] //= SIMDWIDTH
-                    buf_shape.append(SIMDWIDTH)
-                elif "inputs" not in name:
-                    buf_shape[0] //= SIMDWIDTH
-                    buf_shape.append(SIMDWIDTH)
-                if name in tiled_buffers and not name.endswith("inputs"):
-                    dim = len(buf_shape) - tiled_buffers[name] - 1
-                    buf_shape[dim] //= SIMDWIDTH
-                    buf_shape.append(SIMDWIDTH)
-
-                self.reshaped_buffers[buf.ctypes._data] = buf_shape
-                self.buffers[name] = buf.reshape(buf_shape)
-            else:
-                buf_shape = self.reshaped_buffers[buf.ctypes._data]
-                self.buffers[name] = buf.reshape(buf_shape)
             # casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-            self._insert_cast(casts, buf_shape[1:], name, buf.dtype)
+            self._insert_cast(casts, buf.shape[1:], name, buf.dtype)
             # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
 
         if candidate is not None:
+            self._gen_transposes(func_def.defn, transposed_buffers)
+
             for buffer_name, trans_dim in transposed_buffers.items():
                 curr_body = []
                 shape = self.buffers[buffer_name].shape
-                # if buffer_name in vectorized_buffers:
-                #     shape = list(shape)
-                #     for (dim, factor) in vectorized_buffers[buffer_name]:
-                #         dim_to_vectorize = len(shape) - dim - 1
-                #         shape[dim_to_vectorize] //= factor
-                #         shape.append(factor)
-                if "grad_" in buffer_name:
-                    # node = C.For(
-                    #     C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                    #     C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                    #     C.PostInc(C.SymbolRef("x0")),
-                    #     curr_body,
-                    #     "omp parallel for simd"
-                    # )
-                    # idx = [ C.SymbolRef("x0")]
-                    # for i, d in enumerate(shape[1:]):
-                    #     i += 1  # offset range
-                    #     curr_body.append(C.For(
-                    #         C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                    #         C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                    #         C.PostInc(C.SymbolRef("x" + str(i))),
-                    #         []
-                    #     ))
-                    #     idx.append(C.SymbolRef("x" + str(i)))
-                    #     curr_body = curr_body[-1].body
-                    # curr_body.append(
-                    #      C.AddAssign(
-                    #          util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), [C.Constant(0)] + idx[1:]),
-                    #         util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)))
-
-                    # func_def.defn.append(node)
-                    curr_body = []
-
-                    node = C.For(
-                        C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                        C.PostInc(C.SymbolRef("x0")),
-                        curr_body
-                    )
-                    idx = [C.SymbolRef("x0")]
-                    for i, d in enumerate(shape[1:-trans_dim-1]):
-                        i += 1  # offset range
-                        curr_body.append(C.For(
-                            C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                            C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                            C.PostInc(C.SymbolRef("x" + str(i))),
-                            []
-                        ))
-                        idx.append(C.SymbolRef("x" + str(i)))
-                        curr_body = curr_body[-1].body
-                    idx += [C.Constant(0), C.Constant(0)]
-                    curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
-                        [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
-                         C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
-                    func_def.defn.append(node)
-                else:
-                    node = C.For(
-                        C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                        C.PostInc(C.SymbolRef("x0")),
-                        curr_body,
-                        "omp parallel for collapse({})".format(2 if len(shape) - trans_dim - 1 > 2 else 1)
-                    )
-                    idx = [C.SymbolRef("x0")]
-                    for i, d in enumerate(shape[1:-trans_dim-1]):
-                        i += 1  # offset range
-                        curr_body.append(C.For(
-                            C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                            C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                            C.PostInc(C.SymbolRef("x" + str(i))),
-                            []
-                        ))
-                        idx.append(C.SymbolRef("x" + str(i)))
-                        curr_body = curr_body[-1].body
-                    idx += [C.Constant(0), C.Constant(0)]
-                    curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
-                        [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
-                         C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
-                    func_def.defn.insert(0, node)
                 shape_str = "".join("[{}]".format(d) for d in shape)
 
                 args.append(ast.arg(buffer_name + "_transposed", None))
                 self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
                 self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
-                # func_def.defn.insert(0, StringTemplate(
-                #     "float $arg_name$shape = {};",
-                #     {
-                #         "arg_name": C.SymbolRef(buffer_name + "_transposed"), 
-                #         "shape": C.SymbolRef(shape_str),
-                #     }))
+
         return casts, func_def.defn, args
 
     def _insert_cast(self, body, shape, name, dtype):
