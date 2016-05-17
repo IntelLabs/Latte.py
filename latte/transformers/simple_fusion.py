@@ -1,6 +1,7 @@
 import ast
 import ctree.c.nodes as C
 import astor
+from copy import deepcopy
 
 class SimpleFusion(ast.NodeTransformer):
     """
@@ -43,7 +44,16 @@ class SimpleFusion(ast.NodeTransformer):
                     statement.init.codegen() == new_body[-1].init.codegen() and \
                     statement.incr.codegen() == new_body[-1].incr.codegen() and \
                     statement.test.codegen() == new_body[-1].test.codegen():
-                new_body[-1].body.extend(statement.body)
+                if "collapse" in new_body[-1].pragma:
+                    candidate_node = deepcopy(new_body[-1])
+                    candidate_node.body.extend(statement.body)
+                    candidate_node = self.visit(candidate_node)
+                    if len(candidate_node.body) == 1:
+                        new_body[-1].body.extend(statement.body)
+                    else:
+                        new_body.append(statement)
+                else:
+                    new_body[-1].body.extend(statement.body)
             else:
                 new_body.append(statement)
         node.defn = [self.visit(s) for s in new_body]

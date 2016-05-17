@@ -183,8 +183,8 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     C.PostInc(C.SymbolRef(loop_var + "_inner")),
                     body,
                     # "unroll_and_jam({})".format(latte.core.SIMDWIDTH)
-                    # "unroll({})".format(latte.core.SIMDWIDTH)
-                    "unroll"
+                    "unroll({})".format(latte.core.SIMDWIDTH)
+                    # "unroll"
                 )
             else:
                 return C.For(

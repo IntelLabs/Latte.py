@@ -184,6 +184,12 @@ class BasicTypeInference(ast.NodeTransformer):
 class SimpleConstantPropogation(ast.NodeTransformer):
     def __init__(self):
         self.seen = {}
+    
+    def visit(self, node):
+        node = super().visit(node)
+        if hasattr(node, 'body'):
+            node.body = [s for s in node.body if s is not None]
+        return node
 
     def _get_value(self, node):
         if isinstance(node, C.Constant):
@@ -209,7 +215,7 @@ class SimpleConstantPropogation(ast.NodeTransformer):
             value = self._get_value(node.right)
             if value is not None:
                 self.seen[node.left.name] = value
-                return C.Constant(0)
+                return None
         elif isinstance(node.op, C.Op.Div):
             left = self._get_value(node.left)
             right = self._get_value(node.right)
@@ -328,5 +334,21 @@ def lift_loads(tree):
                 else:
                     rest.append(stmt)
             node.body = loads + rest
+            return node
+    return Transformer().visit(tree)
+
+def remove_repeated_declarations(tree):
+    class Transformer(ast.NodeTransformer):
+        def visit(self, node):
+            node = super().visit(node)
+            if hasattr(node, 'body'):
+                seen = set()
+                for stmt in node.body:
+                    if isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
+                            isinstance(stmt.left, C.SymbolRef) and stmt.left.type is not None:
+                        if stmt.left.name in seen:
+                            stmt.left.type = None
+                        else:
+                            seen.add(stmt.left.name)
             return node
     return Transformer().visit(tree)

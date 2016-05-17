@@ -7,23 +7,19 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", nargs=4, type=int, default=[256, 256, 64, 64])
+    parser.add_argument("-d", nargs=3, type=int, default=[256, 64, 64])
     args = parser.parse_args()
 
     batch_size = 32
     net = Net(batch_size)
-    print(args.d)
-    channels, height, width = args.d[1:]
-    pad = 1
-    ofm = args.d[0]
+    channels, height, width = args.d
     print("Benchmark Config")
     print("    batch_size = {}".format(batch_size))
     print("    channels = {}".format(channels))
     print("    height = {}".format(height))
     print("    width = {}".format(width))
-    print("    ofm = {}".format(ofm))
     data, data_value = MemoryDataLayer(net, (channels, height, width))
-    conv1, conv1bias = ConvLayer(net, data, num_filters=ofm, kernel=3, stride=1, pad=pad)
+    MaxPoolingLayer(net, data, kernel=2, stride=2, pad=0)
 
     data_value[:, :, :, :] = np.random.rand(batch_size, channels, height, width)
 
@@ -55,11 +51,9 @@ def main():
             net.backward_tasks[0]()
             backward_t_total += time.time() - t 
 
-    _, ofm_outer, oh, ow, ofm_inner = net.buffers[conv1.name + "value"].shape
-    ofm = ofm_outer * ofm_inner
-    flops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3))
-    forward_flops = flops + batch_size * ofm * oh * ow
-    backward_flops = 2 * flops + batch_size * ofm * oh * ow
+    flops = channels * height * width * batch_size
+    forward_flops = flops * 2 * 2
+    backward_flops = flops
     print("FP    : {} ms, {} GFLOPS/s".format(forward_t_total / num_trials * 1000, 
                                              (forward_flops * num_trials * 1e-9) / forward_t_total))
     if run_backward:

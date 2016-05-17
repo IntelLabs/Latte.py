@@ -8,6 +8,8 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
+__m256 zero_vector_reg = {0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0};
+
 template<int in_width, int out_width>
 void transpose(float *in, float *out)
 {

@@ -129,12 +129,12 @@ class Net:
                         if not uniform_across_dim[i + 1]:
                             _index.append(index[i])
                     for i in range(self.batch_size):
-                        buff[i, _index] = getattr(ensemble.neurons[index], field)
+                        buff[i][tuple(_index)] = getattr(ensemble.neurons[index], field)
                 else:
                     for i in range(len(uniform_across_dim)):
                         if not uniform_across_dim[i]:
                             _index.append(index[i])
-                    buff[_index] = getattr(ensemble.neurons[index], field)
+                    buff[tuple(_index)] = getattr(ensemble.neurons[index], field)
 
     def _initialize_value_grad_activation(self, ensemble):
         for field, target in [("value", "inputs"), ("grad", "grad_inputs")]:
@@ -186,7 +186,9 @@ class Net:
         backward_casts = []
         backward_args = set()
 
+        print("Initializing ensembles...")
         for ensemble in self.ensembles:
+            print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
             self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
                 self.forward_tasks.append(
@@ -223,7 +225,8 @@ class Net:
 
             c_file._ext = "cpp"
 
-            # c_file = transformers.simple_fusion(c_file)
+            c_file = transformers.simple_fusion(c_file)
+            c_file = transformers.remove_repeated_declarations(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
             tasks.append(Task(fn, arg_bufs))
@@ -243,28 +246,19 @@ class Net:
         """
         base_str = "_neuron_index_1 = _neuron_index_1_outer * {SIMDWIDTH} + _neuron_index_1_inner"
         return ast.parse(base_str.format(SIMDWIDTH=SIMDWIDTH)).body[0]
-        # return ast.Assign([ast.Name("_neuron_index_1", ast.Load())],
-        #     ast.BinOp(
-        #         ast.BinOp(
-        #             ast.Name("_neuron_index_1_outer", ast.Load()),
-        #             ast.Mult(), 
-        #             ast.Num(SIMDWIDTH)
-        #         ),
-        #         ast.Add(), 
-        #         ast.Name("_neuron_index_1_inner", ast.Load())
-        #     )
-        # )
 
-    def _parallelize_loops(self, func_def):
+    def _parallelize_loops(self, func_def, ndim):
         for loop in func_def.defn:
-            # count = 1
-            # curr_loop = loop
-            # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
-            #     count += 1
-            #     curr_loop = curr_loop.body[0]
-            # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
-            loop.pragma = "omp parallel for collapse(2)"
-            # loop.pragma = "omp parallel for"
+            if ndim > 1:
+                # count = 1
+                # curr_loop = loop
+                # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
+                #     count += 1
+                #     curr_loop = curr_loop.body[0]
+                # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
+                loop.pragma = "omp parallel for collapse(2)"
+            else:
+                loop.pragma = "omp parallel for collapse(2)"
 
     def _unroll(self, func_def, ensemble, unroll_target_loop_var):
         if unroll_target_loop_var == "_neuron_index_1_inner":
@@ -275,7 +269,7 @@ class Net:
             if ensemble.ndim == 1:
                 unroll_dim //= SIMDWIDTH
             while unroll_factor > unroll_dim or unroll_dim % unroll_factor != 0 :
-                unroll_factor -= 2
+                unroll_factor -= 1
                 if unroll_factor == 0:
                     break
         if unroll_factor > 1:
@@ -304,6 +298,11 @@ class Net:
 
                 self.reshaped_buffers[buf.ctypes._data] = buf_shape
                 self.buffers[name] = buf.reshape(buf_shape)
+            elif "inputs" in name and self.connections_map[ensemble][0].reshape is not None:
+                buf_shape = list((self.batch_size, ) + self.connections_map[ensemble][0].reshape)
+                buf_shape[1] //= SIMDWIDTH
+                buf_shape.append(SIMDWIDTH)
+                self.buffers[name] = buf.reshape(buf_shape)
             else:
                 buf_shape = self.reshaped_buffers[buf.ctypes._data]
                 self.buffers[name] = buf.reshape(buf_shape)
@@ -315,7 +314,7 @@ class Net:
 
             node = util.gen_for("x0", 0, shape[0], curr_body)
 
-            parfor_len = 2 if len(shape) - trans_dim - 1 > 2 else 1
+            parfor_len = 2 if len(shape) - trans_dim - 1 > 1 else 1
             node.pragma = "omp parallel for collapse({})".format(parfor_len)
 
             idx = [C.SymbolRef("x0")]
@@ -442,6 +441,8 @@ class Net:
         # Basic type inference and constant propogation
         func_def = transformers.BasicTypeInference().visit(func_def)
         func_def = transformers.SimpleConstantPropogation().visit(func_def)
+        # print(func_def)
+        # exit()
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
         # vectorized_buffers[ensemble.name+"inputs"] = [(2, SIMDWIDTH)]
@@ -450,7 +451,10 @@ class Net:
         candidate = transformers.get_loop_to_vectorize(func_def)
 
         if candidate == "_neuron_index_1_inner":
-            unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
+            if ensemble.ndim > 1:
+                unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
+            else:
+                unroll_target_loop_var = "_neuron_index_1_outer".format(ensemble.ndim)
         else:
             unroll_target_loop_var = "_neuron_index_1_inner"
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
@@ -467,7 +471,7 @@ class Net:
             # func_def = transformers.move_inner_index(func_def)
             # func_def = transformers.unroll_constant_loops(func_def)
 
-        self._parallelize_loops(func_def)
+        self._parallelize_loops(func_def, ensemble.ndim)
 
         unroll = True
         if candidate is not None and unroll:
