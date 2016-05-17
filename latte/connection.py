@@ -5,5 +5,4 @@ class Connection:
         self.source = source_ens
         self.sink = sink_ens
         self.mapping = Mapping(mapping)
-        self.mapping_inserted = False
         self.reshape = reshape

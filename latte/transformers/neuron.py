@@ -44,11 +44,15 @@ class NeuronTransformer(ast.NodeTransformer):
 
             ndim = self.ensemble.ndim
             offset = 0
+
             if node.attr.endswith("input"):
+                assert isinstance(self.ensemble, latte.ensemble.ActivationEnsemble)
+                # ActivationEnsembles support the self.input construct that is
+                # equivalent to self.inputs[neuron_index...][0]
                 name += "s"
                 self.seen_vars.add(name)
-                assert isinstance(self.ensemble, latte.ensemble.ActivationEnsemble)
                 args = [ast.Name("_neuron_index_{}".format(i), ast.Load()) for i in range(ndim + 1)]
+                # Tile 1st (non-batch) dimension
                 args[1].id += "_outer"
                 args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
                 return ast.Subscript(ast.Name(name, ast.Load()), 
@@ -68,13 +72,18 @@ class NeuronTransformer(ast.NodeTransformer):
                 # fields that don't have a batch dimension start at an offset 1
                 # as 0 is the batch dimension
                 offset = 1
+
             args = []
+
             if "grad_" in node.attr and not node.attr.endswith("inputs"):
+                # We privatize these buffers and reduce across threads at the
+                # end, removing need for synchronization.  This is done by
+                # adding an outer dimension of size num_threads to the buffer
                 args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
-                # args.append(ast.Num(0))
+
+            # only append dimensions if it is not fixed in self.buffer_dim_info
+            # (used for values shared across a dimension)
             for i in range(ndim):
-                # only append this dimension if it is not fixed in self.buffer_dim_info
-                # (used for shared values)
                 if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
                     args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
                     if i + offset == 1:
@@ -104,11 +113,14 @@ class NeuronTransformer(ast.NodeTransformer):
                 value.slice.value.elts.extend(node.slice.value.elts)
             else:
                 raise NotImplementedError(node.slice.value)
-            # return child node
+
             if "inputs" in value.value.id or "grad_inputs" in value.value.id:
+                # Add the input offsets defined by user's mapping for the
+                # connection
                 ndim = self.ensemble.ndim
                 if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
-                    value.slice.value.elts.append(ast.BinOp(ast.Num(0), ast.Add(), ast.Name("_input_offset_1_inner", ast.Load())))
+                    value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
+
                 value.slice.value.elts[1:ndim + 1] = [
                     ast.BinOp(value, ast.Add(), 
                         ast.Name("_input_offset_{}".format(i + 1), ast.Load())) 
@@ -116,6 +128,8 @@ class NeuronTransformer(ast.NodeTransformer):
                 ]
             else:
                 value.slice.value.elts.append(ast.Name("_neuron_index_1_inner", ast.Load()))
+
+            # return child node
             return value
         else:
             raise NotImplementedError()
@@ -123,59 +137,12 @@ class NeuronTransformer(ast.NodeTransformer):
 
     def visit_For(self, node):
         """
-        Converts iteration expressions into enumerate and range calls
+        Converts iteration expressions into RangeDim semantic nodes
         """
         _range = node.iter
         if isinstance(_range, ast.Call) and _range.func.id in ["enumerate_dim", "range_dim"]:
             node.body = [self.visit(s) for s in node.body]
             node.body = util.flatten(node.body)
             return RangeDim(node, self.connections[0].mapping, self.connections[0].source)
-            # grab closure variables and inline them into the mapping ast
-            closure_vars = inspect.getclosurevars(self.connections[0].mapping)
-            mapping_func = util.get_ast(self.connections[0].mapping).body[0]
-            for var, value in closure_vars.nonlocals.items():
-                mapping_func = util.inline_variable(var, value, mapping_func)
-
-            # replace argument variables with loop variables corresponding to 
-            # the current _neuron_index
-            for i, arg in enumerate(mapping_func.args.args):
-                i += 1  # offset batch
-                mapping_func = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), mapping_func)
-            
-            # the dimension is the second argument i.e. range_dim(self.inputs, dim)
-            target_dim = _range.args[1].n
-            shape = mapping_func.body[-1].value
-            node.iter = shape.elts[target_dim]
-            # assert node.iter.func.id == "range"
-            # if len(node.iter.args) == 1:
-            #     if isinstance(node.iter.args[0], ast.Name):
-            #         node.iter.args[0] = ast.Call(ast.Name("MIN", ast.Load()), 
-            #                 [node.iter.args[0], C.Constant(self.ensemble.shape[target_dim])], [])
-            # elif len(node.iter.args) == 2:
-            #     if isinstance(node.iter.args[0], ast.Name):
-            #         node.iter.args[0] = ast.Call(ast.Name("MAX", ast.Load()), [node.iter.args[0], C.Constant(0)], [])
-            #     if isinstance(node.iter.args[1], ast.Name):
-            #         node.iter.args[1] = ast.Call(ast.Name("MIN", ast.Load()), 
-            #                 [node.iter.args[1], C.Constant(self.ensemble.shape[target_dim])], [])
-            # else:
-            #     raise NotImplementedError()
-
-
-            if _range.func.id == "enumerate_dim":
-                node.iter = ast.Call(ast.Name("enumerate", ast.Load()), [node.iter], [])
-
-            if self.connections[0].mapping_inserted:
-                pre_stmts = []
-            else:
-                pre_stmts = mapping_func.body[:-1]
-                for stmt in pre_stmts:
-                    assert isinstance(stmt, ast.Assign)
-                    assert len(stmt.targets) == 1
-                    stmt.targets[0] = C.SymbolRef(stmt.targets[0].id, ctypes.c_int())
-                self.connections[0].mapping_inserted = True
-
-            node.body = [self.visit(s) for s in node.body]
-            node.body = util.flatten(node.body)
-            return pre_stmts + [node]
         else:
             raise NotImplementedError(ast.dump(node))

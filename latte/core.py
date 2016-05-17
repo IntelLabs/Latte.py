@@ -210,23 +210,19 @@ class Net:
                                                        [forward_casts, backward_casts],
                                                        [self.forward_tasks, self.backward_tasks]):
             args = list(args)
-            type_sig = []
-            arg_bufs = []
-            params = []
-            for arg in args:
-                buf = self.buffers[arg.arg]
-                type_sig.append(np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape))
-                arg_bufs.append(buf)
-                params.append(
-                    C.SymbolRef("_" + arg.arg, 
-                        np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()))
+            arg_bufs = [self.buffers[arg.arg] for arg in args]
+            type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
+            params = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
 
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
+
             c_file = C.CFile(direction + self._uniqueid(), [
                 include, 
                 C.FunctionDecl(None, C.SymbolRef(direction), params, casts + body)
             ], path=".compiled")
+
             c_file._ext = "cpp"
+
             # c_file = transformers.simple_fusion(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
@@ -238,9 +234,10 @@ class Net:
         return str(self.unique_id)
 
     def _synthesize_ast(self, ensemble, fn, direction):
+        # get_ast returns a ast.Module, grab the first item for the function
         fn_def = util.get_ast(fn).body[0]
 
-        self.connections_map[ensemble][0].mapping_inserted = False
+        # transform domain constructs
         transformer = transformers.NeuronTransformer(ensemble,
                 self.connections_map[ensemble], self.buffer_dim_info)
         fn_def = transformer.visit(fn_def)
