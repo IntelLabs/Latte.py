@@ -76,83 +76,101 @@ class Net:
                     break
         return uniform_across_dim
 
+    def _initialize_inputs(self, ensemble, source_target, buffer_name):
+        conn = self.connections_map[ensemble][0]
+        source_name = conn.source.name
+        buff = self.buffers[source_name + source_target]
+        if conn.reshape is not None:
+            buff = buff.reshape((self.batch_size, ) + conn.reshape)
+        self.buffers[buffer_name] = buff
+
+    def _initialize_numeric_field(self, ensemble, field):
+        neuron = ensemble.neurons.flat[0]
+        value = getattr(neuron, field)
+        buff = util.empty(ensemble.shape, type(value))
+        self.buffers[ensemble.name + field] = buff
+        for index, neuron in ensemble:
+            buff[index] = getattr(neuron, field)
+
+    def _initialize_ndarray_field(self, ensemble, field):
+        neuron = ensemble.neurons.flat[0]
+        value = getattr(neuron, field)
+        _shape = ensemble.shape
+
+        uniform_across_dim = self._get_uniformity(ensemble, field)
+        shape = []
+        _iter = []
+        for i in range(len(_shape)):
+            if not uniform_across_dim[i]:
+                _iter.append(range(_shape[i]))
+                shape.append(_shape[i])
+            else:
+                _iter.append(range(1))
+        shape += value.shape
+
+        if field in neuron.batch_fields:
+            shape.insert(0, self.batch_size)
+
+        buff = util.empty(shape, value.dtype)
+        self.buffers[ensemble.name + field] = buff
+        self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
+        if field in neuron.batch_fields:
+            # Never uniform across batch dimension
+            self.buffer_dim_info[ensemble.name + field].insert(0, False)
+
+        if "grad_" in field:
+            self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
+        else:
+            for index in itertools.product(*_iter):
+                _index = []
+                if field in neuron.batch_fields:
+                    # skip batch dimension
+                    for i in range(len(uniform_across_dim[1:])):
+                        if not uniform_across_dim[i + 1]:
+                            _index.append(index[i])
+                    for i in range(self.batch_size):
+                        buff[i, _index] = getattr(ensemble.neurons[index], field)
+                else:
+                    for i in range(len(uniform_across_dim)):
+                        if not uniform_across_dim[i]:
+                            _index.append(index[i])
+                    buff[_index] = getattr(ensemble.neurons[index], field)
+
+    def _initialize_value_grad_activation(self, ensemble):
+        for field, target in [("value", "inputs"), ("grad", "grad_inputs")]:
+            target_buf = self.buffers[ensemble.name + target]
+            self.buffers[ensemble.name + field] = target_buf
+
+    def _initialize_value_grad(self, ensemble):
+        for field in ["value", "grad"]:
+            _shape = (self.batch_size, ) + ensemble.shape
+            self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
+
     def _init_buffers(self, ensemble):
         neuron = ensemble.neurons.flat[0]
         for field in vars(neuron):
+            buffer_name = ensemble.name + field
             if field in ["value", "grad"]:
+                # `value` and `grad` are initialized in the second pass, after
+                # `inputs` and `grad_inputs` have been initialized (for in
+                # place operations where `value` == `inputs`)
                 pass
             elif field in ["inputs", "grad_inputs"]:
-                conn = self.connections_map[ensemble][0]
-                source_name = conn.source.name
                 source_target = "value" if field == "inputs" else "grad"
-                buff = self.buffers[source_name + source_target]
-                if conn.reshape is not None:
-                    buff = buff.reshape((self.batch_size, ) + conn.reshape)
-                self.buffers[ensemble.name + field] = buff
+                self._initialize_inputs(ensemble, source_target, buffer_name)
             else:
                 value = getattr(neuron, field)
-
                 if isinstance(value, numbers.Real):
-                    buff = util.empty(ensemble.shape, type(value))
-                    self.buffers[ensemble.name + field] = buff
-                    for index, neuron in ensemble:
-                        buff[index] = getattr(neuron, field)
-
+                    self._initialize_numeric_field(ensemble, field)
                 elif isinstance(value, np.ndarray):
-                    _shape = ensemble.shape
-
-                    uniform_across_dim = self._get_uniformity(ensemble, field)
-                    shape = []
-                    _iter = []
-                    for i in range(len(_shape)):
-                        if not uniform_across_dim[i]:
-                            _iter.append(range(_shape[i]))
-                            shape.append(_shape[i])
-                        else:
-                            _iter.append(range(1))
-                    shape += value.shape
-
-                    if field in neuron.batch_fields:
-                        shape.insert(0, self.batch_size)
-
-                    buff = util.empty(shape, value.dtype)
-                    self.buffers[ensemble.name + field] = buff
-                    self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
-                    if field in neuron.batch_fields:
-                        # Never uniform across batch dimension
-                        self.buffer_dim_info[ensemble.name + field].insert(0, False)
-
-                    if "grad_" in field:
-                        self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
-                    else:
-                        for index in itertools.product(*_iter):
-                            _index = []
-                            if field in neuron.batch_fields:
-                                # skip batch dimension
-                                for i in range(len(uniform_across_dim[1:])):
-                                    if not uniform_across_dim[i + 1]:
-                                        _index.append(index[i])
-                                for i in range(self.batch_size):
-                                    buff[i, _index] = getattr(ensemble.neurons[index], field)
-                            else:
-                                for i in range(len(uniform_across_dim)):
-                                    if not uniform_across_dim[i]:
-                                        _index.append(index[i])
-                                buff[_index] = getattr(ensemble.neurons[index], field)
+                    self._initialize_ndarray_field(ensemble, field)
                 else:
                     raise NotImplementedError(field)
 
-        for field in ["value", "grad"]:
-            if isinstance(ensemble, ActivationEnsemble):
-                target_map = {
-                    "value": "inputs",
-                    "grad": "grad_inputs"
-                }
-                target_buf = self.buffers[ensemble.name + target_map[field]]
-                self.buffers[ensemble.name + field] = target_buf
-            else:
-                _shape = (self.batch_size, ) + ensemble.shape
-                self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
+        if isinstance(ensemble, ActivationEnsemble):
+            self._initialize_value_grad_activation(ensemble)
+        else:
+            self._initialize_value_grad(ensemble)
 
     def compile(self):
         task_groups = {}
@@ -338,7 +356,9 @@ class Net:
             # func_def = transformers.interchange_tiled_loops(func_def)
             func_def = transformers.register_promote_vector_loads_stores(func_def)
             func_def = transformers.lift_invariant_load_stores(func_def)
+            func_def = transformers.lift_loads(func_def)
             func_def = transformers.fma_replace(func_def)
+            # func_def = transformers.move_inner_index(func_def)
             # func_def = transformers.unroll_constant_loops(func_def)
 
         for loop in func_def.defn:

@@ -97,6 +97,13 @@ class LoopUnroller(ast.NodeTransformer):
                 if node.test.right.value == self.factor:
                     return [util.replace_symbol(node.init.left.name, C.Constant(0), s) for s in node.body]
             return node
+    elif False:
+        def visit_For(self, node):
+            node.body = [self.visit(s) for s in node.body]
+            if node.init.left.name == self.target_var:
+                # node.pragma = "unroll_and_jam({})".format(self.factor)
+                node.pragma = "unroll"
+            return node
     else:
         def visit_For(self, node):
             node.body = [self.visit(s) for s in node.body]

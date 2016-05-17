@@ -288,3 +288,45 @@ class PragmaSIMDInserter(ast.NodeTransformer):
 
 def insert_pragma_simd(ast):
     return PragmaSIMDInserter().visit(ast)
+
+def move_inner_index(tree):
+    class Transformer(ast.NodeTransformer):
+        def __init__(self):
+            self.loop_vars = ["omp_get_thread_num"]
+
+        def visit_For(self, node):
+            self.loop_vars.append(node.init.left.name)
+            node.body = [self.visit(s) for s in node.body]
+            return node
+
+        def visit_BinaryOp(self, node):
+            node.left = self.visit(node.left)
+            node.right = self.visit(node.right)
+            if isinstance(node.op, C.Op.ArrayRef) and isinstance(node.left, C.BinaryOp):
+                for curr_index, var in enumerate(self.loop_vars):
+                    if util.contains_symbol(node.right, var):
+                        break
+                for left_index, var in enumerate(self.loop_vars):
+                    if util.contains_symbol(node.left.right, var):
+                        break
+                if curr_index < left_index:
+                    node.left.right, node.right = node.right, node.left.right
+                    node.left = self.visit(node.left)
+                    return node
+            return node
+    return Transformer().visit(tree)
+
+def lift_loads(tree):
+    class Transformer(ast.NodeTransformer):
+        def visit_For(self, node):
+            node.body = [self.visit(s) for s in node.body]
+            loads = []
+            rest = []
+            for stmt in node.body:
+                if not hasattr(stmt, 'body') and util.contains_symbol(stmt, "_mm256_load_ps"):
+                    loads.append(stmt)
+                else:
+                    rest.append(stmt)
+            node.body = loads + rest
+            return node
+    return Transformer().visit(tree)
