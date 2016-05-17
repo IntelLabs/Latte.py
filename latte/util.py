@@ -26,6 +26,16 @@ def empty(shape, dtype):
 def zeros(shape, dtype):
     return aligned(np.zeros(shape, dtype=dtype))
 
+def get_dependent_statements(statements, target):
+    deps = set([target])
+    dep_statements = []
+    for statement in statements:
+        for dep in deps:
+            if dep in collect_stores(statement):
+                dep_statements.append(statement)
+                deps = deps.union(collect_loads(statement))
+    return dep_statements
+
 def gen_index_expr(target, idxs):
     node = C.ArrayRef(target, idxs[0])
     for idx in idxs[1:]:

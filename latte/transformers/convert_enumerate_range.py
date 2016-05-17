@@ -10,7 +10,7 @@ import astor
 def get_dependent_statements(statements, target):
     deps = set([target])
     dep_statements = []
-    for statement in statements:
+    for statement in reversed(statements):
         for dep in deps:
             if dep in util.collect_stores(statement):
                 dep_statements.append(statement)

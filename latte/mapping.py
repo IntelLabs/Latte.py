@@ -1,6 +1,7 @@
 import latte.util as util
 import inspect
 import ast
+from copy import deepcopy
 
 class Mapping:
     def __init__(self, mapping_func):
@@ -10,6 +11,12 @@ class Mapping:
         closure_vars = inspect.getclosurevars(mapping_func)
         for var, value in closure_vars.nonlocals.items():
             ast = util.inline_variable(var, value, ast)
+
+        # Inline _neuron_index into ast
+        for i, arg in enumerate(ast.args.args):
+            i += 1  # offset batch
+            ast = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), ast)
+
         self.ast = ast
         self.ndim = len(self.ast.args.args)
         self.shape = mapping_func(*[1 for _ in range(self.ndim)])

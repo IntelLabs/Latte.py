@@ -2,6 +2,8 @@ import unittest
 import numpy as np
 from latte import *
 import time
+from tqdm import tqdm 
+
 def main():
     batch_size = 32
     net = Net(batch_size)
@@ -38,8 +40,7 @@ def main():
     backward_t_total = 0.0
     num_trials = 10
     print("Running trials")
-    for _ in range(num_trials):
-        print("    {}".format(_))
+    for _ in tqdm(range(num_trials), ncols=100):
         t = time.time()
         net.forward_tasks[1]()
         forward_t_total += time.time() - t 
@@ -47,7 +48,6 @@ def main():
             t = time.time()
             net.backward_tasks[0]()
             backward_t_total += time.time() - t 
-
 
     _, ofm_outer, oh, ow, ofm_inner = net.buffers[conv1.name + "value"].shape
     ofm = ofm_outer * ofm_inner

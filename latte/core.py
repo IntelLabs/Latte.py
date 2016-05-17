@@ -233,6 +233,56 @@ class Net:
         Net.unique_id += 1
         return str(self.unique_id)
 
+    def _gen_untiled_neuron_index_1(self):
+        """
+        Generates the ast for the following expression:
+        _neuron_index_1 = _neuron_index_1_outer * SIMDWIDTH + _neuron_index_1_inner
+
+        This is used as an argument to the mapping function which expects an
+        untiled _neuron_index_1
+        """
+        base_str = "_neuron_index_1 = _neuron_index_1_outer * {SIMDWIDTH} + _neuron_index_1_inner"
+        return ast.parse(base_str.format(SIMDWIDTH=SIMDWIDTH)).body[0]
+        # return ast.Assign([ast.Name("_neuron_index_1", ast.Load())],
+        #     ast.BinOp(
+        #         ast.BinOp(
+        #             ast.Name("_neuron_index_1_outer", ast.Load()),
+        #             ast.Mult(), 
+        #             ast.Num(SIMDWIDTH)
+        #         ),
+        #         ast.Add(), 
+        #         ast.Name("_neuron_index_1_inner", ast.Load())
+        #     )
+        # )
+
+    def _parallelize_loops(self, func_def):
+        for loop in func_def.defn:
+            # count = 1
+            # curr_loop = loop
+            # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
+            #     count += 1
+            #     curr_loop = curr_loop.body[0]
+            # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
+            loop.pragma = "omp parallel for collapse(2)"
+            # loop.pragma = "omp parallel for"
+
+    def _unroll(self, func_def, ensemble, unroll_target_loop_var):
+        if unroll_target_loop_var == "_neuron_index_1_inner":
+            unroll_factor = SIMDWIDTH
+        else:
+            unroll_factor = UNROLL_FACTOR
+            unroll_dim = ensemble.shape[-1]
+            if ensemble.ndim == 1:
+                unroll_dim //= SIMDWIDTH
+            while unroll_factor > unroll_dim or unroll_dim % unroll_factor != 0 :
+                unroll_factor -= 2
+                if unroll_factor == 0:
+                    break
+        if unroll_factor > 1:
+            transformers.unroll_inner_neuron_loop(func_def, unroll_target_loop_var, unroll_factor)
+            # func_def = transformers.promote_single_use_registers(func_def)
+            # func_def = transformers.interleave_loads(func_def)
+
     def _synthesize_ast(self, ensemble, fn, direction):
         # get_ast returns a ast.Module, grab the first item for the function
         fn_def = util.get_ast(fn).body[0]
@@ -260,9 +310,11 @@ class Net:
 
 
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
-        func_name = util.generate_unique_function_name()
 
-        func_def = ast.FunctionDef(func_name,
+        # This placeholder function is used to wrap the body of statements for
+        # convenience, after transformations have completed, the function body
+        # is returned and the function node discarded
+        func_def = ast.FunctionDef('func',
                 ast.arguments(args, None, [], [], None, []), nests,
                 [], None)
 
@@ -272,71 +324,71 @@ class Net:
             loop = loop.body[0]
             for dim in range(ensemble.ndim):
                 loop = loop.body[0]
+
             mapping = self.connections_map[ensemble][0].mapping
             mapping_func = mapping.ast
 
-            for i, arg in enumerate(mapping_func.args.args):
-                i += 1  # offset batch
-                mapping_func = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), mapping_func)
-            body = [
-                # _neuron_index_1 = _neuron_index_1_outer * SIMDWIDTH + _neuron_index_1_inner
-                ast.Assign([ast.Name("_neuron_index_1", ast.Load())],
-                    ast.BinOp(
-                        ast.BinOp(
-                            ast.Name("_neuron_index_1_outer", ast.Load()),
-                            ast.Mult(), 
-                            ast.Num(SIMDWIDTH)
-                        ),
-                        ast.Add(), 
-                        ast.Name("_neuron_index_1_inner", ast.Load())
-                    )
-                )
-            ]
+            body = [self._gen_untiled_neuron_index_1()]
+
             for dim in range(1, ensemble.ndim):
                 offset = mapping.get_offset(dim)
                 input_offset = "_input_offset_{}".format(dim + 1)
-                if isinstance(offset, ast.Name):
-                    body += transformers.convert_enumerate_range.get_dependent_statements(mapping_func.body[:-1], offset.id)
-                elif offset == -1:
-                    offset = ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
+
+                # If the offset is not a constant, we need to collect
+                # dependent statements
+                if not isinstance(offset, ast.Num):
+                    body += util.get_dependent_statements(mapping_func.body[:-1], offset.id)
+
+                # Store the offset value
                 body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
+
+            # Compute the tiled offsets from the result of the mapping function
+            # For a one_to_one connection it is just the current neuron index
+            # else its the remainder and floor division of the mapping result
             if mapping.is_one_to_one():
-                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], ast.Name("_neuron_index_1_outer", ast.Load())))
-                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], ast.Name("_neuron_index_1_inner", ast.Load())))
+                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
+                                       ast.Name("_neuron_index_1_outer", ast.Load())))
+                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
+                                       ast.Name("_neuron_index_1_inner", ast.Load())))
             else:
                 offset = mapping.get_offset(0)
-                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
-                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
-            loop.body = body + loop.body
-        func_def = transformers.convert_tuple_subscripts(func_def)
+                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
+                                       ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
+                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
+                                       ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
 
+            # Prepend to body
+            loop.body = body + loop.body
+
+        # convert [x, y, z] exprs into [x][y][z]
+        func_def = transformers.convert_tuple_subscripts(func_def)
+        # convert semantic (domain) ast nodes introduced by the neuron
+        # transformer
         func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction)
 
         func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
 
-        # convert loopvars from long to int
+        # convert loopvars from long to int. we do this as PyBasicConversion
+        # defaults to using longs for range based for loops
         for loop in func_def.defn:
             loop.init.left.type = ctypes.c_int()
             for dim in range(ensemble.ndim + 1):
                 loop = loop.body[0]
                 loop.init.left.type = ctypes.c_int()
 
+        # Seed the argument types as pointers for type inference
         for arg in func_def.params:
             buf = self.buffers[arg.name]
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
+
+        # Basic type inference and constant propogation
         func_def = transformers.BasicTypeInference().visit(func_def)
         func_def = transformers.SimpleConstantPropogation().visit(func_def)
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
-        vectorized_buffers[ensemble.name+"inputs"] = [(2, SIMDWIDTH)]
-        vectorized_buffers[ensemble.name+"grad_inputs"] = [(2, SIMDWIDTH)]
-
-        # for key in tiled_buffers.keys():
-        #     if key in vectorized_buffers:
-        #         vectorized_buffers[key].append((tiled_buffers[key], TILE_SIZE))
-        #     else:
-        #         vectorized_buffers[key] = [(tiled_buffers[key], TILE_SIZE)]
+        # vectorized_buffers[ensemble.name+"inputs"] = [(2, SIMDWIDTH)]
+        # vectorized_buffers[ensemble.name+"grad_inputs"] = [(2, SIMDWIDTH)]
 
         candidate = transformers.get_loop_to_vectorize(func_def)
 
@@ -358,33 +410,11 @@ class Net:
             # func_def = transformers.move_inner_index(func_def)
             # func_def = transformers.unroll_constant_loops(func_def)
 
-        for loop in func_def.defn:
-            # count = 1
-            # curr_loop = loop
-            # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
-            #     count += 1
-            #     curr_loop = curr_loop.body[0]
-            # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
-            loop.pragma = "omp parallel for collapse(2)"
-            # loop.pragma = "omp parallel for"
+        self._parallelize_loops(func_def)
 
         unroll = True
         if candidate is not None and unroll:
-            if unroll_target_loop_var == "_neuron_index_1_inner":
-                unroll_factor = SIMDWIDTH
-            else:
-                unroll_factor = UNROLL_FACTOR
-                unroll_dim = ensemble.shape[-1]
-                if ensemble.ndim == 1:
-                    unroll_dim //= SIMDWIDTH
-                while unroll_factor > unroll_dim or unroll_dim % unroll_factor != 0 :
-                    unroll_factor -= 2
-                    if unroll_factor == 0:
-                        break
-            if unroll_factor > 1:
-                func_def = transformers.unroll_inner_neuron_loop(func_def, unroll_target_loop_var, unroll_factor)
-                # func_def = transformers.promote_single_use_registers(func_def)
-                # func_def = transformers.interleave_loads(func_def)
+            self._unroll(func_def, ensemble, unroll_target_loop_var)
         else:
             func_def = transformers.insert_pragma_simd(func_def)
 
