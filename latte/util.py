@@ -36,6 +36,15 @@ def get_dependent_statements(statements, target):
                 deps = deps.union(collect_loads(statement))
     return dep_statements
 
+def gen_for(loopvar, start, end, body, pragma=""):
+    return C.For(
+        C.Assign(C.SymbolRef(loopvar, ctypes.c_int()), C.Constant(start)),
+        C.Lt(C.SymbolRef(loopvar), C.Constant(end)),
+        C.PostInc(C.SymbolRef(loopvar)),
+        body,
+        pragma
+    )
+
 def gen_index_expr(target, idxs):
     node = C.ArrayRef(target, idxs[0])
     for idx in idxs[1:]:

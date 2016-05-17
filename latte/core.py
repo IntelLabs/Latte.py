@@ -312,51 +312,29 @@ class Net:
         for buffer_name, trans_dim in transposed_buffers.items():
             curr_body = []
             shape = self.buffers[buffer_name].shape
-            if "grad_" in buffer_name:
-                curr_body = []
 
-                node = C.For(
-                    C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                    C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                    C.PostInc(C.SymbolRef("x0")),
-                    curr_body
-                )
-                idx = [C.SymbolRef("x0")]
-                for i, d in enumerate(shape[1:-trans_dim-1]):
-                    i += 1  # offset range
-                    curr_body.append(C.For(
-                        C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                        C.PostInc(C.SymbolRef("x" + str(i))),
-                        []
-                    ))
-                    idx.append(C.SymbolRef("x" + str(i)))
-                    curr_body = curr_body[-1].body
-                idx += [C.Constant(0), C.Constant(0)]
+            node = util.gen_for("x0", 0, shape[0], curr_body)
+
+            parfor_len = 2 if len(shape) - trans_dim - 1 > 2 else 1
+            node.pragma = "omp parallel for collapse({})".format(parfor_len)
+
+            idx = [C.SymbolRef("x0")]
+            for i, d in enumerate(shape[1:-trans_dim-1]):
+                i += 1  # offset range
+                loopvar = "x{}".format(i)
+                next_body = []
+                curr_body.append(util.gen_for(loopvar, 0, d, next_body))
+                idx.append(C.SymbolRef(loopvar))
+                curr_body = next_body
+
+            idx += [C.Constant(0), C.Constant(0)]
+
+            if "grad_" in buffer_name:
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
                 body.append(node)
             else:
-                node = C.For(
-                    C.Assign(C.SymbolRef("x0", ctypes.c_int()), C.Constant(0)),
-                    C.Lt(C.SymbolRef("x0"), C.Constant(shape[0])),
-                    C.PostInc(C.SymbolRef("x0")),
-                    curr_body,
-                    "omp parallel for collapse({})".format(2 if len(shape) - trans_dim - 1 > 2 else 1)
-                )
-                idx = [C.SymbolRef("x0")]
-                for i, d in enumerate(shape[1:-trans_dim-1]):
-                    i += 1  # offset range
-                    curr_body.append(C.For(
-                        C.Assign(C.SymbolRef("x" + str(i), ctypes.c_int()), C.Constant(0)),
-                        C.Lt(C.SymbolRef("x" + str(i)), C.Constant(d)),
-                        C.PostInc(C.SymbolRef("x" + str(i))),
-                        []
-                    ))
-                    idx.append(C.SymbolRef("x" + str(i)))
-                    curr_body = curr_body[-1].body
-                idx += [C.Constant(0), C.Constant(0)]
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
