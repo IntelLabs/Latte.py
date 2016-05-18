@@ -47,25 +47,25 @@ def main():
     net.compile()
 
     # warmup
-    print("Warming up...")
-    for _ in range(3):
-        net.forward()
-        net.backward()
-
-    forward_t_total = 0.0
-    backward_t_total = 0.0
-    num_trials = 10
-    print("Running trials")
-    for _ in tqdm(range(num_trials), ncols=100):
-        t = time.time()
-        net.forward()
-        forward_t_total += time.time() - t 
-        t = time.time()
-        net.backward()
-        backward_t_total += time.time() - t 
-
-    print("FP    : {0:.3f} ms".format(forward_t_total / num_trials * 1000))
-    print("BP+WU : {0:.3f} ms".format(backward_t_total / num_trials * 1000))
-
+#     print("Warming up...")
+#     for _ in range(3):
+#         net.forward()
+#         net.backward()
+# 
+#     forward_t_total = 0.0
+#     backward_t_total = 0.0
+#     num_trials = 1
+#     print("Running trials")
+#     for _ in tqdm(range(num_trials), ncols=100):
+#         t = time.time()
+#         net.forward()
+#         forward_t_total += time.time() - t 
+#         t = time.time()
+#         net.backward()
+#         backward_t_total += time.time() - t 
+# 
+#     print("FP    : {0:.3f} ms".format(forward_t_total / num_trials * 1000))
+#     print("BP+WU : {0:.3f} ms".format(backward_t_total / num_trials * 1000))
+# 
 if __name__ == '__main__':
     main()

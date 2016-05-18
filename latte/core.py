@@ -44,6 +44,7 @@ class Net:
         self.connections_map = {}
         self.buffer_dim_info = {}
         self.reshaped_buffers = {}
+        self.nowait = True
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -102,16 +103,16 @@ class Net:
         _iter = []
         for i in range(len(_shape)):
             if not uniform_across_dim[i]:
-                _iter.append(range(_shape[i]))
+                _iter.append(_shape[i])
                 shape.append(_shape[i])
             else:
-                _iter.append(range(1))
+                _iter.append(1)
         shape += value.shape
 
         if field in neuron.batch_fields:
             shape.insert(0, self.batch_size)
 
-        buff = util.empty(shape, value.dtype)
+        buff = util.zeros(shape, value.dtype)
         self.buffers[ensemble.name + field] = buff
         self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
         if field in neuron.batch_fields:
@@ -120,16 +121,17 @@ class Net:
 
         if "grad_" in field:
             self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
-        else:
-            for index in itertools.product(*_iter):
+        elif field not in neuron.zero_init_fields:
+            for index in np.ndindex(*_iter):
                 _index = []
                 if field in neuron.batch_fields:
                     # skip batch dimension
                     for i in range(len(uniform_across_dim[1:])):
                         if not uniform_across_dim[i + 1]:
                             _index.append(index[i])
+                    attr = getattr(ensemble.neurons[index], field)
                     for i in range(self.batch_size):
-                        buff[i][tuple(_index)] = getattr(ensemble.neurons[index], field)
+                        buff[i][tuple(_index)] = attr
                 else:
                     for i in range(len(uniform_across_dim)):
                         if not uniform_across_dim[i]:
@@ -213,9 +215,10 @@ class Net:
                 in_place_buffer_map[source.name + "value"] = ensemble.name + "inputs"
                 in_place_buffer_map[ensemble.name + "inputs"] = ensemble.name + "value"
 
-                in_place_buffer_map[ensemble.name + "value"] = ensemble.name + "inputs"
-                in_place_buffer_map[ensemble.name + "inputs"] = source.name + "value"
+                # in_place_buffer_map[ensemble.name + "value"] = ensemble.name + "inputs"
+                # in_place_buffer_map[ensemble.name + "inputs"] = source.name + "value"
 
+        print("Compiling functions...")
         for args, direction, body, casts, tasks in zip([forward_args, backward_args], 
                                                        ["forward", "backward"],
                                                        [forward_body, backward_body],
@@ -227,6 +230,8 @@ class Net:
             params = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
 
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
+            body.insert(0, StringTemplate("#pragma omp parallel \n {"))
+            body.append(StringTemplate("}"))
 
             c_file = C.CFile(direction + self._uniqueid(), [
                 include, 
@@ -241,6 +246,7 @@ class Net:
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
             tasks.append(Task(fn, arg_bufs))
+        print("Done")
 
     unique_id = -1
     def _uniqueid(self):
@@ -267,9 +273,12 @@ class Net:
                 #     count += 1
                 #     curr_loop = curr_loop.body[0]
                 # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
-                loop.pragma = "omp parallel for collapse(2)"
+                loop.pragma = "omp for collapse(2)"
             else:
-                loop.pragma = "omp parallel for collapse(2)"
+                loop.pragma = "omp for collapse(2)"
+
+            if self.nowait:
+                loop.pragma += " nowait"
 
     def _unroll(self, func_def, ensemble, unroll_target_loop_var):
         if unroll_target_loop_var == "_neuron_index_1_inner":
@@ -327,7 +336,7 @@ class Net:
             node = util.gen_for("x0", 0, shape[0], curr_body)
 
             parfor_len = 2 if len(shape) - trans_dim - 1 > 1 else 1
-            node.pragma = "omp parallel for collapse({})".format(parfor_len)
+            node.pragma = "omp for collapse({})".format(parfor_len)
 
             idx = [C.SymbolRef("x0")]
             for i, d in enumerate(shape[1:-trans_dim-1]):
@@ -464,9 +473,9 @@ class Net:
 
         if candidate == "_neuron_index_1_inner":
             if ensemble.ndim > 1:
-                unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim - 1)
+                unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
             else:
-                unroll_target_loop_var = "_neuron_index_0".format(ensemble.ndim)
+                unroll_target_loop_var = "_neuron_index_0"
         else:
             unroll_target_loop_var = "_neuron_index_1_inner"
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)

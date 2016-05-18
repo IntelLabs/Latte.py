@@ -4,7 +4,8 @@ from ..ensemble import Ensemble
 import itertools
 
 class MaxNeuron(Neuron):
-    batch_fields = Neuron.batch_fields + ["mask"]
+    batch_fields     = Neuron.batch_fields + ["mask"]
+    zero_init_fields = Neuron.zero_init_fields + ["mask"]
 
     def __init__(self):
         super().__init__()
@@ -53,11 +54,8 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     output_width = ((input_width - kernel_w + 2 * pad_w) // stride_w) + 1
     output_height = ((input_height - kernel_h + 2 * pad_h) // stride_h) + 1
 
-    neurons = np.empty((input_channels, output_height, output_width), dtype='object')
-    for o, y, x in itertools.product(range(input_channels), 
-                                     range(output_height), 
-                                     range(output_width)):
-        neurons[o, y, x] = MaxNeuron()
+    shape = (input_channels, output_height, output_width)
+    neurons = np.array([MaxNeuron() for _ in range(np.prod(shape))]).reshape(shape)
 
     pooling_ens = net.init_ensemble(neurons)
 

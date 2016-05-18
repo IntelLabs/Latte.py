@@ -53,8 +53,8 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
     grad_weights = np.zeros_like(weights)
 
     neurons = np.empty((num_filters, output_height, output_width), dtype='object')
-    for o, y, x in itertools.product(range(num_filters), range(output_height), range(output_width)):
-        neurons[o, y, x] = ConvNeuron(weights[o], grad_weights[o])
+    for o in range(num_filters):
+        neurons[o, :, :] = ConvNeuron(weights[o], grad_weights[o])
 
     conv_ens = net.init_ensemble(neurons)
 
@@ -71,8 +71,8 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
     grad_bias = np.zeros_like(bias)
 
     bias_neurons = np.empty((num_filters, output_height, output_width), dtype='object')
-    for o, y, x in itertools.product(range(num_filters), range(output_height), range(output_width)):
-        bias_neurons[o, y, x] = BiasNeuron(bias[o], grad_bias[o])
+    for o in range(num_filters):
+        bias_neurons[o, :, :] = BiasNeuron(bias[o], grad_bias[o])
 
     bias_ens = net.init_activation_ensemble(bias_neurons)
 

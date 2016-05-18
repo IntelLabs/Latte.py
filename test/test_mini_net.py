@@ -4,20 +4,25 @@ from latte import *
 import latte.util as util
 from .test_conv import reference_conv_forward, reference_conv_backward
 from .test_pooling import reference_pooling_forward, reference_pooling_backward
+import os
 
 def check_equal(actual, expected, atol=1e-6):
     assert np.allclose(actual, expected, atol=atol)
 
 def test_forward_backward():
-    net = Net(8)
-    channels, height, width = 16, 32, 32
+    batch_size = 16
+
+    net = Net(batch_size)
+    net.nowait = False
+
+    channels, height, width = 8, 8, 8
     pad = 1
     data, data_value = MemoryDataLayer(net, (channels, height, width))
-    conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)
+    conv1, conv1bias = ConvLayer(net, data, num_filters=32, kernel=3, stride=1, pad=pad)
     relu1 = ReLULayer(net, conv1bias)
     pool1 = MaxPoolingLayer(net, relu1, kernel=2, stride=2, pad=0)
 
-    data_value[:, :, :, :] = np.random.rand(8, channels, height, width)
+    data_value[:, :, :, :] = np.random.rand(batch_size, channels, height, width)
 
     net.compile()
 
@@ -74,7 +79,7 @@ def test_forward_backward():
 
     bot_grad = net.buffers[conv1.name + "grad_inputs"]
     actual_converted = util.convert_5d_4d(bot_grad)
-    check_equal(actual_converted, expected_bot_grad)
+    check_equal(actual_converted, expected_bot_grad, 1e-5)
 
     weights_grad = np.sum(net.buffers[conv1.name + "grad_weights"], axis=0)
     weights_converted = util.convert_6d_4d(weights_grad)

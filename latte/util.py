@@ -8,23 +8,20 @@ import numpy as np
 import latte
 from copy import deepcopy
 
-def aligned(a, alignment=64):
-    if (a.ctypes.data % alignment) == 0:
-        return a
-
-    extra = alignment // a.itemsize
-    buf = np.empty(a.size + extra, dtype=a.dtype)
-    ofs = (-buf.ctypes.data % alignment) // a.itemsize
-    aa = buf[ofs:ofs+a.size].reshape(a.shape)
-    np.copyto(aa, a)
+def aligned(shape, dtype, alignment=64, init=np.empty):
+    size = np.prod(shape)
+    extra = alignment // 4
+    buf = init(size + extra, dtype=dtype)
+    ofs = (-buf.ctypes.data % alignment) // 4
+    aa = buf[ofs:ofs+size].reshape(shape)
     assert (aa.ctypes.data % alignment) == 0
     return aa
 
 def empty(shape, dtype):
-    return aligned(np.empty(shape, dtype=dtype))
+    return aligned(shape, dtype)
 
 def zeros(shape, dtype):
-    return aligned(np.zeros(shape, dtype=dtype))
+    return aligned(shape, dtype, init=np.zeros)
 
 def get_dependent_statements(statements, target):
     deps = set([target])

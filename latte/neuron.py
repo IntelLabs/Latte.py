@@ -1,7 +1,14 @@
 import numpy as np
 
 class Neuron:
-    batch_fields = ["value", "grad"]
+    # Fields that store a value for each item in the batch (default behavior is
+    # one value per neuron)
+    batch_fields     = ["value", "grad"]
+
+    # A list of neuron fields that are initialized as 0, this improves
+    # performance of initialization (latte can allocate the entire array of
+    # zeros at once instead of getting the value of the field for each neuron)
+    zero_init_fields = ["value", "grad"]
 
     def __init__(self):
         self.value = 0.0
@@ -43,4 +50,3 @@ class BiasNeuron(Neuron):
 
     def backward(self):
         self.grad_bias[0] += self.grad
-
