@@ -186,6 +186,8 @@ class Net:
         backward_casts = []
         backward_args = set()
 
+        in_place_buffer_map = {}
+
         print("Initializing ensembles...")
         for ensemble in self.ensembles:
             print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
@@ -204,7 +206,15 @@ class Net:
                 casts, body, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
                 backward_args = backward_args.union(args)
                 backward_casts += casts
-                backward_body += body
+                backward_body = body + backward_body
+
+            if isinstance(ensemble, ActivationEnsemble):
+                source = self.connections_map[ensemble][0].source
+                in_place_buffer_map[source.name + "value"] = ensemble.name + "inputs"
+                in_place_buffer_map[ensemble.name + "inputs"] = ensemble.name + "value"
+
+                in_place_buffer_map[ensemble.name + "value"] = ensemble.name + "inputs"
+                in_place_buffer_map[ensemble.name + "inputs"] = source.name + "value"
 
         for args, direction, body, casts, tasks in zip([forward_args, backward_args], 
                                                        ["forward", "backward"],
@@ -226,7 +236,8 @@ class Net:
             c_file._ext = "cpp"
 
             c_file = transformers.simple_fusion(c_file)
-            c_file = transformers.remove_repeated_declarations(c_file)
+            c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
+            # c_file = transformers.remove_repeated_declarations(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
             tasks.append(Task(fn, arg_bufs))
@@ -265,9 +276,10 @@ class Net:
             unroll_factor = SIMDWIDTH
         else:
             unroll_factor = UNROLL_FACTOR
-            unroll_dim = ensemble.shape[-1]
             if ensemble.ndim == 1:
-                unroll_dim //= SIMDWIDTH
+                unroll_dim = self.batch_size
+            else:
+                unroll_dim = ensemble.shape[-1]
             while unroll_factor > unroll_dim or unroll_dim % unroll_factor != 0 :
                 unroll_factor -= 1
                 if unroll_factor == 0:
@@ -452,9 +464,9 @@ class Net:
 
         if candidate == "_neuron_index_1_inner":
             if ensemble.ndim > 1:
-                unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
+                unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim - 1)
             else:
-                unroll_target_loop_var = "_neuron_index_1_outer".format(ensemble.ndim)
+                unroll_target_loop_var = "_neuron_index_0".format(ensemble.ndim)
         else:
             unroll_target_loop_var = "_neuron_index_1_inner"
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)

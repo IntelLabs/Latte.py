@@ -24,7 +24,15 @@ class SimpleFusion(ast.NodeTransformer):
                         statement.init.codegen() == new_body[-1].init.codegen() and \
                         statement.incr.codegen() == new_body[-1].incr.codegen() and \
                         statement.test.codegen() == new_body[-1].test.codegen():
-                    new_body[-1].body.extend(statement.body)
+                    # new_body[-1].body.extend(statement.body)
+                    for stmt in statement.body:
+                        add = True
+                        for seen in new_body[-1].body:
+                            if stmt.codegen() == seen.codegen():
+                                add = False
+                                break
+                        if add:
+                            new_body[-1].body.append(stmt)
                 else:
                     new_body.append(statement)
             node.body = [self.visit(s) for s in new_body]

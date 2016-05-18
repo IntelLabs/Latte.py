@@ -243,7 +243,7 @@ class Vectorizer(ast.NodeTransformer):
             for arg in node.args:
                 if isinstance(arg, C.Constant):
                     # args.append(C.SymbolRef("{" + ",".join(str(arg.value) for _ in range(latte.core.SIMDWIDTH)) + "}"))
-                    args.append(C.SymbolRef("zero_vector_reg"))
+                    args.append(C.FunctionCall(C.SymbolRef("_mm256_setzero_ps"), []))
                 else:
                     args.append(arg)
             node.args = args

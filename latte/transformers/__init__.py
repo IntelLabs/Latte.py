@@ -352,3 +352,40 @@ def remove_repeated_declarations(tree):
                             seen.add(stmt.left.name)
             return node
     return Transformer().visit(tree)
+
+def promote_in_place_load_stores(tree, in_place_buffers):
+    class Transformer(ast.NodeTransformer):
+        def _get_array(self, array_ref):
+            node = array_ref
+            while not isinstance(node, C.SymbolRef):
+                node = node.left
+            return node.name
+
+        def _is_inplace_store(self, stmt):
+            return isinstance(stmt, C.FunctionCall) and stmt.func.name == "_mm256_store_ps" and \
+                    self._get_array(stmt.args[0]) in in_place_buffers
+
+        def _is_inplace_load(self, stmt, target):
+            return isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
+                    isinstance(stmt.right, C.FunctionCall) and stmt.right.func.name == "_mm256_load_ps" and \
+                    self._get_array(stmt.right.args[0]) == in_place_buffers[target]
+
+        def visit(self, node):
+            node = super().visit(node)
+            if hasattr(node, 'body'):
+                new_body = []
+                for i, stmt1 in enumerate(node.body):
+                    if self._is_inplace_store(stmt1):
+                        target = self._get_array(stmt1.args[0])
+                        add = True
+                        for stmt2 in node.body[i+1:]:
+                            if self._is_inplace_load(stmt2, target):
+                                stmt2.right = stmt1.args[1]
+                                add = False
+                                break
+                        if add:
+                            new_body.append(stmt1)
+                    else:
+                        new_body.append(stmt1)
+            return node
+    return Transformer().visit(tree)

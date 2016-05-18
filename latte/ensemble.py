@@ -37,7 +37,6 @@ class DataEnsemble(Ensemble):
 
     def forward(self, value):
         if True and self.value.ndim == 4:
-            # pass
             shape = self.value.shape
             value_reshaped = value.reshape(shape[0], shape[1] // 8, shape[2], shape[3], 8)
             for n in range(shape[0]):
