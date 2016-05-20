@@ -10,6 +10,9 @@ class FCNeuron(WeightedNeuron):
     def backward(self):
         for i in range_dim(self.inputs, 0):
             self.grad_inputs[i] += self.grad * self.weights[i]
+
+    def update_internal(self):
+        for i in range_dim(self.inputs, 0):
             self.grad_weights[i] += self.grad * self.inputs[i]
 
 def FullyConnectedLayer(net, input_ensemble, num_outputs):

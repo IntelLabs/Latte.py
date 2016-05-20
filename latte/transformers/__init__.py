@@ -76,7 +76,7 @@ class TiledLoopInterchanger(ast.NodeTransformer):
                 loop.body = node.body
                 node.body = [loop]
             return node
-        if node.init.left.name.endswith("_outer"):
+        if node.init.left.name.endswith("_outer") and "1" not in node.init.left.name:
             self.tiled_loops.append(node)
             return node.body[0]
         return node

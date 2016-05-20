@@ -60,7 +60,7 @@ def check_equal(actual, expected, atol=1e-6):
 
 def test_forward_backward():
     net = Net(8)
-    channels, height, width = 16, 16, 16
+    channels, height, width = 16, 14, 14
     pad = 1
     data = MemoryDataLayer(net, (channels, height, width))
     conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)

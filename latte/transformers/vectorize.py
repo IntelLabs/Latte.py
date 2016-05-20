@@ -34,7 +34,7 @@ class OuterLoopTiler(ast.NodeTransformer):
             #     C.PostInc(C.SymbolRef("_neuron_index_1_inner")),
             #     node.body
             # )]
-            for i in reversed(range(2, self.ndim + 1)):
+            for i in reversed(range(self.ndim, self.ndim + 1)):
                 loopvar = "_neuron_index_{}".format(i)
                 node.body = [C.For(
                     C.Assign(C.SymbolRef(loopvar, ctypes.c_int()), C.Mul(C.SymbolRef(loopvar + "_outer"), C.Constant(tile_size))),
@@ -42,7 +42,7 @@ class OuterLoopTiler(ast.NodeTransformer):
                     C.PostInc(C.SymbolRef(loopvar)),
                     node.body
                 )]
-        if node.init.left.name in ["_neuron_index_{}".format(i) for i in range(2, self.ndim + 1)]:
+        if node.init.left.name in ["_neuron_index_{}".format(i) for i in range(self.ndim, self.ndim + 1)]:
             node.init.left.name += "_outer"
             node.incr.target.name += "_outer"
             node.test.left.name += "_outer"

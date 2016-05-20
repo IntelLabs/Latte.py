@@ -1,7 +1,6 @@
 import numpy as np
 from latte import *
 import time
-from tqdm import tqdm 
 from latte.solvers import sgd_update
 import ctypes
 mkl = ctypes.cdll.LoadLibrary("libmkl_rt.so")
@@ -51,24 +50,27 @@ def main():
     print("Compiling...")
     net.compile()
 
-    # warmup
-    print("Warming up...")
-    for _ in range(3):
-        net.forward()
-        net.backward()
-
-    forward_t_total = 0.0
-    backward_t_total = 0.0
-    num_trials = 10
-    solver_t_total = 0.0
     params = []
     for name in net.buffers.keys():
         if ("weights" in name or "bias" in name) and "grad_" not in name and "_transposed" not in name:
             params.append((net.buffers[name],
                            np.ones_like(net.buffers[name]), 
                            np.ones_like(net.buffers[name])))
+
+    # warmup
+    print("Warming up...")
+    for _ in range(3):
+        net.forward()
+        net.backward()
+        for param in params:
+            sgd_update(param[0], param[1], param[2], .01, .9)
+
+    forward_t_total = 0.0
+    backward_t_total = 0.0
+    num_trials = 10
+    solver_t_total = 0.0
     print("Running trials")
-    for _ in tqdm(range(num_trials), ncols=100):
+    for _ in range(num_trials):
         t = time.time()
         net.forward()
         forward_t_total += time.time() - t 

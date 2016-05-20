@@ -15,6 +15,11 @@ class ConvNeuron(WeightedNeuron):
             for j in range_dim(self.inputs, 1):
                 for k in range_dim(self.inputs, 2):
                     self.grad_inputs[i, j, k] += self.grad * self.weights[i, j, k]
+
+    def update_internal(self):
+        for i in range_dim(self.inputs, 0):
+            for j in range_dim(self.inputs, 1):
+                for k in range_dim(self.inputs, 2):
                     self.grad_weights[i, j, k] += self.grad * self.inputs[i, j, k]
 
 

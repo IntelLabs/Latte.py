@@ -45,6 +45,7 @@ class Net:
         self.buffer_dim_info = {}
         self.reshaped_buffers = {}
         self.nowait = False
+        self.force_backward = False
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -208,14 +209,14 @@ class Net:
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron.forward, "forward")
+                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron, "forward")
                 forward_args = forward_args.union(args)
                 forward_casts += casts
                 forward_body += body
                 forward_pre_trans += pre_trans
                 forward_post_trans += post_trans
 
-                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron.backward, "backward")
+                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron, "backward")
                 backward_args = backward_args.union(args)
                 backward_casts += casts
                 backward_body = body + backward_body
@@ -257,7 +258,17 @@ class Net:
             c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
+            # c_file.body[1].defn.insert(0, StringTemplate("unsigned long long t0 = __rdtsc();"))
+            # c_file.body[1].defn.insert(0, StringTemplate("""
+            #     unsigned long long _t0, _t1;
+            #     _t0 = __rdtsc();
+            #     sleep(1);
+            #     _t1 = __rdtsc();
+            #     double freq = (double)(_t1 - _t0);
+            #     """))
             c_file.body[1].defn.append(StringTemplate("}"))
+            # c_file.body[1].defn.append(StringTemplate("t0 = __rdtsc() - t0;"))
+            # c_file.body[1].defn.append(StringTemplate("printf(\"Time: %.5g\\n\", t0 / freq);"))
             # c_file = transformers.remove_repeated_declarations(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
@@ -379,9 +390,21 @@ class Net:
                 pre_trans.append(node)
         return pre_trans, post_trans
 
-    def _synthesize_ast(self, ensemble, fn, direction):
+    def _synthesize_ast(self, ensemble, neuron, direction):
         # get_ast returns a ast.Module, grab the first item for the function
-        fn_def = util.get_ast(fn).body[0]
+        if direction == "forward":
+            fn_def = util.get_ast(neuron.forward).body[0]
+        else:
+            if not isinstance(self.connections_map[ensemble][0].source, DataEnsemble) or \
+                    self.force_backward:
+                fn_def = util.get_ast(neuron.backward).body[0]
+                if hasattr(neuron, 'update_internal'):
+                    fn_def.body += util.get_ast(neuron.update_internal).body[0].body
+                    fn_def = transformers.simple_fusion(fn_def)
+            elif hasattr(neuron, 'update_internal'):
+                fn_def = util.get_ast(neuron.update_internal).body[0]
+            else:
+                return [], [], set(), [], []
 
         # transform domain constructs
         transformer = transformers.NeuronTransformer(ensemble,

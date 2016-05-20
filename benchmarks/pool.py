@@ -18,10 +18,10 @@ def main():
     print("    channels = {}".format(channels))
     print("    height = {}".format(height))
     print("    width = {}".format(width))
-    data, data_value = MemoryDataLayer(net, (channels, height, width))
+    data = MemoryDataLayer(net, (channels, height, width))
     MaxPoolingLayer(net, data, kernel=2, stride=2, pad=0)
 
-    data_value[:, :, :, :] = np.random.rand(batch_size, channels, height, width)
+    data.set_value(np.random.rand(batch_size, channels, height, width))
 
     print("Compiling...")
     net.compile()

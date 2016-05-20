@@ -12,6 +12,7 @@ def main():
 
     batch_size = 32
     net = Net(batch_size)
+    net.force_backward = True
     print(args.d)
     channels, height, width = args.d[1:]
     pad = 1

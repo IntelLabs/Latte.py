@@ -8,10 +8,10 @@ def main():
     batch_size = 64
     net = Net(batch_size)
     channels, height, width = 512, 7, 7
-    data, data_value = MemoryDataLayer(net, (channels, height, width))
+    data = MemoryDataLayer(net, (channels, height, width))
     fc1 = FullyConnectedLayer(net, data, 1024)
 
-    data_value[:, :, :, :] = np.random.rand(batch_size, channels, height, width)
+    data.set_value(np.random.rand(batch_size, channels, height, width))
 
     net.compile()
 
