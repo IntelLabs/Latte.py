@@ -84,3 +84,6 @@ class ActivationEnsemble(Ensemble):
     def set_padding(self, *padding):
         self.pad = padding
         self.source.set_padding(*padding)
+
+class LossEnsemble(Ensemble):
+    pass

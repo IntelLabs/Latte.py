@@ -4,3 +4,4 @@ from .layers.memory import MemoryDataLayer
 from .layers.conv import ConvLayer
 from .layers.pooling import MaxPoolingLayer
 from .layers.relu import ReLULayer
+from .layers.softmax import SoftmaxLossLayer

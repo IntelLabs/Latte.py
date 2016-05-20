@@ -2,7 +2,7 @@ import numpy as np
 import numbers
 import itertools
 import ast
-from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble
+from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble
 import latte.util as util
 import astor
 from itertools import product
@@ -40,12 +40,15 @@ class Net:
         self.connections = []
         self.buffers = {}
         self.forward_tasks = []
+        self.forward_loss_tasks = []
         self.backward_tasks = []
+        self.backward_loss_tasks = []
         self.connections_map = {}
         self.buffer_dim_info = {}
         self.reshaped_buffers = {}
         self.nowait = False
         self.force_backward = False
+        self.loss = 0.0
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -63,6 +66,9 @@ class Net:
 
     def add_connections(self, source_ens, sink_ens, mapping, reshape=None):
         self.connections.append(Connection(source_ens, sink_ens, mapping, reshape))
+
+    def add_loss_connection(self, source_ens, sink_ens):
+        self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
 
     def add_one_to_one_connections(self, source_ens, sink_ens):
         self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
@@ -200,12 +206,21 @@ class Net:
         print("Initializing ensembles and synthesizing functions...")
         for ensemble in self.ensembles:
             print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
-            self._init_buffers(ensemble)
+            if not isinstance(ensemble, LossEnsemble):
+                self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
                 # idx = [slice(None)]
                 # idx += [slice(p, d + p) for p, d in zip(ensemble.pad, ensemble.shape)]
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
+            elif isinstance(ensemble, LossEnsemble):
+                bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
+                label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
+                self.forward_loss_tasks.append(
+                    Task(ensemble.forward, [bottom, label]))
+                bottom_grad = self.buffers[self.connections_map[ensemble][0].source.name + "grad"].reshape((self.batch_size, ) + ensemble.shape)
+                self.backward_loss_tasks.append(
+                    Task(ensemble.backward, [bottom_grad, label]))
             else:
                 neuron = ensemble.neurons.flat[0]
 
@@ -593,7 +608,11 @@ class Net:
     def forward(self):
         for task in self.forward_tasks:
             task()
+        for task in self.forward_loss_tasks:
+            task()
 
     def backward(self):
+        for task in self.backward_loss_tasks:
+            task()
         for task in self.backward_tasks:
             task()
