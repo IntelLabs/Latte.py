@@ -87,3 +87,6 @@ class ActivationEnsemble(Ensemble):
 
 class LossEnsemble(Ensemble):
     pass
+
+class AccuracyEnsemble(Ensemble):
+    pass

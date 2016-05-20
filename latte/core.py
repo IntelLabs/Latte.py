@@ -2,7 +2,7 @@ import numpy as np
 import numbers
 import itertools
 import ast
-from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble
+from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, AccuracyEnsemble
 import latte.util as util
 import astor
 from itertools import product
@@ -43,12 +43,14 @@ class Net:
         self.forward_loss_tasks = []
         self.backward_tasks = []
         self.backward_loss_tasks = []
+        self.accuracy_tasks = []
         self.connections_map = {}
         self.buffer_dim_info = {}
         self.reshaped_buffers = {}
         self.nowait = False
         self.force_backward = False
         self.loss = 0.0
+        self.accuracy = 0.0
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -206,7 +208,7 @@ class Net:
         print("Initializing ensembles and synthesizing functions...")
         for ensemble in self.ensembles:
             print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
-            if not isinstance(ensemble, LossEnsemble):
+            if not isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
                 self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
                 # idx = [slice(None)]
@@ -221,6 +223,11 @@ class Net:
                 bottom_grad = self.buffers[self.connections_map[ensemble][0].source.name + "grad"].reshape((self.batch_size, ) + ensemble.shape)
                 self.backward_loss_tasks.append(
                     Task(ensemble.backward, [bottom_grad, label]))
+            elif isinstance(ensemble, AccuracyEnsemble):
+                bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
+                label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
+                self.accuracy_tasks.append(
+                    Task(ensemble.forward, [bottom, label]))
             else:
                 neuron = ensemble.neurons.flat[0]
 
@@ -604,6 +611,12 @@ class Net:
                 "cast": C.SymbolRef(shape_str),
                 "type": C.SymbolRef(ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(dtype)()))
             }))
+
+    def test(self):
+        for task in self.forward_tasks:
+            task()
+        for task in self.accuracy_tasks:
+            task()
 
     def forward(self):
         for task in self.forward_tasks:
