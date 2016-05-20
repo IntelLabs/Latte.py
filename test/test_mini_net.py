@@ -17,12 +17,13 @@ def test_forward_backward():
 
     channels, height, width = 8, 8, 8
     pad = 1
-    data, data_value = MemoryDataLayer(net, (channels, height, width))
+    data = MemoryDataLayer(net, (channels, height, width))
     conv1, conv1bias = ConvLayer(net, data, num_filters=32, kernel=3, stride=1, pad=pad)
     relu1 = ReLULayer(net, conv1bias)
     pool1 = MaxPoolingLayer(net, relu1, kernel=2, stride=2, pad=0)
 
-    data_value[:, :, :, :] = np.random.rand(batch_size, channels, height, width)
+    data_value = np.random.rand(batch_size, channels, height, width)
+    data.set_value(data_value)
 
     net.compile()
 
@@ -78,7 +79,7 @@ def test_forward_backward():
                 weights_converted, pad, 1)
 
     bot_grad = net.buffers[conv1.name + "grad_inputs"]
-    actual_converted = util.convert_5d_4d(bot_grad)
+    actual_converted = util.convert_5d_4d(bot_grad)[:, :, pad:-pad, pad:-pad]
     check_equal(actual_converted, expected_bot_grad, 1e-5)
 
     weights_grad = np.sum(net.buffers[conv1.name + "grad_weights"], axis=0)

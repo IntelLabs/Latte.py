@@ -42,9 +42,11 @@ class SingleUsePromotor(ast.NodeTransformer):
         node = super().visit(node)
         if hasattr(node, 'body'):
             new_body = []
+            seen = set()
             for i, stmt in enumerate(node.body):
                 if isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
-                        isinstance(stmt.left.type, simd.types.m256):
+                        (isinstance(stmt.left.type, simd.types.m256) or stmt.left.name in seen):
+                    seen.add(stmt.left.name)
                     value = stmt.left.name
                     counter = 0
                     for _stmt in node.body[i+1:]:
@@ -368,7 +370,7 @@ def promote_in_place_load_stores(tree, in_place_buffers):
         def _is_inplace_load(self, stmt, target):
             return isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
                     isinstance(stmt.right, C.FunctionCall) and stmt.right.func.name == "_mm256_load_ps" and \
-                    self._get_array(stmt.right.args[0]) == in_place_buffers[target]
+                    self._get_array(stmt.right.args[0]) in in_place_buffers[target]
 
         def visit(self, node):
             node = super().visit(node)
@@ -387,5 +389,6 @@ def promote_in_place_load_stores(tree, in_place_buffers):
                             new_body.append(stmt1)
                     else:
                         new_body.append(stmt1)
+                node.body = new_body
             return node
     return Transformer().visit(tree)

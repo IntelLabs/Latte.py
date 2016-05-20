@@ -12,6 +12,7 @@ class ReLUNeuron(Neuron):
         self.value = max(self.input, 0.0)
 
     def backward(self):
+        # self.grad_input = ifelse(self.input > 0.0, self.grad, 0.0)
         if self.input > 0.0:
             self.grad_input = self.grad
         else:
@@ -24,7 +25,6 @@ def ReLULayer(net, input_ensemble):
     for i in range(len(relu_neurons)):
         relu_neurons[i] = ReLUNeuron()
 
-    relu_ens = net.init_activation_ensemble(relu_neurons)
-    net.add_one_to_one_connections(input_ensemble, relu_ens)
+    relu_ens = net.init_activation_ensemble(relu_neurons, input_ensemble)
 
     return relu_ens

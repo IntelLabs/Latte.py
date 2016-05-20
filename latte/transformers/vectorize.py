@@ -26,7 +26,7 @@ class OuterLoopTiler(ast.NodeTransformer):
         #         C.PostInc(C.SymbolRef("_neuron_index_1_inner")),
         #         node.body
         #     )]
-        tile_size = 16
+        tile_size = 7
         if node.init.left.name == "_neuron_index_{}".format(self.ndim):
             # node.body = [C.For(
             #     C.Assign(C.SymbolRef("_neuron_index_1_inner", ctypes.c_int()), C.Constant(0)),
@@ -115,7 +115,7 @@ class RemoveIndexExprs(ast.NodeTransformer):
     def visit_BinaryOp(self, node):
         if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.SymbolRef) and \
                 util.contains_symbol(node.right, self.var):
-            return C.Constant(0)
+            return None
         return node
 
 class Vectorizer(ast.NodeTransformer):
@@ -134,6 +134,7 @@ class Vectorizer(ast.NodeTransformer):
         if node.init.left.name == self.loop_var:
             body = node.body
             body = [RemoveIndexExprs(self.loop_var).visit(s) for s in node.body]
+            body = [s for s in body if s is not None]
             # if len(self.transposed_buffers) > 0:
             #     for buffer_name in self.transposed_buffers:
             #         body.insert(0, 

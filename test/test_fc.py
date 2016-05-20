@@ -8,22 +8,29 @@ def check_equal(actual, expected, atol=1e-6):
 
 def test_forward_backward():
     net = Net(8)
-    data, data_value = MemoryDataLayer(net, (24, 24))
-    fc1 = FullyConnectedLayer(net, data, 24)
-    fc2 = FullyConnectedLayer(net, fc1, 24)
+    data = MemoryDataLayer(net, (24, ))
+    fc1, fc1bias = FullyConnectedLayer(net, data, 24)
+    fc2, fc2bias = FullyConnectedLayer(net, fc1bias, 24)
 
-    data_value[:, :, :] = np.random.rand(8, 24, 24)
+    data_value = np.random.rand(8, 24)
+    data.set_value(data_value)
 
     net.compile()
+
+    bias    = net.buffers[fc1bias.name + "bias"]
+    np.copyto(bias, np.random.rand(*bias.shape))
+
     net.forward()
 
     weights = net.buffers[fc1.name + "weights"]
     weights_converted = util.convert_4d_2d(weights)
     actual  = net.buffers[fc1.name + "value"]
     actual = actual.reshape((actual.shape[0], actual.shape[1] * actual.shape[2]))
-    expected = np.dot(data_value.reshape((8, 24 * 24)), weights_converted.transpose())
-    # for n in range(8):
-    #     expected[n, :] += bias
+    expected = np.dot(data_value, weights_converted.transpose())
+
+    bias = util.convert_3d_2d(bias)
+    for n in range(8):
+        expected[n, :] += bias.reshape((24,))
 
     check_equal(actual, expected, 1e-5)
 
@@ -45,6 +52,7 @@ def test_forward_backward():
     expected_weights_grad = np.dot(top_grad.transpose(), actual)
     check_equal(weights_grad_converted, expected_weights_grad)
 
-    # bias_grad = net.buffers[fc2.name + "grad_bias"]
-    # expected_bias_grad = np.sum(top_grad, 0).reshape(24, 1)
-    # check_equal(bias_grad, expected_bias_grad)
+    bias_grad = np.sum(net.buffers[fc2bias.name + "grad_bias"], axis=0)
+    bias_grad = util.convert_3d_2d(bias_grad)
+    expected_bias_grad = np.sum(top_grad, 0).reshape(24, 1)
+    check_equal(bias_grad, expected_bias_grad)

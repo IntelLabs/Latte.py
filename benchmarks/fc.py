@@ -5,7 +5,7 @@ import time
 from scipy import linalg
 
 def main():
-    batch_size = 32
+    batch_size = 64
     net = Net(batch_size)
     channels, height, width = 512, 7, 7
     data, data_value = MemoryDataLayer(net, (channels, height, width))

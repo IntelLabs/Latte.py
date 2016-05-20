@@ -74,6 +74,8 @@ def gen_loop_nest(body, loop_vars, loop_ranges):
     for var, _range in zip(loop_vars, loop_ranges):
         body = [ast.For(ast.Name(var, ast.Store()),
                 ast.Call(ast.Name("range", ast.Load()), [ast.Num(_range)], []), body, [])]
+        # body = [ast.For(ast.Name(var, ast.Store()),
+        #         ast.Call(ast.Name("range", ast.Load()), [ast.Num(_range[0]), ast.Num(_range[1])], []), body, [])]
     return body[0]
 
 
@@ -354,6 +356,9 @@ def convert_4d_2d(arr):
                 for v2 in range(shape[3]):
                     arr_converted[n * shape[2] + v, i * shape[3] + v2] = arr[n, i, v, v2]
     return arr_converted
+
+def interleave_lists(list1, list2):
+    return [val for pair in zip(list1, list2) for val in pair]
 
 # class Unpack(ast.NodeTransformer):
 #     def __init__(self):

@@ -44,7 +44,7 @@ class Net:
         self.connections_map = {}
         self.buffer_dim_info = {}
         self.reshaped_buffers = {}
-        self.nowait = True
+        self.nowait = False
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -54,9 +54,10 @@ class Net:
         self.ensembles.append(ens)
         return ens
 
-    def init_activation_ensemble(self, neurons):
-        ens = ActivationEnsemble(neurons)
+    def init_activation_ensemble(self, neurons, source_ens):
+        ens = ActivationEnsemble(neurons, source_ens)
         self.ensembles.append(ens)
+        self.add_one_to_one_connections(source_ens, ens)
         return ens
 
     def add_connections(self, source_ens, sink_ens, mapping, reshape=None):
@@ -145,7 +146,8 @@ class Net:
 
     def _initialize_value_grad(self, ensemble):
         for field in ["value", "grad"]:
-            _shape = (self.batch_size, ) + ensemble.shape
+            _shape = (self.batch_size, ) + \
+                    tuple(p * 2 + d for p, d in zip(ensemble.pad, ensemble.shape))
             self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
 
     def _init_buffers(self, ensemble):
@@ -183,65 +185,79 @@ class Net:
         forward_body = []
         forward_casts = []
         forward_args = set()
+        forward_pre_trans = []
+        forward_post_trans = []
 
         backward_body = []
         backward_casts = []
         backward_args = set()
+        backward_pre_trans = []
+        backward_post_trans = []
 
         in_place_buffer_map = {}
 
-        print("Initializing ensembles...")
+        print("Initializing ensembles and synthesizing functions...")
         for ensemble in self.ensembles:
             print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
             self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
+                # idx = [slice(None)]
+                # idx += [slice(p, d + p) for p, d in zip(ensemble.pad, ensemble.shape)]
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                casts, body, args = self._synthesize_ast(ensemble, neuron.forward, "forward")
+                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron.forward, "forward")
                 forward_args = forward_args.union(args)
                 forward_casts += casts
                 forward_body += body
+                forward_pre_trans += pre_trans
+                forward_post_trans += post_trans
 
-                casts, body, args = self._synthesize_ast(ensemble, neuron.backward, "backward")
+                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron.backward, "backward")
                 backward_args = backward_args.union(args)
                 backward_casts += casts
                 backward_body = body + backward_body
+                backward_pre_trans += pre_trans
+                backward_post_trans += post_trans
 
             if isinstance(ensemble, ActivationEnsemble):
                 source = self.connections_map[ensemble][0].source
-                in_place_buffer_map[source.name + "value"] = ensemble.name + "inputs"
-                in_place_buffer_map[ensemble.name + "inputs"] = ensemble.name + "value"
-
-                # in_place_buffer_map[ensemble.name + "value"] = ensemble.name + "inputs"
+                in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
+                # in_place_buffer_map[ensemble.name + "inputs"] = [source.name + "value", ensemble.name + "value"]
+                # in_place_buffer_map[ensemble.name + "value"] = [ensemble.name + "inputs", source.name + "value"]
                 # in_place_buffer_map[ensemble.name + "inputs"] = source.name + "value"
 
         print("Compiling functions...")
-        for args, direction, body, casts, tasks in zip([forward_args, backward_args], 
-                                                       ["forward", "backward"],
-                                                       [forward_body, backward_body],
-                                                       [forward_casts, backward_casts],
-                                                       [self.forward_tasks, self.backward_tasks]):
+        for args, direction, body, casts, tasks, pre_trans, post_trans in zip([forward_args, backward_args], 
+                                                                              ["forward", "backward"],
+                                                                              [forward_body, backward_body],
+                                                                              [forward_casts, backward_casts],
+                                                                              [self.forward_tasks, self.backward_tasks],
+                                                                              [forward_pre_trans, backward_pre_trans],
+                                                                              [forward_post_trans, backward_post_trans]
+                                                                              ):
             args = list(args)
             arg_bufs = [self.buffers[arg.arg] for arg in args]
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
             params = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
 
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-            body.insert(0, StringTemplate("#pragma omp parallel \n {"))
-            body.append(StringTemplate("}"))
+            pre_trans.append(StringTemplate("#pragma omp barrier"))
 
             c_file = C.CFile(direction + self._uniqueid(), [
                 include, 
-                C.FunctionDecl(None, C.SymbolRef(direction), params, casts + body)
+                C.FunctionDecl(None, C.SymbolRef(direction), params, body)
             ], path=".compiled")
 
             c_file._ext = "cpp"
 
             c_file = transformers.simple_fusion(c_file)
+            c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
+            c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
+            c_file.body[1].defn.append(StringTemplate("}"))
             # c_file = transformers.remove_repeated_declarations(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
@@ -328,7 +344,9 @@ class Net:
                 buf_shape = self.reshaped_buffers[buf.ctypes._data]
                 self.buffers[name] = buf.reshape(buf_shape)
 
-    def _gen_transposes(self, body, transposed_buffers):
+    def _gen_transposes(self, transposed_buffers):
+        pre_trans = []
+        post_trans = []
         for buffer_name, trans_dim in transposed_buffers.items():
             curr_body = []
             shape = self.buffers[buffer_name].shape
@@ -336,7 +354,7 @@ class Net:
             node = util.gen_for("x0", 0, shape[0], curr_body)
 
             parfor_len = 2 if len(shape) - trans_dim - 1 > 1 else 1
-            node.pragma = "omp for collapse({})".format(parfor_len)
+            node.pragma = "omp for collapse({}) nowait".format(parfor_len)
 
             idx = [C.SymbolRef("x0")]
             for i, d in enumerate(shape[1:-trans_dim-1]):
@@ -353,12 +371,13 @@ class Net:
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
-                body.append(node)
+                post_trans.append(node)
             else:
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
-                body.insert(0, node)
+                pre_trans.append(node)
+        return pre_trans, post_trans
 
     def _synthesize_ast(self, ensemble, fn, direction):
         # get_ast returns a ast.Module, grab the first item for the function
@@ -373,9 +392,11 @@ class Net:
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
         loop_vars[-2] += "_outer"
         loop_vars.insert(0, "_neuron_index_1_inner")
+        # pad = ensemble.pad + (0, )
         shape = list(ensemble.shape)
         shape[0] //= SIMDWIDTH
         shape.append(SIMDWIDTH)
+        # loop_ranges = ([(0, self.batch_size)] + [(p, p + d) for p, d in zip(pad, shape)])[::-1]
         loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
 
         body = fn_def.body
@@ -471,17 +492,24 @@ class Net:
 
         candidate = transformers.get_loop_to_vectorize(func_def)
 
-        if candidate == "_neuron_index_1_inner":
-            if ensemble.ndim > 1:
-                unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
-            else:
-                unroll_target_loop_var = "_neuron_index_0"
+        unroll = True
+        if ensemble.ndim > 1:
+            unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
         else:
-            unroll_target_loop_var = "_neuron_index_1_inner"
+            unroll_target_loop_var = "_neuron_index_0"
+        # if candidate == "_neuron_index_1_inner":
+        #     if ensemble.ndim > 1:
+        #         unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
+        #     else:
+        #         unroll_target_loop_var = "_neuron_index_0"
+        # else:
+        #     # unroll_target_loop_var = "_neuron_index_1_inner"
+        #     unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
+        #     # unroll = False
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
         if candidate is not None:
             func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
-            # func_def = transformers.push_inner_loop_down(func_def)
+            func_def = transformers.push_inner_loop_down(func_def)
             # func_def = transformers.interchange_inner_loop(func_def)
             # func_def, _ = transformers.tile_outer_loop(func_def, ensemble.ndim)
             # func_def = transformers.interchange_tiled_loops(func_def)
@@ -494,7 +522,6 @@ class Net:
 
         self._parallelize_loops(func_def, ensemble.ndim)
 
-        unroll = True
         if candidate is not None and unroll:
             self._unroll(func_def, ensemble, unroll_target_loop_var)
         else:
@@ -512,7 +539,7 @@ class Net:
             # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
 
         if candidate is not None:
-            self._gen_transposes(func_def.defn, transposed_buffers)
+            pre_trans, post_trans = self._gen_transposes(transposed_buffers)
 
             for buffer_name, trans_dim in transposed_buffers.items():
                 curr_body = []
@@ -522,8 +549,11 @@ class Net:
                 args.append(ast.arg(buffer_name + "_transposed", None))
                 self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
                 self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
+        else:
+            pre_trans = []
+            post_trans = []
 
-        return casts, func_def.defn, args
+        return casts, func_def.defn, args, pre_trans, post_trans
 
     def _insert_cast(self, body, shape, name, dtype):
         shape_str = "".join("[{}]".format(d) for d in shape)

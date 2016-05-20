@@ -1,5 +1,5 @@
 import numpy as np
-from ..neuron import WeightedNeuron
+from ..neuron import WeightedNeuron, BiasNeuron
 from ..ensemble import Ensemble
 
 class FCNeuron(WeightedNeuron):
@@ -30,4 +30,11 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
 
     net.add_connections(input_ensemble, ens, mapping, reshape=(flattened, ))
 
-    return ens
+    bias = np.zeros((num_outputs, 1), dtype=np.float32)
+    grad_bias = np.zeros_like(bias)
+
+    bias_neurons = np.array([BiasNeuron(bias[i], grad_bias[i]) for i in range(num_outputs)])
+
+    bias_ens = net.init_activation_ensemble(bias_neurons, ens)
+
+    return ens, bias_ens

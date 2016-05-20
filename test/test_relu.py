@@ -10,10 +10,11 @@ def test_forward_backward():
     net = Net(8)
     channels, height, width = 16, 16, 16
     pad = 1
-    data, data_value = MemoryDataLayer(net, (channels, height, width))
+    data = MemoryDataLayer(net, (channels, height, width))
     relu1 = ReLULayer(net, data)
     
-    data_value[:, :, :, :] = np.random.rand(8, channels, height, width)
+    data_value = np.random.rand(8, channels, height, width)
+    data.set_value(data_value)
 
     net.compile()
     net.forward()

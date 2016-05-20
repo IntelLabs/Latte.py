@@ -21,10 +21,10 @@ def reference_conv_forward(_input, weights, bias, pad, stride):
                     out_x = in_x + kernel_w
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y)):
-                            p = min(max(p, 0), in_height - 1)
-                            for j, q in enumerate(range(in_x, out_x)):
-                                q = min(max(q, 0), in_width - 1)
-                                output[n, o, y, x] += weights[o, c, i, j] * _input[n, c, p, q]
+                            if p >= 0 and p < in_height:
+                                for j, q in enumerate(range(in_x, out_x)):
+                                    if q >= 0 and q < in_width:
+                                        output[n, o, y, x] += weights[o, c, i, j] * _input[n, c, p, q]
                     output[n, o, y, x] += bias[o][0]
     return output
 
@@ -48,11 +48,11 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride):
                     out_x = in_x + kernel_w
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y)):
-                            p = min(max(p, 0), in_height - 1)
-                            for j, q in enumerate(range(in_x, out_x)):
-                                q = min(max(q, 0), in_width - 1)
-                                weights_grad[o, c, i , j] += top_grad[n, o, y, x] * _input[n, c, p, q]
-                                bot_grad[n, c, p, q] += weights[o, c, i, j] * top_grad[n, o, y, x]
+                            if p >= 0 and p < in_height:
+                                for j, q in enumerate(range(in_x, out_x)):
+                                    if q >= 0 and q < in_width:
+                                        weights_grad[o, c, i , j] += top_grad[n, o, y, x] * _input[n, c, p, q]
+                                        bot_grad[n, c, p, q] += weights[o, c, i, j] * top_grad[n, o, y, x]
     return bot_grad, weights_grad, bias_grad
 
 def check_equal(actual, expected, atol=1e-6):
@@ -62,27 +62,28 @@ def test_forward_backward():
     net = Net(8)
     channels, height, width = 16, 16, 16
     pad = 1
-    data, data_value = MemoryDataLayer(net, (channels, height, width))
+    data = MemoryDataLayer(net, (channels, height, width))
     conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)
-    conv2, conv2bias = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad)
+    conv2, conv2bias = ConvLayer(net, conv1bias, num_filters=16, kernel=3, stride=1, pad=pad)
 
-    data_value[:, :, :, :] = np.random.rand(8, channels, height, width)
+    _input = np.random.rand(8, channels, height, width)
+    data.set_value(_input)
 
     net.compile()
 
     weights = net.buffers[conv1.name + "weights"]
     bias    = net.buffers[conv1bias.name + "bias"]
-    np.copyto(bias, np.random.rand(*bias.shape))
+    # np.copyto(bias, np.random.rand(*bias.shape))
     weights_converted = util.convert_6d_4d(weights)
 
     net.forward()
 
     bias = util.convert_3d_2d(bias)
-    expected = reference_conv_forward(data_value, weights_converted, bias,
+    expected = reference_conv_forward(_input, weights_converted, bias,
             pad, 1)
 
     actual  = net.buffers[conv1.name + "value"]
-    actual_converted = util.convert_5d_4d(actual)
+    actual_converted = util.convert_5d_4d(actual)[:, :, pad:-pad, pad:-pad]
     check_equal(actual_converted, expected, 1e-5)
 
     top_grad = net.buffers[conv2.name + "grad"]
@@ -94,12 +95,12 @@ def test_forward_backward():
     net.backward()
 
     expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-        reference_conv_backward(top_grad_converted, actual_converted,
+        reference_conv_backward(top_grad_converted, expected,
                 weights_converted, pad, 1)
 
     bot_grad = net.buffers[conv1.name + "grad"]
-    actual_converted = util.convert_5d_4d(bot_grad)
-    check_equal(actual_converted, expected_bot_grad)
+    bot_grad = util.convert_5d_4d(bot_grad)[:, :, pad:-pad, pad:-pad]
+    check_equal(bot_grad, expected_bot_grad)
 
     weights_grad = np.sum(net.buffers[conv2.name + "grad_weights"], axis=0)
     # weights_grad = net.buffers[conv2.name + "grad_weights"][0]

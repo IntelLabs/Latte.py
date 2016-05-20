@@ -154,16 +154,16 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             offset = node.mapping.get_offset(dim)
 
             body = []
-            if not (isinstance(offset, ast.Num) and offset.n == 0):
-                def gen_clamp(index):
-                    return C.FunctionCall(C.SymbolRef("MIN"), 
-                        [C.FunctionCall(C.SymbolRef("MAX"), 
-                            [index,
-                             C.Constant(0)]), 
-                         C.Constant(ensemble.shape[dim] - 1)])
-                node.child_for.body = [ClampInputIndex(loop_var, gen_clamp).visit(s) for s in node.child_for.body]
-                if dim == 0:
-                    node.child_for.body = [ClampInputIndex(loop_var + "_inner", gen_clamp).visit(s) for s in node.child_for.body]
+            # if not (isinstance(offset, ast.Num) and offset.n == 0):
+            #     def gen_clamp(index):
+            #         return C.FunctionCall(C.SymbolRef("MIN"), 
+            #             [C.FunctionCall(C.SymbolRef("MAX"), 
+            #                 [index,
+            #                  C.Constant(0)]), 
+            #              C.Constant(ensemble.shape[dim] - 1)])
+            #     node.child_for.body = [ClampInputIndex(loop_var, gen_clamp).visit(s) for s in node.child_for.body]
+            #     if dim == 0:
+            #         node.child_for.body = [ClampInputIndex(loop_var + "_inner", gen_clamp).visit(s) for s in node.child_for.body]
             body += [self.visit(s) for s in node.child_for.body]
             if dim == 0:
                 # body = [UpdateInputIndices(input_offset + "_inner_index", input_offset + "_inner").visit(s) for s in body]

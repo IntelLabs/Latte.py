@@ -18,14 +18,14 @@ def main():
     ofm = args.d[0]
     print("Benchmark Config")
     print("    batch_size = {}".format(batch_size))
-    print("    channels = {}".format(channels))
-    print("    height = {}".format(height))
-    print("    width = {}".format(width))
-    print("    ofm = {}".format(ofm))
-    data, data_value = MemoryDataLayer(net, (channels, height, width))
+    print("    channels   = {}".format(channels))
+    print("    height     = {}".format(height))
+    print("    width      = {}".format(width))
+    print("    ofm        = {}".format(ofm))
+    data = MemoryDataLayer(net, (channels, height, width))
     conv1, conv1bias = ConvLayer(net, data, num_filters=ofm, kernel=3, stride=1, pad=pad)
 
-    data_value[:, :, :, :] = np.random.rand(batch_size, channels, height, width)
+    data.set_value(np.random.rand(batch_size, channels, height, width))
 
     print("Compiling...")
     net.compile()

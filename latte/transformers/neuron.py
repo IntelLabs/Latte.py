@@ -55,6 +55,9 @@ class NeuronTransformer(ast.NodeTransformer):
                 # Tile 1st (non-batch) dimension
                 args[1].id += "_outer"
                 args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
+                for i, p in enumerate(self.ensemble.pad):
+                    if p > 0:
+                        args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p))
                 return ast.Subscript(ast.Name(name, ast.Load()), 
                                      ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
 
@@ -91,6 +94,9 @@ class NeuronTransformer(ast.NodeTransformer):
 
             if node.attr in ["value", "grad"]:
                 args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
+                for i, p in enumerate(self.ensemble.pad):
+                    if p > 0:
+                        args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p))
 
             # return updated indedxing expression
             return ast.Subscript(ast.Name(name, ast.Load()), 
