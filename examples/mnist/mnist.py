@@ -1,124 +1,8 @@
-import os, struct
-from array import array as pyarray 
-from numpy import append, array, int8, uint8, zeros
 import numpy as np
 from latte import *
 from latte.solvers import sgd_update
 import random
-
-# from https://raw.githubusercontent.com/amitgroup/amitgroup/master/amitgroup/io/mnist.py
-def load_mnist(dataset="training", digits=None, path=None, asbytes=False, selection=None, return_labels=True, return_indices=False):
-    """
-    Loads MNIST files into a 3D numpy array.
-
-    You have to download the data separately from [MNIST]_. It is recommended
-    to set the environment variable ``MNIST`` to point to the folder where you
-    put the data, so that you don't have to select path. On a Linux+bash setup,
-    this is done by adding the following to your ``.bashrc``::
-
-        export MNIST=/path/to/mnist
-
-    Parameters
-    ----------
-    dataset : str 
-        Either "training" or "testing", depending on which dataset you want to
-        load. 
-    digits : list 
-        Integer list of digits to load. The entire database is loaded if set to
-        until--but not including--the twentieth.
-    return_labels : bool
-        Specify whether or not labels should be returned. This is also a speed
-        performance if digits are not specified, since then the labels file
-        does not need to be read at all.
-    return_indicies : bool
-        Specify whether or not to return the MNIST indices that were fetched.
-        This is valuable only if digits is specified, because in that case it
-        can be valuable to know how far
-        in the database it reached.
-
-    Returns
-    -------
-    images : ndarray
-        Image data of shape ``(N, rows, cols)``, where ``N`` is the number of images. If neither labels nor inices are returned, then this is returned directly, and not inside a 1-sized tuple.
-    labels : ndarray
-        Array of size ``N`` describing the labels. Returned only if ``return_labels`` is `True`, which is default.
-    indices : ndarray
-        The indices in the database that were returned.
-
-    Examples
-    --------
-    Assuming that you have downloaded the MNIST database and set the
-    environment variable ``$MNIST`` point to the folder, this will load all
-    images and labels from the training set:
-
-    >>> images, labels = ag.io.load_mnist('training') # doctest: +SKIP
-
-    Load 100 sevens from the testing set:    
-
-    >>> sevens = ag.io.load_mnist('testing', digits=[7], selection=slice(0, 100), return_labels=False) # doctest: +SKIP
-
-    """
-
-    # The files are assumed to have these names and should be found in 'path'
-    files = {
-        'training': ('train-images-idx3-ubyte', 'train-labels-idx1-ubyte'),
-        'testing': ('t10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte'),
-    }
-
-    if path is None:
-        try:
-            path = os.environ['MNIST']
-        except KeyError:
-            raise ValueError("Unspecified path requires environment variable $MNIST to be set")
-
-    try:
-        images_fname = os.path.join(path, files[dataset][0])
-        labels_fname = os.path.join(path, files[dataset][1])
-    except KeyError:
-        raise ValueError("Data set must be 'testing' or 'training'")
-
-    # We can skip the labels file only if digits aren't specified and labels aren't asked for
-    if return_labels or digits is not None:
-        flbl = open(labels_fname, 'rb')
-        magic_nr, size = struct.unpack(">II", flbl.read(8))
-        labels_raw = pyarray("b", flbl.read())
-        flbl.close()
-
-    fimg = open(images_fname, 'rb')
-    magic_nr, size, rows, cols = struct.unpack(">IIII", fimg.read(16))
-    images_raw = pyarray("B", fimg.read())
-    fimg.close()
-
-    if digits:
-        indices = [k for k in range(size) if labels_raw[k] in digits]
-    else:
-        indices = range(size)
-
-    if selection:
-        indices = indices[selection] 
-    N = len(indices)
-
-    images = zeros((N, rows, cols), dtype=np.uint8)
-
-    if return_labels:
-        labels = zeros((N), dtype=int8)
-    for i, index in enumerate(indices):
-        images[i] = array(images_raw[ indices[i]*rows*cols : (indices[i]+1)*rows*cols ]).reshape((rows, cols))
-        if return_labels:
-            labels[i] = labels_raw[indices[i]]
-
-    if not asbytes:
-        images = images.astype(float)/255.0
-
-    ret = (images.astype(np.float32),)
-    if return_labels:
-        ret += (labels.astype(np.float32),)
-    if return_indices:
-        ret += (indices,)
-    if len(ret) == 1:
-        return ret[0] # Don't return a tuple of one
-    else:
-        return ret
+from data_loader import load_mnist
 
 train_data, train_label = load_mnist(dataset="training", path="./data")
 test_data, test_label   = load_mnist(dataset="testing", path="./data")
@@ -131,31 +15,27 @@ num_test = test_data.shape[0]
 test_data = np.pad(test_data.reshape(num_test, 1, 28, 28), [(0, 0), (0, 7), (0, 0), (0, 0)], mode='constant')
 test_label = test_label.reshape(num_test, 1)
 
-net = Net(100)
+
+batch_size = 100
+net = Net(batch_size)
 
 data     = MemoryDataLayer(net, train_data[0].shape)
 label    = MemoryDataLayer(net, train_label[0].shape)
 
-_, conv1 = ConvLayer(net, data, num_filters=24, kernel=5, stride=1, pad=2)
+_, conv1 = ConvLayer(net, data, num_filters=16, kernel=5, stride=1, pad=0)
 relu1    = ReLULayer(net, conv1)
 pool1    = MaxPoolingLayer(net, relu1, kernel=2, stride=2, pad=0)
 
-_, conv2 = ConvLayer(net, pool1, num_filters=56, kernel=5, stride=1, pad=2)
+_, conv2 = ConvLayer(net, pool1, num_filters=64, kernel=5, stride=1, pad=0)
 relu2    = ReLULayer(net, conv2)
 pool2    = MaxPoolingLayer(net, relu2, kernel=2, stride=2, pad=0)
 
-_, conv3 = ConvLayer(net, pool2, num_filters=56, kernel=3, stride=1, pad=1)
-relu3    = ReLULayer(net, conv3)
-pool3    = MaxPoolingLayer(net, relu3, kernel=2, stride=2, pad=0)
+_, fc3   = FullyConnectedLayer(net, pool2, 512)
+relu3    = ReLULayer(net, fc3)
+_, fc4   = FullyConnectedLayer(net, relu3, 16)
 
-_, fc4   = FullyConnectedLayer(net, pool3, 512)
-relu4    = ReLULayer(net, fc4)
-_, fc5   = FullyConnectedLayer(net, relu4, 512)
-relu5    = ReLULayer(net, fc5)
-_, fc6   = FullyConnectedLayer(net, relu5, 16)
-
-loss     = SoftmaxLossLayer(net, fc6, label)
-acc      = AccuracyLayer(net, fc6, label)
+# loss     = SoftmaxLossLayer(net, fc4, label)
+# acc      = AccuracyLayer(net, fc4, label)
 
 net.compile()
 
@@ -174,24 +54,42 @@ for name in net.buffers.keys():
                        grad, 
                        np.zeros_like(net.buffers[name])))
 
-# net.buffers[fc6.name + "bias"][11:] = 0.0
-# net.buffers[_.name + "weights"][11:] = 0.0
-
 base_lr = .01
 gamma = .0001
 power = .75
 
-train_batches = [i for i in range(0, num_train, 100)]
+train_batches = [i for i in range(0, num_train, batch_size)]
+
+output = net.buffers[fc4.name + "value"].reshape(batch_size, 16)
+prob = np.zeros_like(output)
+
+output_grad = net.buffers[fc4.name + "grad"].reshape(batch_size, 16)
 
 for epoch in range(10):
     random.shuffle(train_batches)
     print("Epoch {} - Training...".format(epoch))
     for i, n in enumerate(train_batches):
-        data.set_value(train_data[n:n+100])
-        label.set_value(train_label[n:n+100])
+        data.set_value(train_data[n:n+batch_size])
+        label_value = train_label[n:n+batch_size]
+        label.set_value(label_value)
         net.forward()
+
+        loss = 0.0
+        for n in range(batch_size):
+            x = output[n]
+            e_x = np.exp(x - np.max(x))
+            prob[n] = e_x / e_x.sum()
+            loss -= np.log(max(prob[n, int(label_value[n, 0])], np.finfo(np.float32).min))
+        loss /= batch_size
+
         if i % 100 == 0:
-            print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, net.loss))
+            print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
+
+        np.copyto(output_grad, prob)
+        for n in range(batch_size):
+            output_grad[n, int(label_value[n, 0])] -= 1
+        output_grad /= batch_size
+
         net.backward()
         lr = base_lr * (1 + gamma * i)**power
         mom = .9
@@ -204,12 +102,18 @@ for epoch in range(10):
 
     print("Epoch {} - Testing...".format(epoch))
     acc = 0
-    for i, n in enumerate(range(0, num_test, 100)):
-        data.set_value(test_data[n:n+100])
-        label.set_value(test_label[n:n+100])
+    for i, n in enumerate(range(0, num_test, batch_size)):
+        data.set_value(test_data[n:n+batch_size])
+        label_value = test_label[n:n+batch_size]
+        label.set_value(label_value)
         net.test()
-        acc += net.accuracy
+
+        accuracy = 0.0
+        for n in range(batch_size):
+            if np.argmax(output[n]) == label_value[n, 0]:
+                accuracy += 1
+        acc += accuracy / batch_size
         net.clear_values()
-    acc /= (num_test / 100)
+    acc /= (num_test / batch_size)
     acc *= 100
     print("Epoch {} - Validation accuracy = {:.3f}%".format(epoch, acc))
