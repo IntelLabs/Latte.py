@@ -30,6 +30,7 @@ def compute_output_shape(input_shape, kernel, pad, stride):
 def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
     assert num_filters > 0, "num_filters must be specified and greater than 0"
     assert input_ensemble.ndim == 3, "ConvLayer only supports 3-d input"
+
     if isinstance(kernel, tuple):
         assert len(kernel) == 2, "kernel as a tuple must be of length 2"
         kernel_h, kernel_w = kernel

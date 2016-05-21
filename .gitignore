@@ -5,3 +5,4 @@ build
 dist
 .cache
 .compiled
+examples/mnist/data

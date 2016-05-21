@@ -14,11 +14,11 @@ class SoftmaxLossEnsemble(LossEnsemble):
             e_x = np.exp(x - np.max(x))
             self.prob[n] = e_x / e_x.sum()
             loss -= np.log(max(self.prob[n, int(label[n, 0])], np.finfo(np.float32).min))
-        self.net.loss += loss
+        self.net.loss += loss / bottom.shape[0]
 
     def backward(self, bot_grad, label):
         np.copyto(bot_grad, self.prob)
-        for n in range(self.prob.shape[0]):
+        for n in range(label.size):
             bot_grad[n, int(label[n, 0])] -= 1
         bot_grad /= np.prod(bot_grad.shape)
 

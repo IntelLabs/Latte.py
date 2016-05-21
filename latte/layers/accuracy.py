@@ -4,11 +4,13 @@ from ..ensemble import AccuracyEnsemble
 class AccuracyEnsemble(AccuracyEnsemble):
     def __init__(self, net, shape):
         super().__init__(np.zeros(shape, np.float32))
-        self.prob = np.zeros((net.batch_size, ) + shape, np.float32)
         self.net = net
 
     def forward(self, bottom, label):
-        accuracy = np.sum(np.argmax(bottom, axis=-1) == label.flatten())
+        accuracy = 0.0
+        for n in range(bottom.shape[0]):
+            if np.argmax(bottom[n]) == label[n, 0]:
+                accuracy += 1
         self.net.accuracy = accuracy / label.size
 
 def AccuracyLayer(net, bottom, label):

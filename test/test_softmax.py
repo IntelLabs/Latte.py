@@ -14,7 +14,7 @@ def reference_softmax_forward(_input, label):
         e_x = np.exp(x - np.max(x))
         output[n] = e_x / e_x.sum()
         loss -= np.log(max(output[n, int(label[n, 0])], np.finfo(np.float32).min))
-    return output, loss
+    return output, loss / _input.shape[0]
 
 def reference_softmax_backward(prob, label):
     bot_grad = np.zeros_like(prob)

@@ -51,6 +51,8 @@ class Net:
         self.force_backward = False
         self.loss = 0.0
         self.accuracy = 0.0
+        self.value_buffers = []
+        self.grad_buffers = []
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -74,6 +76,14 @@ class Net:
 
     def add_one_to_one_connections(self, source_ens, sink_ens):
         self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
+
+    def clear_grad(self):
+        for arr in self.grad_buffers:
+            arr.fill(0.0)
+
+    def clear_values(self):
+        for arr in self.value_buffers:
+            arr.fill(0.0)
 
     def _get_uniformity(self, ensemble, field):
         _shape = ensemble.shape
@@ -295,6 +305,11 @@ class Net:
             module = ctree.nodes.Project([c_file]).codegen()
             fn = module.get_callable(direction, type_sig)
             tasks.append(Task(fn, arg_bufs))
+        for key, buf in self.buffers.items():
+            if "value" in key:
+                self.value_buffers.append(buf)
+            if "grad" in key:
+                self.grad_buffers.append(buf)
         print("Done")
 
     unique_id = -1
