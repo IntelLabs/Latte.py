@@ -47,7 +47,7 @@ def main():
     backward_t_total = 0.0
     num_trials = 10
     print("Running trials")
-    for _ in tqdm(range(num_trials), ncols=100):
+    for _ in range(num_trials):
         t = time.time()
         net.forward_tasks[1]()
         forward_t_total += time.time() - t 

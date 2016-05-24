@@ -52,10 +52,18 @@ def main():
 
     params = []
     for name in net.buffers.keys():
-        if ("weights" in name or "bias" in name) and "grad_" not in name and "_transposed" not in name:
+        if name.endswith("weights") and "grad_" not in name:
+            ensemble_name = name[:-len("weights")]
+            grad = net.buffers[ensemble_name + "grad_weights"]
             params.append((net.buffers[name],
-                           np.ones_like(net.buffers[name]), 
-                           np.ones_like(net.buffers[name])))
+                           grad, 
+                           np.zeros_like(net.buffers[name])))
+        elif name.endswith("bias") and "grad_" not in name:
+            ensemble_name = name[:-len("bias")]
+            grad = net.buffers[ensemble_name + "grad_bias"]
+            params.append((net.buffers[name],
+                           grad, 
+                           np.zeros_like(net.buffers[name])))
 
     # warmup
     print("Warming up...")
