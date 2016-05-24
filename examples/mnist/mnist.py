@@ -74,6 +74,7 @@ for epoch in range(10):
         label.set_value(label_value)
         net.forward()
 
+        # Compute loss
         loss = 0.0
         for n in range(batch_size):
             x = output[n]
@@ -85,6 +86,7 @@ for epoch in range(10):
         if i % 100 == 0:
             print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
 
+        # Initialize gradients
         np.copyto(output_grad, prob)
         for n in range(batch_size):
             output_grad[n, int(label_value[n, 0])] -= 1
