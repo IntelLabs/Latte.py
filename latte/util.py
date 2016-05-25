@@ -17,7 +17,7 @@ _file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/al
 c_file = C.CFile("aligned_malloc", [_file])
 module = ctree.nodes.Project([c_file]).codegen()
 aligned_malloc = module.get_callable("aligned_malloc", 
-    ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_int))
+    ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_long))
 
 
 def aligned(shape, dtype, alignment=64, init=np.empty):
