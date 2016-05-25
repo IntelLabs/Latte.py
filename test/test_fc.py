@@ -48,11 +48,13 @@ def test_forward_backward():
     check_equal(bot_grad, expected_bot_grad)
 
     weights_grad = np.sum(net.buffers[fc2.name + "grad_weights"], axis=0)
+    # weights_grad = net.buffers[fc2.name + "grad_weights"]
     weights_grad_converted = util.convert_4d_2d(weights_grad)
     expected_weights_grad = np.dot(top_grad.transpose(), actual)
     check_equal(weights_grad_converted, expected_weights_grad)
 
     bias_grad = np.sum(net.buffers[fc2bias.name + "grad_bias"], axis=0)
+    # bias_grad = net.buffers[fc2bias.name + "grad_bias"]
     bias_grad = util.convert_3d_2d(bias_grad)
     expected_bias_grad = np.sum(top_grad, 0).reshape(24, 1)
     check_equal(bias_grad, expected_bias_grad)

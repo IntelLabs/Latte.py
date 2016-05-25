@@ -2,10 +2,6 @@ import numpy as np
 from latte import *
 import time
 from latte.solvers import sgd_update
-import ctypes
-mkl = ctypes.cdll.LoadLibrary("libmkl_rt.so")
-cblas_sscal = mkl.cblas_sscal
-cblas_saxpy = mkl.cblas_saxpy
 
 def main():
     batch_size = 64
@@ -50,33 +46,15 @@ def main():
     print("Compiling...")
     net.compile()
 
-    params = []
-    for name in net.buffers.keys():
-        if name.endswith("weights") and "grad_" not in name:
-            ensemble_name = name[:-len("weights")]
-            grad = net.buffers[ensemble_name + "grad_weights"]
-            params.append((net.buffers[name],
-                           grad, 
-                           np.zeros_like(net.buffers[name])))
-        elif name.endswith("bias") and "grad_" not in name:
-            ensemble_name = name[:-len("bias")]
-            grad = net.buffers[ensemble_name + "grad_bias"]
-            params.append((net.buffers[name],
-                           grad, 
-                           np.zeros_like(net.buffers[name])))
-
     # warmup
     print("Warming up...")
     for _ in range(3):
         net.forward()
         net.backward()
-        for param in params:
-            sgd_update(param[0], param[1], param[2], .01, .9)
 
     forward_t_total = 0.0
     backward_t_total = 0.0
     num_trials = 10
-    solver_t_total = 0.0
     print("Running trials")
     for _ in range(num_trials):
         t = time.time()
@@ -86,15 +64,10 @@ def main():
         net.backward()
         backward_t_total += time.time() - t 
         t = time.time()
-        # Pseudo solver runtime
-        for param in params:
-            sgd_update(param[0], param[1], param[2], .01, .9)
-        solver_t_total += time.time() - t
 
     print("FP         : {0:.3f} ms".format(forward_t_total / num_trials * 1000))
     print("BP+WU      : {0:.3f} ms".format(backward_t_total / num_trials * 1000))
-    print("Solver     : {0:.3f} ms".format(solver_t_total / num_trials * 1000))
-    print("Throughput : {0:.3f} img/s".format((batch_size * num_trials) / (forward_t_total + backward_t_total + solver_t_total)))
+    print("Throughput : {0:.3f} img/s".format((batch_size * num_trials) / (forward_t_total + backward_t_total)))
 
 if __name__ == '__main__':
     main()

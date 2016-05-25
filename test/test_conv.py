@@ -55,8 +55,8 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride):
                                         bot_grad[n, c, p, q] += weights[o, c, i, j] * top_grad[n, o, y, x]
     return bot_grad, weights_grad, bias_grad
 
-def check_equal(actual, expected, atol=1e-6):
-    assert np.allclose(actual, expected, atol=atol)
+def check_equal(actual, expected, atol=1e-6, rtol=1e-5):
+    assert np.allclose(actual, expected, atol=atol, rtol=rtol)
 
 def test_forward_backward():
     net = Net(8)
@@ -73,18 +73,26 @@ def test_forward_backward():
 
     weights = net.buffers[conv1.name + "weights"]
     bias    = net.buffers[conv1bias.name + "bias"]
-    # np.copyto(bias, np.random.rand(*bias.shape))
+    np.copyto(bias, np.random.rand(*bias.shape))
     weights_converted = util.convert_6d_4d(weights)
 
-    net.forward()
-
     bias = util.convert_3d_2d(bias)
-    expected = reference_conv_forward(_input, weights_converted, bias,
+    conv1_expected = reference_conv_forward(_input, weights_converted, bias,
             pad, 1)
 
-    actual  = net.buffers[conv1.name + "value"]
-    actual_converted = util.convert_5d_4d(actual)[:, :, pad:-pad, pad:-pad]
-    check_equal(actual_converted, expected, 1e-5)
+    weights = net.buffers[conv2.name + "weights"]
+    bias    = net.buffers[conv2bias.name + "bias"]
+    np.copyto(bias, np.random.rand(*bias.shape))
+    bias = util.convert_3d_2d(bias)
+    weights_converted = util.convert_6d_4d(weights)
+
+    expected = reference_conv_forward(conv1_expected, weights_converted, bias,
+            pad, 1)
+    net.forward()
+
+    actual  = net.buffers[conv2.name + "value"]
+    actual_converted = util.convert_5d_4d(actual)
+    check_equal(actual_converted, expected)
 
     top_grad = net.buffers[conv2.name + "grad"]
     np.copyto(top_grad, np.random.rand(*top_grad.shape))
@@ -95,7 +103,7 @@ def test_forward_backward():
     net.backward()
 
     expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-        reference_conv_backward(top_grad_converted, expected,
+        reference_conv_backward(top_grad_converted, conv1_expected,
                 weights_converted, pad, 1)
 
     bot_grad = net.buffers[conv1.name + "grad"]
@@ -103,11 +111,13 @@ def test_forward_backward():
     check_equal(bot_grad, expected_bot_grad)
 
     weights_grad = np.sum(net.buffers[conv2.name + "grad_weights"], axis=0)
+    # weights_grad = net.buffers[conv2.name + "grad_weights"]
     # weights_grad = net.buffers[conv2.name + "grad_weights"][0]
     weights_converted = util.convert_6d_4d(weights_grad)
-    check_equal(weights_converted, expected_weights_grad, 1e-5)
+    check_equal(weights_converted, expected_weights_grad, atol=1e-4)
 
     bias_grad = np.sum(net.buffers[conv2bias.name + "grad_bias"], axis=0)
+    # bias_grad = net.buffers[conv2bias.name + "grad_bias"]
     bias_grad = util.convert_3d_2d(bias_grad)
     # bias_grad = net.buffers[conv2bias.name + "grad_bias"][0]
     check_equal(bias_grad, expected_bias_grad)

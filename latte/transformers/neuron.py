@@ -82,7 +82,8 @@ class NeuronTransformer(ast.NodeTransformer):
                 # We privatize these buffers and reduce across threads at the
                 # end, removing need for synchronization.  This is done by
                 # adding an outer dimension of size num_threads to the buffer
-                args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
+                if True:
+                    args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
 
             # only append dimensions if it is not fixed in self.buffer_dim_info
             # (used for values shared across a dimension)

@@ -140,7 +140,10 @@ class Net:
             self.buffer_dim_info[ensemble.name + field].insert(0, False)
 
         if "grad_" in field:
-            self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
+            if True:
+                self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
+            else:
+                self.buffers[ensemble.name + field] = util.zeros(buff.shape, np.float32)
         elif field not in neuron.zero_init_fields:
             for index in np.ndindex(*_iter):
                 _index = []
@@ -245,14 +248,14 @@ class Net:
                 forward_args = forward_args.union(args)
                 forward_casts += casts
                 forward_body += body
-                forward_pre_trans += pre_trans
+                # forward_pre_trans += pre_trans
                 forward_post_trans += post_trans
 
                 casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron, "backward")
                 backward_args = backward_args.union(args)
                 backward_casts += casts
                 backward_body = body + backward_body
-                backward_pre_trans += pre_trans
+                # backward_pre_trans += pre_trans
                 backward_post_trans += post_trans
 
             if isinstance(ensemble, ActivationEnsemble):
@@ -277,7 +280,7 @@ class Net:
             params = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
 
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-            pre_trans.append(StringTemplate("#pragma omp barrier"))
+            # pre_trans.append(StringTemplate("#pragma omp barrier"))
 
             c_file = C.CFile(direction + self._uniqueid(), [
                 include, 
@@ -286,7 +289,13 @@ class Net:
 
             c_file._ext = "cpp"
 
-            c_file = transformers.simple_fusion(c_file)
+            # c_file = transformers.simple_fusion(c_file)
+            new_body = []
+            for stmt in c_file.body[1].defn:
+                if isinstance(stmt, C.For) and hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                    new_body.extend(stmt.pre_trans)
+                new_body.append(stmt)
+            c_file.body[1].defn = new_body
             c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
@@ -368,7 +377,7 @@ class Net:
             buf = self.buffers[name]
             buf_shape = list(buf.shape)
             if buf.ctypes._data not in self.reshaped_buffers:
-                if "grad_" in name and "grad_inputs" not in name or \
+                if (True and "grad_" in name and "grad_inputs" not in name) or \
                         name.replace(ensemble.name, "") in ensemble.batch_fields or \
                         "inputs" in name:
                     buf_shape[1] //= SIMDWIDTH
@@ -402,7 +411,7 @@ class Net:
             node = util.gen_for("x0", 0, shape[0], curr_body)
 
             parfor_len = 2 if len(shape) - trans_dim - 1 > 1 else 1
-            node.pragma = "omp for collapse({}) nowait".format(parfor_len)
+            node.pragma = "omp for collapse({})".format(parfor_len)
 
             idx = [C.SymbolRef("x0")]
             for i, d in enumerate(shape[1:-trans_dim-1]):
@@ -416,11 +425,18 @@ class Net:
             idx += [C.Constant(0), C.Constant(0)]
 
             if "grad_" in buffer_name:
+                assert False
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx)),
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx))]))
                 post_trans.append(node)
             else:
+                shape_str = ""
+                for d in shape:
+                    shape_str += "[{}]".format(d)
+                if False:
+                    pre_trans.append(
+                            StringTemplate("float {}{} __attribute__((aligned(64)));".format(buffer_name + "_transposed", shape_str)))
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
@@ -601,18 +617,21 @@ class Net:
         if candidate is not None:
             pre_trans, post_trans = self._gen_transposes(transposed_buffers)
 
-            for buffer_name, trans_dim in transposed_buffers.items():
-                curr_body = []
-                shape = self.buffers[buffer_name].shape
-                shape_str = "".join("[{}]".format(d) for d in shape)
+            if True:
+                for buffer_name, trans_dim in transposed_buffers.items():
+                    curr_body = []
+                    shape = self.buffers[buffer_name].shape
+                    shape_str = "".join("[{}]".format(d) for d in shape)
 
-                args.append(ast.arg(buffer_name + "_transposed", None))
-                self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-                self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
+                    args.append(ast.arg(buffer_name + "_transposed", None))
+                    self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
+                    self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
         else:
             pre_trans = []
             post_trans = []
 
+        assert isinstance(func_def.defn[0], C.For)
+        func_def.defn[0].pre_trans = pre_trans
         return casts, func_def.defn, args, pre_trans, post_trans
 
     def _insert_cast(self, body, shape, name, dtype):

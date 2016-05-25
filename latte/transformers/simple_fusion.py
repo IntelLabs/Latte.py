@@ -53,14 +53,32 @@ class SimpleFusion(ast.NodeTransformer):
                     statement.incr.codegen() == new_body[-1].incr.codegen() and \
                     statement.test.codegen() == new_body[-1].test.codegen():
                 if "collapse" in new_body[-1].pragma:
+                    if hasattr(new_body[-1], 'pre_trans'):
+                        pre_trans = new_body[-1].pre_trans
+                        new_body[-1].pre_trans = None
+                    else:
+                        pre_trans = None
                     candidate_node = deepcopy(new_body[-1])
                     candidate_node.body.extend(statement.body)
                     candidate_node = self.visit(candidate_node)
                     if len(candidate_node.body) == 1:
                         new_body[-1].body.extend(statement.body)
+                        if hasattr(statement, 'pre_trans'):
+                            if pre_trans is not None: 
+                                pre_trans.extend(statement.pre_trans)
+                            else:
+                                pre_trans = statement.pre_trans
+                        if pre_trans is not None:
+                            new_body[-1].pre_trans = pre_trans 
                     else:
+                        if pre_trans is not None:
+                            new_body[-1].pre_trans = pre_trans 
                         new_body.append(statement)
                 else:
+                    if hasattr(new_body[-1], 'pre_trans') and hasattr(statement, 'pre_trans'):
+                        new_body[-1].pre_trans.extend(statement.pre_trans)
+                    elif hasattr(statement, 'pre_trans'):
+                        new_body[-1].pre_trans = statement.pre_trans
                     new_body[-1].body.extend(statement.body)
             else:
                 new_body.append(statement)
