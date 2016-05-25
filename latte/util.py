@@ -7,15 +7,32 @@ import ctree.c.nodes as C
 import numpy as np
 import latte
 from copy import deepcopy
+from ctree.templates.nodes import FileTemplate
+import os
+import ctree
+import ctypes
+
+_file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/aligned_malloc.c")
+
+c_file = C.CFile("aligned_malloc", [_file])
+module = ctree.nodes.Project([c_file]).codegen()
+aligned_malloc = module.get_callable("aligned_malloc", 
+    ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_int))
+
 
 def aligned(shape, dtype, alignment=64, init=np.empty):
-    size = np.prod(shape)
-    extra = alignment // 4
-    buf = init(size + extra, dtype=dtype)
-    ofs = (-buf.ctypes.data % alignment) // 4
-    aa = buf[ofs:ofs+size].reshape(shape)
-    assert (aa.ctypes.data % alignment) == 0
-    return aa
+    if isinstance(shape, list):
+        shape = tuple(shape)
+    pointer = aligned_malloc(np.prod(shape) * np.dtype(dtype).itemsize)
+    typ = np.ctypeslib.ndpointer(dtype=dtype, ndim=len(shape), shape=shape)
+    arr = np.ctypeslib.as_array(typ(pointer), shape)
+    if init == np.empty:
+        return arr
+    elif init == np.zeros:
+        arr.fill(0.0)
+        return arr
+    else:
+        raise NotImplementedError()
 
 def empty(shape, dtype):
     return aligned(shape, dtype)

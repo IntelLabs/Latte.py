@@ -54,7 +54,7 @@ def main():
 
     forward_t_total = 0.0
     backward_t_total = 0.0
-    num_trials = 5
+    num_trials = 10
     print("Running trials")
     for _ in range(num_trials):
         t = time.time()
@@ -65,9 +65,10 @@ def main():
         backward_t_total += time.time() - t 
         t = time.time()
 
-    print("FP         : {0:.3f} ms".format(forward_t_total / num_trials * 1000))
-    print("BP+WU      : {0:.3f} ms".format(backward_t_total / num_trials * 1000))
-    print("Throughput : {0:.3f} img/s".format((batch_size * num_trials) / (forward_t_total + backward_t_total)))
+    print("FP                  : {0:.3f} ms".format(forward_t_total / num_trials * 1000))
+    print("BP+WU               : {0:.3f} ms".format(backward_t_total / num_trials * 1000))
+    print("Testing Throughput  : {0:.3f} img/s".format((batch_size * num_trials) / (forward_t_total)))
+    print("Training Throughput : {0:.3f} img/s".format((batch_size * num_trials) / (forward_t_total + backward_t_total)))
 
 if __name__ == '__main__':
     main()

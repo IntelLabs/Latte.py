@@ -29,7 +29,6 @@ os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
-UNROLL_FACTOR = 12
 
 include = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/includes.tmpl.c")
 
@@ -354,11 +353,14 @@ class Net:
             if self.nowait:
                 loop.pragma += " nowait"
 
-    def _unroll(self, func_def, ensemble, unroll_target_loop_var):
+    def _unroll(self, func_def, ensemble, unroll_target_loop_var, direction):
         if unroll_target_loop_var == "_neuron_index_1_inner":
             unroll_factor = SIMDWIDTH
         else:
-            unroll_factor = UNROLL_FACTOR
+            if direction == "forward":
+                unroll_factor = 8
+            else:
+                unroll_factor = 4
             if ensemble.ndim == 1:
                 unroll_dim = self.batch_size
             else:
@@ -600,7 +602,7 @@ class Net:
         self._parallelize_loops(func_def, ensemble.ndim)
 
         if candidate is not None and unroll:
-            self._unroll(func_def, ensemble, unroll_target_loop_var)
+            self._unroll(func_def, ensemble, unroll_target_loop_var, direction)
         else:
             func_def = transformers.insert_pragma_simd(func_def)
 
@@ -611,7 +613,7 @@ class Net:
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
-            # casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+            casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
             self._insert_cast(casts, buf.shape[1:], name, buf.dtype)
             # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
 

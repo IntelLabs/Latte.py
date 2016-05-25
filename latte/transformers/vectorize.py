@@ -205,11 +205,11 @@ class Vectorizer(ast.NodeTransformer):
                 else:
                     return simd_macros.mm256_load_ps(node.left)
             else:
-                return simd_macros.mm256_set1_ps(node)
+                return C.FunctionCall(C.SymbolRef("_mm256_broadcast_ss"), [C.Ref(node)])
         elif isinstance(node.op, C.Op.Assign):
             node.right = self.visit(node.right)
             if isinstance(node.right, C.FunctionCall) and \
-                    node.right.func.name in ["_mm256_load_ps", "_mm256_set1_ps"] and \
+                    node.right.func.name in ["_mm256_load_ps", "_mm256_broadcast_ss"] and \
                     node.left.type is not None:
                 node.left.type = simd.types.m256()
                 return node

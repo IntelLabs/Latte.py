@@ -22,7 +22,7 @@ class LoadInterleaver(ast.NodeTransformer):
             new_body = []
             for stmt in reversed(node.body):
                 if isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
-                        isinstance(stmt.right, C.FunctionCall) and stmt.right.func.name in ["_mm256_set1_ps"]:
+                        isinstance(stmt.right, C.FunctionCall) and stmt.right.func.name in ["_mm256_broadcast_ss"]:
                     value = stmt.left.name
                     for i in range(len(new_body)):
                         if util.contains_symbol(new_body[i], value):
