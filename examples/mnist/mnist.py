@@ -97,7 +97,7 @@ for epoch in range(10):
         mom = .9
         for param in params:
             # expected = param[0] - (param[2] * mom + np.sum(param[1], axis=0) * lr)
-            sgd_update(param[0], param[1], param[2], lr, mom)
+            sgd_update(param[0], param[1], param[2], lr, mom, batch_size)
         net.clear_values()
         net.clear_grad()
         net.loss = 0.0

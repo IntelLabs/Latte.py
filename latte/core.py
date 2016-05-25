@@ -25,7 +25,7 @@ from latte.task import Task
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
-os.environ["KMP_AFFINITY"] = "compact"
+os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -142,6 +142,7 @@ class Net:
         if "grad_" in field:
             if True:
                 self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
+                # self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
             else:
                 self.buffers[ensemble.name + field] = util.zeros(buff.shape, np.float32)
         elif field not in neuron.zero_init_fields:
@@ -289,7 +290,7 @@ class Net:
 
             c_file._ext = "cpp"
 
-            # c_file = transformers.simple_fusion(c_file)
+            c_file = transformers.simple_fusion(c_file)
             new_body = []
             for stmt in c_file.body[1].defn:
                 if isinstance(stmt, C.For) and hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
@@ -653,12 +654,14 @@ class Net:
             task()
 
     def forward(self):
+        os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
         for task in self.forward_tasks:
             task()
         for task in self.forward_loss_tasks:
             task()
 
     def backward(self):
+        os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
         for task in self.backward_loss_tasks:
             task()
         for task in self.backward_tasks:

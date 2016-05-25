@@ -84,6 +84,7 @@ class NeuronTransformer(ast.NodeTransformer):
                 # adding an outer dimension of size num_threads to the buffer
                 if True:
                     args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
+                    # args.append(ast.Name("_neuron_index_0", ast.Load()))
 
             # only append dimensions if it is not fixed in self.buffer_dim_info
             # (used for values shared across a dimension)

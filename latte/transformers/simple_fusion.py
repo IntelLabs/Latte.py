@@ -52,7 +52,9 @@ class SimpleFusion(ast.NodeTransformer):
                     statement.init.codegen() == new_body[-1].init.codegen() and \
                     statement.incr.codegen() == new_body[-1].incr.codegen() and \
                     statement.test.codegen() == new_body[-1].test.codegen():
-                if "collapse" in new_body[-1].pragma:
+                if hasattr(statement, 'pre_trans') and len(statement.pre_trans) > 0:
+                    new_body.append(statement)
+                elif "collapse" in new_body[-1].pragma:
                     if hasattr(new_body[-1], 'pre_trans'):
                         pre_trans = new_body[-1].pre_trans
                         new_body[-1].pre_trans = None

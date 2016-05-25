@@ -17,9 +17,9 @@ _sgd_update = module.get_callable("sgd_update",
         ctypes.c_int, ctypes.c_int))
 
 
-def sgd_update(param, grad, hist, lr, mom):
+def sgd_update(param, grad, hist, lr, mom, batch_size):
     _sgd_update(param.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
                 grad.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
                 hist.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
                 ctypes.c_float(lr), ctypes.c_float(mom),
-                ctypes.c_int(param.size), ctypes.c_int(latte.core.num_threads))
+                ctypes.c_int(param.size), ctypes.c_int(batch_size))

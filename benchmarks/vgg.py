@@ -54,7 +54,7 @@ def main():
 
     forward_t_total = 0.0
     backward_t_total = 0.0
-    num_trials = 10
+    num_trials = 5
     print("Running trials")
     for _ in range(num_trials):
         t = time.time()
