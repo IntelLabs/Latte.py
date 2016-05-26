@@ -63,7 +63,6 @@ def main():
         t = time.time()
         net.backward()
         backward_t_total += time.time() - t 
-        t = time.time()
 
     print("FP                  : {0:.3f} ms".format(forward_t_total / num_trials * 1000))
     print("BP+WU               : {0:.3f} ms".format(backward_t_total / num_trials * 1000))
