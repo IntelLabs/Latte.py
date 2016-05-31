@@ -154,7 +154,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             offset = node.mapping.get_offset(dim)
 
             body = []
-            # if not (isinstance(offset, ast.Num) and offset.n == 0):
+            # if node.mapping.clamp and not (isinstance(offset, ast.Num) and offset.n == 0):
             #     def gen_clamp(index):
             #         return C.FunctionCall(C.SymbolRef("MIN"), 
             #             [C.FunctionCall(C.SymbolRef("MAX"), 
@@ -201,24 +201,4 @@ def convert_enumerate_ranges(ast, direction):
     visitor = ConvertEnumerateRange(direction)
     ast = visitor.visit(ast)
     return ast, visitor.tiled_buffers
-
-class ClampInputIndex(ast.NodeTransformer):
-    def __init__(self, loop_var, gen_clamp):
-        self.loop_var = loop_var
-        self.gen_clamp = gen_clamp
-
-    def visit_BinaryOp(self, node):
-        if isinstance(node.op, C.Op.ArrayRef):
-            curr_node = node
-            while not isinstance(curr_node, ast.Name):
-                curr_node = curr_node.left
-            if curr_node.id.endswith("inputs"):
-                curr_node = node
-                while not util.contains_name(curr_node.right, self.loop_var):
-                    curr_node = curr_node.left
-                curr_node.right = self.gen_clamp(curr_node.right)
-                return node
-        node.left = self.visit(node.left)
-        node.right = self.visit(node.right)
-        return node
 

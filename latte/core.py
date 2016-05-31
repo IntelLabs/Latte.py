@@ -25,7 +25,7 @@ from latte.task import Task
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
-# os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
+os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -67,8 +67,8 @@ class Net:
         self.add_one_to_one_connections(source_ens, ens)
         return ens
 
-    def add_connections(self, source_ens, sink_ens, mapping, reshape=None):
-        self.connections.append(Connection(source_ens, sink_ens, mapping, reshape))
+    def add_connections(self, source_ens, sink_ens, mapping, reshape=None, clamp=False):
+        self.connections.append(Connection(source_ens, sink_ens, mapping, reshape, clamp))
 
     def add_loss_connection(self, source_ens, sink_ens):
         self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
@@ -289,6 +289,7 @@ class Net:
 
             c_file._ext = "cpp"
 
+            # print(c_file)
             c_file = transformers.simple_fusion(c_file)
             new_body = []
             for stmt in c_file.body[1].defn:
@@ -542,8 +543,7 @@ class Net:
         # convert semantic (domain) ast nodes introduced by the neuron
         # transformer
         func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction)
-
-        func_def = transformers.convert_sgemm_calls(func_def)
+        # func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
 
         # convert loopvars from long to int. we do this as PyBasicConversion
@@ -553,6 +553,33 @@ class Net:
             for dim in range(ensemble.ndim + 1):
                 loop = loop.body[0]
                 loop.init.left.type = ctypes.c_int()
+
+                if dim > 0:
+                    input_offset = "_input_offset_{}".format(dim)
+                    if mapping.clamp:
+                        if dim == 1:
+                            def gen_clamp(index):
+                                return C.FunctionCall(C.SymbolRef("MIN"), 
+                                    [C.FunctionCall(C.SymbolRef("MAX"), 
+                                        [index,
+                                         C.Constant(0)]), 
+                                     C.Constant(ensemble.shape[dim - 1] // SIMDWIDTH - 1)])
+                            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
+                            def gen_clamp(index):
+                                return C.FunctionCall(C.SymbolRef("MIN"), 
+                                    [C.FunctionCall(C.SymbolRef("MAX"), 
+                                        [index,
+                                         C.Constant(0)]), 
+                                     C.Constant(SIMDWIDTH - 1)])
+                            loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
+                        else:
+                            def gen_clamp(index):
+                                return C.FunctionCall(C.SymbolRef("MIN"), 
+                                    [C.FunctionCall(C.SymbolRef("MAX"), 
+                                        [index,
+                                         C.Constant(0)]), 
+                                     C.Constant(ensemble.shape[dim - 1] - 1)])
+                            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
@@ -594,7 +621,7 @@ class Net:
             # func_def = transformers.interchange_tiled_loops(func_def)
             func_def = transformers.register_promote_vector_loads_stores(func_def)
             func_def = transformers.lift_invariant_load_stores(func_def)
-            func_def = transformers.lift_loads(func_def)
+            # func_def = transformers.lift_loads(func_def)
             func_def = transformers.fma_replace(func_def)
             # func_def = transformers.move_inner_index(func_def)
             # func_def = transformers.unroll_constant_loops(func_def)
@@ -656,14 +683,14 @@ class Net:
             task()
 
     def forward(self):
-        os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,1,0"
+        os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
         for task in self.forward_tasks:
             task()
         for task in self.forward_loss_tasks:
             task()
 
     def backward(self):
-        # os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
+        os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
         for task in self.backward_loss_tasks:
             task()
         for task in self.backward_tasks:

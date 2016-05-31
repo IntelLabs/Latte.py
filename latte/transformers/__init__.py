@@ -162,7 +162,7 @@ class BasicTypeInference(ast.NodeTransformer):
                 right = self._get_type(node.right)
                 return ctree.types.get_common_ctype([left, right])
         elif isinstance(node, C.FunctionCall):
-            if node.func.name in ["MAX", "MIN", "max", "min"]:
+            if node.func.name in ["MAX", "MIN", "max", "min", "floor"]:
                 return ctree.types.get_common_ctype([self._get_type(a) for a in node.args])
         raise NotImplementedError(ast.dump(node))
     
@@ -328,14 +328,20 @@ def lift_loads(tree):
     class Transformer(ast.NodeTransformer):
         def visit_For(self, node):
             node.body = [self.visit(s) for s in node.body]
+            pre_stmts = []
             loads = []
             rest = []
             for stmt in node.body:
-                if not hasattr(stmt, 'body') and util.contains_symbol(stmt, "_mm256_load_ps"):
-                    loads.append(stmt)
+                if not hasattr(stmt, 'body'):
+                    if util.contains_symbol(stmt, "_mm256_load_ps"):
+                        loads.append(stmt)
+                    elif isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and isinstance(stmt.left, C.SymbolRef) and stmt.left.type is not None:
+                        pre_stmts.append(stmt)
+                    else:
+                        rest.append(stmt)
                 else:
                     rest.append(stmt)
-            node.body = loads + rest
+            node.body = pre_stmts + loads + rest
             return node
     return Transformer().visit(tree)
 
@@ -365,12 +371,12 @@ def promote_in_place_load_stores(tree, in_place_buffers):
 
         def _is_inplace_store(self, stmt):
             return isinstance(stmt, C.FunctionCall) and stmt.func.name == "_mm256_store_ps" and \
-                    self._get_array(stmt.args[0]) in in_place_buffers
+                    self._get_array(stmt.args[0].arg) in in_place_buffers
 
         def _is_inplace_load(self, stmt, target):
             return isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
                     isinstance(stmt.right, C.FunctionCall) and stmt.right.func.name == "_mm256_load_ps" and \
-                    self._get_array(stmt.right.args[0]) in in_place_buffers[target]
+                    self._get_array(stmt.right.args[0].arg) in in_place_buffers[target]
 
         def visit(self, node):
             node = super().visit(node)
@@ -378,7 +384,7 @@ def promote_in_place_load_stores(tree, in_place_buffers):
                 new_body = []
                 for i, stmt1 in enumerate(node.body):
                     if self._is_inplace_store(stmt1):
-                        target = self._get_array(stmt1.args[0])
+                        target = self._get_array(stmt1.args[0].arg)
                         add = True
                         for stmt2 in node.body[i+1:]:
                             if self._is_inplace_load(stmt2, target):

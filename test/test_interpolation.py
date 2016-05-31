@@ -5,9 +5,8 @@ import latte.util as util
 import sys
 import math
 
-def reference_interpolation_forward(_input, kernel, pad, resize_factor):
+def reference_interpolation_forward(_input, pad, resize_factor):
     pad_h, pad_w = pad, pad
-    kernel_h, kernel_w = kernel, kernel
     batch_size, in_channels, in_height, in_width = _input.shape
     output_width = math.floor(in_width * resize_factor)
     output_height = math.floor(in_height * resize_factor)
@@ -30,12 +29,16 @@ def reference_interpolation_forward(_input, kernel, pad, resize_factor):
                     if in_x_plus_1 > in_width - 1:
                         in_x_plus_1 = in_x                
 
-                    output[n, o, y, x] = _input[n, o, in_y, in_x]*(1-delta_r)*(1-delta_c) + _input[n, o, in_y_plus_1, in_x]*(delta_r)*(1-delta_c) + _input[n, o, in_y, in_x_plus_1]*(1-delta_r)*(delta_c) + + _input[n, o, in_y_plus_1, in_x_plus_1]*(delta_r)*(delta_c)
+                    output[n, o, y, x] = \
+                        _input[n, o, in_y, in_x]               * (1-delta_r) * (1-delta_c) + \
+                        _input[n, o, in_y_plus_1, in_x]        * (delta_r)   * (1-delta_c) + \
+                        _input[n, o, in_y, in_x_plus_1]        * (1-delta_r) * (delta_c)   + \
+                        _input[n, o, in_y_plus_1, in_x_plus_1] * (delta_r)   * (delta_c)
 
     return output
 
 
-def reference_interpolation_backward(top_grad, _input, kernel, pad, resize_factor):
+def reference_interpolation_backward(top_grad, _input, pad, resize_factor):
     pad_h, pad_w = pad, pad
     batch_size, in_channels, in_height, in_width = _input.shape
     _, output_channels, output_height, output_width = top_grad.shape
@@ -70,11 +73,12 @@ def check_equal(actual, expected, atol=1e-6):
 
 def test_forward_backward():
     net = Net(1)
-    channels, height, width = 1, 2, 2
+    net.force_backward = True
+    channels, height, width = 8, 2, 2
     pad = 0
     resize_factor = 2.0
     data = MemoryDataLayer(net, (channels, height, width))
-    interp1 = InterpolationLayer(net, data, kernel=2, pad=pad,resize_factor=resize_factor)
+    interp1 = InterpolationLayer(net, data, resize_factor=resize_factor)
     
     data_value = np.random.rand(1, channels, height, width)
     data.set_value(data_value)
@@ -83,7 +87,7 @@ def test_forward_backward():
 
     net.forward()
    
-    expected = reference_interpolation_forward(data_value, 2, pad, 2)
+    expected = reference_interpolation_forward(data_value, pad, 2)
     actual  = net.buffers[interp1.name + "value"]
     actual_converted = util.convert_5d_4d(actual)
     check_equal(actual_converted, expected)

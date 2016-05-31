@@ -4,8 +4,9 @@ import ast
 from copy import deepcopy
 
 class Mapping:
-    def __init__(self, mapping_func):
+    def __init__(self, mapping_func, clamp):
         self.mapping_func = mapping_func
+        self.clamp = clamp
         ast = util.get_ast(mapping_func).body[0]
 
         closure_vars = inspect.getclosurevars(mapping_func)

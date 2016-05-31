@@ -382,6 +382,26 @@ def convert_4d_2d(arr):
 def interleave_lists(list1, list2):
     return [val for pair in zip(list1, list2) for val in pair]
 
+class ClampInputIndex(ast.NodeTransformer):
+    def __init__(self, loop_var, gen_clamp):
+        self.loop_var = loop_var
+        self.gen_clamp = gen_clamp
+
+    def visit_BinaryOp(self, node):
+        if isinstance(node.op, C.Op.ArrayRef):
+            curr_node = node
+            while not isinstance(curr_node, C.SymbolRef):
+                curr_node = curr_node.left
+            if curr_node.name.endswith("inputs"):
+                curr_node = node
+                while not contains_symbol(curr_node.right, self.loop_var):
+                    curr_node = curr_node.left
+                curr_node.right = self.gen_clamp(curr_node.right)
+                return node
+        node.left = self.visit(node.left)
+        node.right = self.visit(node.right)
+        return node
+
 # class Unpack(ast.NodeTransformer):
 #     def __init__(self):
 #         super().__init__()
