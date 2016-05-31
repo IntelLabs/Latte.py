@@ -25,7 +25,7 @@ from latte.task import Task
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
 
-os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
+# os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -656,14 +656,14 @@ class Net:
             task()
 
     def forward(self):
-        os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
+        os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,1,0"
         for task in self.forward_tasks:
             task()
         for task in self.forward_loss_tasks:
             task()
 
     def backward(self):
-        os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
+        # os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
         for task in self.backward_loss_tasks:
             task()
         for task in self.backward_tasks:
