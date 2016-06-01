@@ -6,4 +6,5 @@ from .layers.pooling import MaxPoolingLayer
 from .layers.relu import ReLULayer
 from .layers.softmax import SoftmaxLossLayer
 from .layers.accuracy import AccuracyLayer
+from .layers.seg_accuracy import SegAccuracyLayer
 from .layers.interpolation import InterpolationLayer
