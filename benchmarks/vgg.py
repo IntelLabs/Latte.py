@@ -2,6 +2,9 @@ import numpy as np
 from latte import *
 import time
 from latte.solvers import sgd_update
+import latte
+latte.core.forward_unroll_factor = 8
+latte.core.backward_unroll_factor = 4
 
 def main():
     batch_size = 64

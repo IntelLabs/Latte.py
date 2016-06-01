@@ -27,7 +27,7 @@ def compute_output_shape(input_shape, kernel, pad, stride):
     width, height, channels = input_shape
     return width_out, height_out
 
-def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
+def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, kernel_step=1):
     assert num_filters > 0, "num_filters must be specified and greater than 0"
     assert input_ensemble.ndim == 3, "ConvLayer only supports 3-d input"
 
@@ -69,7 +69,9 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1):
     def mapping(c, y, x):
         in_y = y*stride_h # - pad
         in_x = x*stride_w # - pad
-        return range(input_channels), range(in_y,in_y+kernel_h), range(in_x,in_x+kernel_w)
+        return (range(input_channels),
+                range(in_y,in_y+kernel_h,kernel_step),
+                range(in_x,in_x+kernel_w,kernel_step))
 
     input_ensemble.set_padding(0, pad, pad)
     net.add_connections(input_ensemble, conv_ens, mapping)

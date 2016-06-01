@@ -7,15 +7,14 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-d", nargs=4, type=int, default=[256, 256, 64, 64])
+    parser.add_argument("-d", nargs=7, type=int, default=[256, 256, 64, 64, 3, 1, 1])
     args = parser.parse_args()
 
-    batch_size = 32
+    batch_size = 64
     net = Net(batch_size)
     net.force_backward = True
     print(args.d)
-    channels, height, width = args.d[1:]
-    pad = 1
+    channels, height, width, kernel, stride, pad = args.d[1:]
     ofm = args.d[0]
     print("Benchmark Config")
     print("    batch_size = {}".format(batch_size))
@@ -24,7 +23,7 @@ def main():
     print("    width      = {}".format(width))
     print("    ofm        = {}".format(ofm))
     data = MemoryDataLayer(net, (channels, height, width))
-    conv1, conv1bias = ConvLayer(net, data, num_filters=ofm, kernel=3, stride=1, pad=pad)
+    conv1, conv1bias = ConvLayer(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
 
     data.set_value(np.random.rand(batch_size, channels, height, width))
 

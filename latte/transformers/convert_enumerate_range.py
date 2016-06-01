@@ -67,7 +67,9 @@ class ConvertEnumerateRange(ast.NodeTransformer):
         ensemble = node.ensemble
         ndim = node.mapping.ndim
         dim = iter.args[1].n
-        length = len(node.mapping.shape[dim])
+        offset = node.mapping.get_offset(dim)
+        step = node.mapping.get_step(dim)
+        length = len(node.mapping.shape[dim]) * step
         if isinstance(iter, ast.Call) and iter.func.id == "enumerate_dim":
             raise NotImplementedError()
             # # grab closure variables and inline them into the mapping ast
@@ -151,8 +153,6 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     self.tiled_buffers = dict(self.tiled_buffers, **tiled_buffers)
                 node.child_for.body = new_body
 
-            offset = node.mapping.get_offset(dim)
-
             body = []
             # if node.mapping.clamp and not (isinstance(offset, ast.Num) and offset.n == 0):
             #     def gen_clamp(index):
@@ -173,24 +173,24 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 self.blocked_loops.append(C.For(
                     C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length // latte.core.SIMDWIDTH)),
-                    C.PostInc(C.SymbolRef(loop_var)),
+                    C.AddAssign(C.SymbolRef(loop_var), C.Constant(1)),
                     [],
                     # "unroll_and_jam"
                 ))
                 return C.For(
                     C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.core.SIMDWIDTH)),
-                    C.PostInc(C.SymbolRef(loop_var + "_inner")),
+                    C.AddAssign(C.SymbolRef(loop_var + "_inner"), C.Constant(step)),
                     body,
                     # "unroll_and_jam({})".format(latte.core.SIMDWIDTH)
                     # "unroll({})".format(latte.core.SIMDWIDTH)
-                    "unroll"
+                    # "unroll"
                 )
             else:
                 return C.For(
                     C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
-                    C.PostInc(C.SymbolRef(loop_var)),
+                    C.AddAssign(C.SymbolRef(loop_var), C.Constant(step)),
                     body,
                     # "unroll_and_jam({})".format(length)
                     # "unroll"

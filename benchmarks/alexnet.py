@@ -9,7 +9,7 @@ def main():
     print("Benchmark Config")
     print("    batch_size = {}".format(batch_size))
 
-    data     = MemoryDataLayer(net, (8, 227, 227))
+    data     = MemoryDataLayer(net, (8, 224, 224))
 
     _, conv1 = ConvLayer(       net, data, num_filters=64, kernel=11, stride=4, pad=2)
     relu1    = ReLULayer(       net, conv1)
@@ -31,7 +31,7 @@ def main():
     fc7, fc7bias = FullyConnectedLayer(net, fc6bias, 4096)
     fc8, fc8bias = FullyConnectedLayer(net, fc7bias, 1000)
 
-    data.set_value(np.random.rand(batch_size, 8, 227, 227))
+    data.set_value(np.random.rand(batch_size, 8, 224, 224))
 
     print("Compiling...")
     net.compile()

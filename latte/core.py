@@ -30,6 +30,9 @@ os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
 
+forward_unroll_factor = 8
+backward_unroll_factor = 4
+
 include = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/includes.tmpl.c")
 
 class Net:
@@ -282,9 +285,10 @@ class Net:
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
             # pre_trans.append(StringTemplate("#pragma omp barrier"))
 
-            c_file = C.CFile(direction + self._uniqueid(), [
+            _id = self._uniqueid()
+            c_file = C.CFile(direction + _id, [
                 include, 
-                C.FunctionDecl(None, C.SymbolRef(direction), params, body)
+                C.FunctionDecl(None, C.SymbolRef(direction + _id), params, body)
             ], path=".compiled")
 
             c_file._ext = "cpp"
@@ -313,7 +317,7 @@ class Net:
             # c_file.body[1].defn.append(StringTemplate("printf(\"Time: %.5g\\n\", t0 / freq);"))
             # c_file = transformers.remove_repeated_declarations(c_file)
             module = ctree.nodes.Project([c_file]).codegen()
-            fn = module.get_callable(direction, type_sig)
+            fn = module.get_callable(direction + _id, type_sig)
             tasks.append(Task(fn, arg_bufs))
         for key, buf in self.buffers.items():
             if "value" in key:
@@ -359,9 +363,9 @@ class Net:
             unroll_factor = SIMDWIDTH
         else:
             if direction == "forward":
-                unroll_factor = 8
+                unroll_factor = forward_unroll_factor
             else:
-                unroll_factor = 4
+                unroll_factor = backward_unroll_factor
             if ensemble.ndim == 1:
                 unroll_dim = self.batch_size
             else:
@@ -684,14 +688,14 @@ class Net:
             task()
 
     def forward(self):
-        os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
+        # os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
         for task in self.forward_tasks:
             task()
         for task in self.forward_loss_tasks:
             task()
 
     def backward(self):
-        os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
+        # os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
         for task in self.backward_loss_tasks:
             task()
         for task in self.backward_tasks:

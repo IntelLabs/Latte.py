@@ -27,12 +27,31 @@ class Mapping:
             # return ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
             return ast.Num(0)
         range_expr = self.ast.body[-1].value.elts[dim]
-        if len(range_expr.args) == 2:
+        if len(range_expr.args) >= 2:
             return range_expr.args[0]
-        elif len(range_expr.args) == 3:
-            raise NotImplementedError()
         else:
             return ast.Num(0)
+
+    def get_end(self, dim):
+        if self.mapping_func == one_to_one:
+            # return ast.Name("_neuron_index_{}".format(dim + 1), ast.Load())
+            return ast.Num(1)
+        range_expr = self.ast.body[-1].value.elts[dim]
+        if len(range_expr.args) >= 2:
+            return range_expr.args[1]
+        else:
+            return range_expr.args[0]
+
+    def get_step(self, dim):
+        if self.mapping_func == one_to_one:
+            return 1
+        range_expr = self.ast.body[-1].value.elts[dim]
+        if len(range_expr.args) <= 2:
+            return 1
+        elif len(range_expr.args) == 3:
+            return range_expr.args[2].n
+        else:
+            raise NotImplementedError()
 
     def is_one_to_one(self):
         return self.mapping_func == one_to_one
