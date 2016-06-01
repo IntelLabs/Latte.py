@@ -4,7 +4,7 @@ import time
 from latte.solvers import sgd_update
 
 def main():
-    batch_size = 64
+    batch_size = 128
     net = Net(batch_size)
     print("Benchmark Config")
     print("    batch_size = {}".format(batch_size))

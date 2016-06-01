@@ -275,7 +275,7 @@ class InnerLoopPusher(ast.NodeTransformer):
                 curr_node.body[-1].pragma = tmp_pragma
                 curr_node = curr_node.body[-1]
             curr_node.body = outer_body + curr_node.body
-            curr_node.pragma = "unroll"
+            # curr_node.pragma = "unroll"
             return node
 
         node.body = [self.visit(s) for s in node.body]
@@ -365,18 +365,20 @@ def promote_in_place_load_stores(tree, in_place_buffers):
     class Transformer(ast.NodeTransformer):
         def _get_array(self, array_ref):
             node = array_ref
+            if isinstance(node, C.UnaryOp):
+                node = node.arg
             while not isinstance(node, C.SymbolRef):
                 node = node.left
             return node.name
 
         def _is_inplace_store(self, stmt):
             return isinstance(stmt, C.FunctionCall) and stmt.func.name == "_mm256_store_ps" and \
-                    self._get_array(stmt.args[0].arg) in in_place_buffers
+                    self._get_array(stmt.args[0]) in in_place_buffers
 
         def _is_inplace_load(self, stmt, target):
             return isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
                     isinstance(stmt.right, C.FunctionCall) and stmt.right.func.name == "_mm256_load_ps" and \
-                    self._get_array(stmt.right.args[0].arg) in in_place_buffers[target]
+                    self._get_array(stmt.right.args[0]) in in_place_buffers[target]
 
         def visit(self, node):
             node = super().visit(node)
@@ -384,7 +386,7 @@ def promote_in_place_load_stores(tree, in_place_buffers):
                 new_body = []
                 for i, stmt1 in enumerate(node.body):
                     if self._is_inplace_store(stmt1):
-                        target = self._get_array(stmt1.args[0].arg)
+                        target = self._get_array(stmt1.args[0])
                         add = True
                         for stmt2 in node.body[i+1:]:
                             if self._is_inplace_load(stmt2, target):

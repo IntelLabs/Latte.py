@@ -90,6 +90,16 @@ def test_forward_backward_double():
     expected = reference_interpolation_forward(data_value, pad, resize_factor)
     actual  = net.buffers[interp1.name + "value"]
     actual_converted = util.convert_5d_4d(actual)
+    for a1, a2 in zip(actual_converted, expected):
+        for b1, b2, in zip(a1, a2):
+            for c1, c2 in zip(b1, b2):
+                if not np.allclose(c1, c2):
+                    print("=============")
+                    print(c1)
+                    print("-------------")
+                    print(c2)
+                    print("=============")
+                    exit()
     check_equal(actual_converted, expected)
 
     top_grad = net.buffers[interp1.name + "grad"]
