@@ -553,6 +553,7 @@ class Net:
             for dim in range(ensemble.ndim + 1):
                 loop = loop.body[0]
                 loop.init.left.type = ctypes.c_int()
+                input_shape = self.connections_map[ensemble][0].source.shape
 
                 if dim > 0:
                     input_offset = "_input_offset_{}".format(dim)
@@ -563,7 +564,7 @@ class Net:
                                     [C.FunctionCall(C.SymbolRef("MAX"), 
                                         [index,
                                          C.Constant(0)]), 
-                                     C.Constant(ensemble.shape[dim - 1] // SIMDWIDTH - 1)])
+                                     C.Constant(input_shape[dim - 1] // SIMDWIDTH - 1)])
                             loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
                             def gen_clamp(index):
                                 return C.FunctionCall(C.SymbolRef("MIN"), 
@@ -578,7 +579,7 @@ class Net:
                                     [C.FunctionCall(C.SymbolRef("MAX"), 
                                         [index,
                                          C.Constant(0)]), 
-                                     C.Constant(ensemble.shape[dim - 1] - 1)])
+                                     C.Constant(input_shape[dim - 1] - 1)])
                             loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
 
         # Seed the argument types as pointers for type inference
