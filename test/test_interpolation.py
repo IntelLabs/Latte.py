@@ -71,24 +71,72 @@ def reference_interpolation_backward(top_grad, _input, pad, resize_factor):
 def check_equal(actual, expected, atol=1e-6):
     assert np.allclose(actual, expected, atol=atol)
 
-def test_forward_backward():
-    net = Net(1)
+def test_forward_backward_double():
+    net = Net(8)
     net.force_backward = True
-    channels, height, width = 8, 2, 2
+    channels, height, width = 16, 16, 16
     pad = 0
     resize_factor = 2.0
     data = MemoryDataLayer(net, (channels, height, width))
     interp1 = InterpolationLayer(net, data, resize_factor=resize_factor)
     
-    data_value = np.random.rand(1, channels, height, width)
+    data_value = np.random.rand(8, channels, height, width)
     data.set_value(data_value)
 
     net.compile()
 
     net.forward()
    
-    expected = reference_interpolation_forward(data_value, pad, 2)
+    expected = reference_interpolation_forward(data_value, pad, resize_factor)
     actual  = net.buffers[interp1.name + "value"]
     actual_converted = util.convert_5d_4d(actual)
     check_equal(actual_converted, expected)
+
+    top_grad = net.buffers[interp1.name + "grad"]
+    np.copyto(top_grad, np.random.rand(*top_grad.shape))
+    top_grad_converted = util.convert_5d_4d(top_grad)
+
+    net.backward()
+
+    expected_bot_grad = \
+        reference_interpolation_backward(top_grad_converted, data_value, pad, resize_factor)
+
+    bot_grad = net.buffers[interp1.name + "grad_inputs"]
+    bot_grad = util.convert_5d_4d(bot_grad)
+    check_equal(bot_grad, expected_bot_grad)
+
+def test_forward_backward_enlarge():
+    net = Net(8)
+    net.force_backward = True
+    channels, height, width = 16, 16, 16
+    pad = 0
+    resize_factor = 8.0
+    data = MemoryDataLayer(net, (channels, height, width))
+    interp1 = InterpolationLayer(net, data, resize_factor=resize_factor)
     
+    data_value = np.random.rand(8, channels, height, width)
+    data.set_value(data_value)
+
+    net.compile()
+
+    net.forward()
+   
+    expected = reference_interpolation_forward(data_value, pad, resize_factor)
+    actual  = net.buffers[interp1.name + "value"]
+    actual_converted = util.convert_5d_4d(actual)
+    check_equal(actual_converted, expected)
+
+    top_grad = net.buffers[interp1.name + "grad"]
+    np.copyto(top_grad, np.random.rand(*top_grad.shape))
+    top_grad_converted = util.convert_5d_4d(top_grad)
+
+    net.backward()
+
+    expected_bot_grad = \
+        reference_interpolation_backward(top_grad_converted, data_value, pad, resize_factor)
+
+    bot_grad = net.buffers[interp1.name + "grad_inputs"]
+    bot_grad = util.convert_5d_4d(bot_grad)
+    check_equal(bot_grad, expected_bot_grad)
+
+
