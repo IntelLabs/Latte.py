@@ -52,7 +52,7 @@ class UnrollStatements(ast.NodeTransformer):
 
     def visit_BinaryOp(self, node):
         if isinstance(node.op, C.Op.Assign):
-            check = [util.contains_symbol(node.right, var) for var in [*self.unrolled_vars] + [self.target_var]]
+            check = [util.contains_symbol(node.right, var) for var in self.unrolled_vars + [self.target_var]]
             if any(check):
                 body = []
                 if node.left.type is not None:
@@ -66,7 +66,7 @@ class UnrollStatements(ast.NodeTransformer):
         return node
 
     def visit_AugAssign(self, node):
-        check = [util.contains_symbol(node.value, var) for var in [*self.unrolled_vars] + [self.target_var]]
+        check = [util.contains_symbol(node.value, var) for var in self.unrolled_vars + [self.target_var]]
         if any(check):
             body = []
             if isinstance(node.target, C.SymbolRef):
@@ -90,7 +90,7 @@ class UnrollStatements(ast.NodeTransformer):
         return node
 
     def visit_FunctionCall(self, node):
-        check = [util.contains_symbol(node, var) for var in [*self.unrolled_vars] + [self.target_var]]
+        check = [util.contains_symbol(node, var) for var in self.unrolled_vars + [self.target_var]]
         if "store" in node.func.name and "_mm" in node.func.name and any(check):
             body = []
             for i in range(self.factor):

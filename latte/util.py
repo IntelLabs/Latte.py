@@ -7,6 +7,7 @@ import ctree.c.nodes as C
 import numpy as np
 import latte
 from copy import deepcopy
+import sys
 
 MPI_ENABLED = True
 try:
@@ -110,8 +111,12 @@ def get_ast(obj):
 
 def gen_loop_nest(body, loop_vars, loop_ranges):
     for var, _range in zip(loop_vars, loop_ranges):
-        body = [ast.For(ast.Name(var, ast.Store()),
-                ast.Call(ast.Name("range", ast.Load()), [ast.Num(_range)], []), body, [])]
+        if sys.version_info >= (3, 5):
+            body = [ast.For(ast.Name(var, ast.Store()),
+                    ast.Call(ast.Name("range", ast.Load()), [ast.Num(_range)], []), body, [])]
+        else:
+            body = [ast.For(ast.Name(var, ast.Store()),
+                    ast.Call(ast.Name("range", ast.Load()), [ast.Num(_range)], [], None, None), body, [])]
         # body = [ast.For(ast.Name(var, ast.Store()),
         #         ast.Call(ast.Name("range", ast.Load()), [ast.Num(_range[0]), ast.Num(_range[1])], []), body, [])]
     return body[0]
@@ -258,25 +263,25 @@ def has_nested_for(body):
 import ctypes
 from ctypes import c_int, c_float, byref, cdll
 
-mkl = cdll.LoadLibrary("libmkl_rt.so")
-
-MKL_NOTRANS = 111
-MKL_TRANS = 112
-MKL_ORDER = 101  # Row major
-def sgemm(trans_A, trans_B, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc):
-    if trans_A:
-        trans_A = MKL_TRANS
-    else:
-        trans_A = MKL_NOTRANS
-    if trans_B:
-        trans_B = MKL_TRANS
-    else:
-        trans_B = MKL_NOTRANS
-    c_float_p = ctypes.POINTER(ctypes.c_float)
-    mkl.cblas_sgemm(c_int(MKL_ORDER), c_int(trans_A), c_int(trans_B), c_int(m), c_int(n), c_int(k), 
-            c_float(alpha), A.ctypes.data_as(c_float_p), c_int(lda),
-            B.ctypes.data_as(c_float_p), c_int(ldb), c_float(beta),
-            C.ctypes.data_as(c_float_p), c_int(ldc))
+# mkl = cdll.LoadLibrary("libmkl_rt.so")
+# 
+# MKL_NOTRANS = 111
+# MKL_TRANS = 112
+# MKL_ORDER = 101  # Row major
+# def sgemm(trans_A, trans_B, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc):
+#     if trans_A:
+#         trans_A = MKL_TRANS
+#     else:
+#         trans_A = MKL_NOTRANS
+#     if trans_B:
+#         trans_B = MKL_TRANS
+#     else:
+#         trans_B = MKL_NOTRANS
+#     c_float_p = ctypes.POINTER(ctypes.c_float)
+#     mkl.cblas_sgemm(c_int(MKL_ORDER), c_int(trans_A), c_int(trans_B), c_int(m), c_int(n), c_int(k), 
+#             c_float(alpha), A.ctypes.data_as(c_float_p), c_int(lda),
+#             B.ctypes.data_as(c_float_p), c_int(ldb), c_float(beta),
+#             C.ctypes.data_as(c_float_p), c_int(ldc))
 
 def prod(elts):
     result = 1
@@ -375,7 +380,7 @@ def convert_5d_4d(arr):
     
 def convert_6d_5d(arr):
     shape = arr.shape
-    arr_converted = np.zeros((shape[0], shape[1] * shape[5], *shape[2:-1]))
+    arr_converted = np.zeros((shape[0], shape[1] * shape[5],) + shape[2:-1])
     for n in range(shape[0]):
         for ifm in range(shape[1]):
             for y in range(shape[2]):
