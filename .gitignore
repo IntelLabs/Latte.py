@@ -6,3 +6,4 @@ dist
 .cache
 .compiled
 examples/mnist/data
+examples/vgg/data
