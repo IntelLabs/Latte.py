@@ -6,7 +6,7 @@ from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, 
 import latte.util as util
 import astor
 from itertools import product
-from .util import sgemm
+# from .util import sgemm
 import ctree
 from ctree.transformations import PyBasicConversions
 import ctree.c.nodes as C
@@ -285,6 +285,7 @@ class Net:
             c_file = C.CFile(direction + self._uniqueid(), [
                 include, 
                 C.FunctionDecl(None, C.SymbolRef(direction), params, body)
+            # ], path=".compiled")
             ], path=".compiled")
 
             c_file._ext = "cpp"

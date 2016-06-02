@@ -43,7 +43,7 @@ module = ctree.nodes.Project([c_file]).codegen()
 
 class DataEnsemble(Ensemble):
     def __init__(self, batch_size, shape):
-        self.value = np.zeros((batch_size, *shape), np.float32)
+        self.value = np.zeros((batch_size, ) + shape, np.float32)
         neurons = np.empty(shape, dtype='object')
         for i, _ in np.ndenumerate(neurons):
             neurons[i] = DataNeuron()
