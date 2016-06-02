@@ -8,6 +8,22 @@ import numpy as np
 import latte
 from copy import deepcopy
 
+MPI_ENABLED = True
+try:
+    from mpi4py import MPI
+except ImportError:
+    MPI_ENABLED = False
+
+def mpi_compile(project):
+    if not MPI_ENABLED:
+        module = project.codegen()
+    elif MPI.COMM_WORLD.Get_rank() == 0:
+        module = project.codegen()
+        MPI.COMM_WORLD.bcast(module, root=0)
+    else:
+        module = MPI.COMM_WORLD.bcast(None, root=0)
+    return module
+
 # _file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/aligned_malloc.c")
 # 
 # c_file = C.CFile("aligned_malloc", [_file])

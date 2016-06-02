@@ -4,11 +4,12 @@ import ctree
 import ctree.c.nodes as C
 import ctypes
 import latte
+import latte.util as util
 
 _file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/sgd.c")
 
 c_file = C.CFile("sgd", [_file])
-module = ctree.nodes.Project([c_file]).codegen()
+module = util.mpi_compile(ctree.nodes.Project([c_file]))
 _sgd_update = module.get_callable("sgd_update", 
     ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_float),
         ctypes.POINTER(ctypes.c_float),

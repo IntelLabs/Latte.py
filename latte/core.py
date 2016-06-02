@@ -316,7 +316,7 @@ class Net:
             # c_file.body[1].defn.append(StringTemplate("t0 = __rdtsc() - t0;"))
             # c_file.body[1].defn.append(StringTemplate("printf(\"Time: %.5g\\n\", t0 / freq);"))
             # c_file = transformers.remove_repeated_declarations(c_file)
-            module = ctree.nodes.Project([c_file]).codegen()
+            module = util.mpi_compile(ctree.nodes.Project([c_file]))
             fn = module.get_callable(direction + _id, type_sig)
             tasks.append(Task(fn, arg_bufs))
         for key, buf in self.buffers.items():

@@ -3,6 +3,7 @@ from latte import *
 from latte.solvers import sgd_update
 import random
 from data_loader import load_mnist
+from latte.math import compute_softmax_loss, softmax_loss_backprop, compute_accuracy
 
 train_data, train_label = load_mnist(dataset="training", path="./data")
 test_data, test_label   = load_mnist(dataset="testing", path="./data")
@@ -20,7 +21,6 @@ batch_size = 100
 net = Net(batch_size)
 
 data     = MemoryDataLayer(net, train_data[0].shape)
-label    = MemoryDataLayer(net, train_label[0].shape)
 
 _, conv1 = ConvLayer(net, data, num_filters=16, kernel=5, stride=1, pad=0)
 relu1    = ReLULayer(net, conv1)
@@ -33,9 +33,6 @@ pool2    = MaxPoolingLayer(net, relu2, kernel=2, stride=2, pad=0)
 _, fc3   = FullyConnectedLayer(net, pool2, 512)
 relu3    = ReLULayer(net, fc3)
 _, fc4   = FullyConnectedLayer(net, relu3, 16)
-
-# loss     = SoftmaxLossLayer(net, fc4, label)
-# acc      = AccuracyLayer(net, fc4, label)
 
 net.compile()
 
@@ -71,26 +68,16 @@ for epoch in range(10):
     for i, n in enumerate(train_batches):
         data.set_value(train_data[n:n+batch_size])
         label_value = train_label[n:n+batch_size]
-        label.set_value(label_value)
         net.forward()
 
         # Compute loss
-        loss = 0.0
-        for n in range(batch_size):
-            x = output[n]
-            e_x = np.exp(x - np.max(x))
-            prob[n] = e_x / e_x.sum()
-            loss -= np.log(max(prob[n, int(label_value[n, 0])], np.finfo(np.float32).min))
-        loss /= batch_size
+        loss = compute_softmax_loss(output, prob, label_value)
 
         if i % 100 == 0:
             print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
 
         # Initialize gradients
-        np.copyto(output_grad, prob)
-        for n in range(batch_size):
-            output_grad[n, int(label_value[n, 0])] -= 1
-        output_grad /= batch_size
+        softmax_loss_backprop(output_grad, prob, label_value)
 
         net.backward()
         lr = base_lr * (1 + gamma * i)**power
@@ -107,14 +94,9 @@ for epoch in range(10):
     for i, n in enumerate(range(0, num_test, batch_size)):
         data.set_value(test_data[n:n+batch_size])
         label_value = test_label[n:n+batch_size]
-        label.set_value(label_value)
         net.test()
 
-        accuracy = 0.0
-        for n in range(batch_size):
-            if np.argmax(output[n]) == label_value[n, 0]:
-                accuracy += 1
-        acc += accuracy / batch_size
+        acc += compute_accuracy(output, label_value)
         net.clear_values()
     acc /= (num_test / batch_size)
     acc *= 100

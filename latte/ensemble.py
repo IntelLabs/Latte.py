@@ -5,6 +5,7 @@ import ctree.c.nodes as C
 import ctree
 import ctypes
 import os
+import latte.util as util
 
 ENSEMBLE_COUNTER = 0
 class Ensemble:
@@ -39,7 +40,7 @@ class Ensemble:
 reorder_storage_file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/reorder_storage.c")
 
 c_file = C.CFile("reorder_storage", [reorder_storage_file])
-module = ctree.nodes.Project([c_file]).codegen()
+module = util.mpi_compile(ctree.nodes.Project([c_file]))
 
 class DataEnsemble(Ensemble):
     def __init__(self, batch_size, shape):
