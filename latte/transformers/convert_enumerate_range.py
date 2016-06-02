@@ -69,7 +69,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
         dim = iter.args[1].n
         offset = node.mapping.get_offset(dim)
         step = node.mapping.get_step(dim)
-        length = len(node.mapping.shape[dim]) * step
+        length = len(node.mapping.shape[dim])
         if isinstance(iter, ast.Call) and iter.func.id == "enumerate_dim":
             raise NotImplementedError()
             # # grab closure variables and inline them into the mapping ast
@@ -166,7 +166,6 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             #         node.child_for.body = [ClampInputIndex(loop_var + "_inner", gen_clamp).visit(s) for s in node.child_for.body]
             body += [self.visit(s) for s in node.child_for.body]
             if dim == 0:
-                # body = [UpdateInputIndices(input_offset + "_inner_index", input_offset + "_inner").visit(s) for s in body]
                 # body.insert(0, (
                 #     C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
                 #              C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))
@@ -180,17 +179,18 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 return C.For(
                     C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.core.SIMDWIDTH)),
-                    C.AddAssign(C.SymbolRef(loop_var + "_inner"), C.Constant(step)),
+                    C.AddAssign(C.SymbolRef(loop_var + "_inner"), C.Constant(1)),
                     body,
                     # "unroll_and_jam({})".format(latte.core.SIMDWIDTH)
                     # "unroll({})".format(latte.core.SIMDWIDTH)
                     # "unroll"
                 )
             else:
+                body = [UpdateInputIndices(loop_var, C.Mul(C.SymbolRef(loop_var), C.Constant(step))).visit(s) for s in body]
                 return C.For(
                     C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
-                    C.AddAssign(C.SymbolRef(loop_var), C.Constant(step)),
+                    C.AddAssign(C.SymbolRef(loop_var), C.Constant(1)),
                     body,
                     # "unroll_and_jam({})".format(length)
                     # "unroll"
@@ -201,4 +201,20 @@ def convert_enumerate_ranges(ast, direction):
     visitor = ConvertEnumerateRange(direction)
     ast = visitor.visit(ast)
     return ast, visitor.tiled_buffers
+
+
+class UpdateInputIndices(ast.NodeTransformer):
+    def __init__(self, index, to_replace):
+        self.index = index
+        self.to_replace = to_replace
+
+    def visit_BinaryOp(self, node):
+        if isinstance(node.op, C.Op.ArrayRef):
+            curr_node = node
+            while not isinstance(curr_node, ast.Name):
+                curr_node = curr_node.left
+            if "inputs" in curr_node.id:
+                return util.replace_name(ast.Name(self.index, ast.Load()), self.to_replace, node)
+        return node
+
 

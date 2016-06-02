@@ -205,7 +205,7 @@ class ReplaceName(ast.NodeTransformer):
 
     def visit_Name(self, node):
         if node.id == self.old.id:
-            node.id = self.new.id
+            return self.new
         return node
 
 def replace_name(old, new, ast):

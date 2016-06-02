@@ -27,7 +27,7 @@ def compute_output_shape(input_shape, kernel, pad, stride):
     width, height, channels = input_shape
     return width_out, height_out
 
-def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, kernel_step=1):
+def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1):
     assert num_filters > 0, "num_filters must be specified and greater than 0"
     assert input_ensemble.ndim == 3, "ConvLayer only supports 3-d input"
 
@@ -50,8 +50,8 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, ker
         pad_h, pad_w = pad, pad
 
     input_channels, input_height, input_width = input_ensemble.shape
-    output_width = ((input_width - kernel_w + 2 * pad_w) // stride_w) + 1
-    output_height = ((input_height - kernel_h + 2 * pad_h) // stride_h) + 1
+    output_width = ((input_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
+    output_height = ((input_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
 
     scale = np.sqrt(3.0 / (input_channels * kernel_h * kernel_w))
     weights = np.random.rand(num_filters, input_channels, kernel_h,
@@ -70,8 +70,8 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, ker
         in_y = y*stride_h # - pad
         in_x = x*stride_w # - pad
         return (range(input_channels),
-                range(in_y,in_y+kernel_h,kernel_step),
-                range(in_x,in_x+kernel_w,kernel_step))
+                range(in_y,in_y+kernel_h*dilation,dilation),
+                range(in_x,in_x+kernel_w*dilation,dilation))
 
     input_ensemble.set_padding(0, pad, pad)
     net.add_connections(input_ensemble, conv_ens, mapping)

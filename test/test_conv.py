@@ -3,13 +3,13 @@ import numpy as np
 from latte import *
 import latte.util as util
 
-def reference_conv_forward(_input, weights, bias, pad, stride, step=1):
+def reference_conv_forward(_input, weights, bias, pad, stride, dilation=1):
     stride_h, stride_w = stride, stride
     pad_h, pad_w = pad, pad
     batch_size, in_channels, in_height, in_width = _input.shape
     output_channels, _, kernel_h, kernel_w = weights.shape
-    output_width = ((in_width - kernel_w + 2 * pad_w) // stride_w) + 1
-    output_height = ((in_height - kernel_h + 2 * pad_h) // stride_h) + 1
+    output_width = ((in_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
+    output_height = ((in_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
     output = np.zeros((batch_size, output_channels, output_height, output_width), dtype=np.float32)
     for n in range(batch_size):
         for o in range(output_channels):
@@ -17,20 +17,18 @@ def reference_conv_forward(_input, weights, bias, pad, stride, step=1):
                 for x in range(output_width):
                     in_y = y*stride_h - pad
                     in_x = x*stride_w - pad
-                    out_y = in_y + kernel_h
-                    out_x = in_x + kernel_w
+                    out_y = in_y + kernel_h * dilation
+                    out_x = in_x + kernel_w * dilation
                     for c in range(in_channels):
-                        for p in range(in_y, out_y, step):
-                            i = p - in_y
+                        for i, p in enumerate(range(in_y, out_y, dilation)):
                             if p >= 0 and p < in_height:
-                                for q in range(in_x, out_x, step):
-                                    j = q - in_x
+                                for j, q in enumerate(range(in_x, out_x, dilation)):
                                     if q >= 0 and q < in_width:
                                         output[n, o, y, x] += weights[o, c, i, j] * _input[n, c, p, q]
                     output[n, o, y, x] += bias[o][0]
     return output
 
-def reference_conv_backward(top_grad, _input, weights, pad, stride, step=1):
+def reference_conv_backward(top_grad, _input, weights, pad, stride, dilation=1):
     stride_h, stride_w = stride, stride
     pad_h, pad_w = pad, pad
     batch_size, in_channels, in_height, in_width = _input.shape
@@ -46,14 +44,12 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride, step=1):
                     bias_grad[o] += top_grad[n, o, y, x]
                     in_y = y*stride_h - pad
                     in_x = x*stride_w - pad
-                    out_y = in_y + kernel_h
-                    out_x = in_x + kernel_w
+                    out_y = in_y + kernel_h * dilation
+                    out_x = in_x + kernel_w * dilation
                     for c in range(in_channels):
-                        for p in range(in_y, out_y, step):
-                            i = p - in_y
+                        for i, p in enumerate(range(in_y, out_y, dilation)):
                             if p >= 0 and p < in_height:
-                                for q in range(in_x, out_x, step):
-                                    j = q - in_x
+                                for j, q in enumerate(range(in_x, out_x, dilation)):
                                     if q >= 0 and q < in_width:
                                         weights_grad[o, c, i , j] += top_grad[n, o, y, x] * _input[n, c, p, q]
                                         bot_grad[n, c, p, q] += weights[o, c, i, j] * top_grad[n, o, y, x]
@@ -131,8 +127,8 @@ def test_hole():
     channels, height, width = 16, 14, 14
     pad = 1
     data = MemoryDataLayer(net, (channels, height, width))
-    conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad, kernel_step=2)
-    conv2, conv2bias = ConvLayer(net, conv1bias, num_filters=16, kernel=3, stride=1, pad=pad, kernel_step=2)
+    conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad, dilation=2)
+    conv2, conv2bias = ConvLayer(net, conv1bias, num_filters=16, kernel=3, stride=1, pad=pad, dilation=2)
  
     _input = np.random.rand(3, channels, height, width)
     data.set_value(_input)
