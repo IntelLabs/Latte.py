@@ -239,6 +239,8 @@ class Net:
                 # idx += [slice(p, d + p) for p, d in zip(ensemble.pad, ensemble.shape)]
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
+                ensemble.set_buffer("value", self.buffers[ensemble.name + "value"])
+                ensemble.buffer_tiled_dims[ensemble.name + "value"] = [1]
             elif isinstance(ensemble, LossEnsemble):
                 bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
                 label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]

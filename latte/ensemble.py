@@ -73,25 +73,39 @@ class Ensemble:
             return to_return
 
         setattr(self, "get_" + field, get)
+        def get_view():
+            return buffer
+        setattr(self, "get_" + field + "_view", get_view)
 
         def set(value):
+            dest = buffer
+            if field in ["value", "grad"] and any(p > 0 for p in self.pad):
+                _slice = [slice(None)]
+                for p in self.pad:
+                    if p > 0:
+                        _slice.append(slice(p, -p))
+                    else:
+                        _slice.append(slice(None))
+                # dest = dest[tuple(_slice)]
+            else:
+                _slice = tuple(slice(None) for _ in dest.shape)
             if self.is_tiled_field(field):
                 tiled = value
-                dest = buffer
                 if not isinstance(self, ActivationEnsemble):
-                    tiled_shape = list(buffer.shape)
+                    tiled_shape = list(dest.shape)
                     for dim in self.get_tiled_dims(field):
                         tiled_shape[dim] //= latte.core.SIMDWIDTH
                         tiled_shape.append(latte.core.SIMDWIDTH)
-                    dest = buffer.reshape(tiled_shape)
+                    dest = dest.reshape(tiled_shape)
                 for dim in self.get_tiled_dims(field):
                     tiled = util.tile(tiled, dim)
-                np.copyto(dest, tiled)
+                dest[_slice] = tiled
             else:
-                np.copyto(buffer, value)
+                dest[_slice] = value
         setattr(self, "set_" + field, set)
         if self.parent_group is not None:
             setattr(self.parent_group, "get_" + field, get)
+            setattr(self.parent_group, "get_" + field + "_view", get_view)
             setattr(self.parent_group, "set_" + field, set)
 
 reorder_storage_file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/reorder_storage.c")
@@ -112,13 +126,14 @@ class DataEnsemble(Ensemble):
         super().__init__(neurons)
 
     def forward(self, value):
-        if self.value.ndim == 4:
-            shape = self.value.shape
-            self.reorder_4d_5d(self.value, value, *shape)
-        elif self.value.ndim == 2:
-            np.copyto(value, self.value)
-        else:
-            raise NotImplementedError()
+        pass
+        # if self.value.ndim == 4:
+        #     shape = self.value.shape
+        #     self.reorder_4d_5d(self.value, value, *shape)
+        # elif self.value.ndim == 2:
+        #     np.copyto(value, self.value)
+        # else:
+        #     raise NotImplementedError()
 
     def set_padding(self, *padding):
         super().set_padding(*padding)
@@ -129,7 +144,7 @@ class DataEnsemble(Ensemble):
                 np.ctypeslib.ndpointer(np.float32, self.value.ndim, self.value.shape),
                 ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int))
 
-    def set_value(self, value):
+    def update_value(self, value):
         idx = [slice(None)]
         idx += [slice(p, d + p) for p, d in zip(self.pad, self.shape)]
         np.copyto(self.value[idx], value)

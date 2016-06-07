@@ -23,6 +23,6 @@ def compute_accuracy(output, label):
     batch_size = output.shape[0]
     accuracy = 0.0
     for n in range(batch_size):
-        if np.argmax(output[n]) == label_value[n, 0]:
+        if np.argmax(output[n]) == label[n, 0]:
             accuracy += 1
     return accuracy / batch_size

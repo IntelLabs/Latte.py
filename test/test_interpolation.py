@@ -80,10 +80,11 @@ def test_forward_backward_double():
     data = MemoryDataLayer(net, (channels, height, width))
     interp1 = InterpolationLayer(net, data, resize_factor=resize_factor)
     
+    net.compile()
+
     data_value = np.random.rand(8, channels, height, width)
     data.set_value(data_value)
 
-    net.compile()
 
     net.forward()
    
@@ -111,11 +112,11 @@ def test_forward_backward_enlarge():
     resize_factor = 8.0
     data = MemoryDataLayer(net, (channels, height, width))
     interp1 = InterpolationLayer(net, data, resize_factor=resize_factor)
+
+    net.compile()
     
     data_value = np.random.rand(8, channels, height, width)
     data.set_value(data_value)
-
-    net.compile()
 
     net.forward()
    

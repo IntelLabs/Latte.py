@@ -68,9 +68,9 @@ def test_forward_backward():
         conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
 
         _input = np.random.rand(3, channels, height, width)
+        net.compile()
         data.set_value(_input)
 
-        net.compile()
 
         weights = conv1.get_weights()
         bias    = conv1.get_bias()

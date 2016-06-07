@@ -20,36 +20,35 @@ test_label = test_label.reshape(num_test, 1)
 batch_size = 100
 net = Net(batch_size)
 
-data     = MemoryDataLayer(net, train_data[0].shape)
+data  = MemoryDataLayer(net, train_data[0].shape)
 
-_, conv1 = ConvLayer(net, data, num_filters=16, kernel=5, stride=1, pad=0)
-relu1    = ReLULayer(net, conv1)
-pool1    = MaxPoolingLayer(net, relu1, kernel=2, stride=2, pad=0)
+conv1 = ConvLayer(net, data, num_filters=16, kernel=5, stride=1, pad=0)
+relu1 = ReLULayer(net, conv1)
+pool1 = MaxPoolingLayer(net, relu1, kernel=2, stride=2, pad=0)
 
-_, conv2 = ConvLayer(net, pool1, num_filters=64, kernel=5, stride=1, pad=0)
-relu2    = ReLULayer(net, conv2)
-pool2    = MaxPoolingLayer(net, relu2, kernel=2, stride=2, pad=0)
+conv2 = ConvLayer(net, pool1, num_filters=64, kernel=5, stride=1, pad=0)
+relu2 = ReLULayer(net, conv2)
+pool2 = MaxPoolingLayer(net, relu2, kernel=2, stride=2, pad=0)
 
-_, fc3   = FullyConnectedLayer(net, pool2, 512)
-relu3    = ReLULayer(net, fc3)
-_, fc4   = FullyConnectedLayer(net, relu3, 16)
+fc3   = FullyConnectedLayer(net, pool2, 512)
+relu3 = ReLULayer(net, fc3)
+fc4   = FullyConnectedLayer(net, relu3, 16)
 
 net.compile()
 
-params = []
-for name in net.buffers.keys():
-    if name.endswith("weights") and "grad_" not in name:
-        ensemble_name = name[:-len("weights")]
-        grad = net.buffers[ensemble_name + "grad_weights"]
-        params.append((net.buffers[name],
-                       grad, 
-                       np.zeros_like(net.buffers[name])))
-    elif name.endswith("bias") and "grad_" not in name:
-        ensemble_name = name[:-len("bias")]
-        grad = net.buffers[ensemble_name + "grad_bias"]
-        params.append((net.buffers[name],
-                       grad, 
-                       np.zeros_like(net.buffers[name])))
+def make_param(buffer, grad):
+    return buffer, grad, np.zeros_like(buffer)
+
+params = [
+    make_param(conv1.get_weights_view() , conv1.get_grad_weights_view() ), 
+    make_param(conv1.get_bias_view()    , conv1.get_grad_bias_view()    ),
+    make_param(conv2.get_weights_view() , conv2.get_grad_weights_view() ),
+    make_param(conv2.get_bias_view()    , conv2.get_grad_bias_view()    ),
+    make_param(fc3.get_weights_view()   , fc3.get_grad_weights_view()   ),
+    make_param(fc3.get_bias_view()      , fc3.get_grad_bias_view()      ),
+    make_param(fc4.get_weights_view()   , fc4.get_grad_weights_view()   ), 
+    make_param(fc4.get_bias_view()      , fc4.get_grad_bias_view()      ),
+]
 
 base_lr = .01
 gamma = .0001
@@ -57,10 +56,10 @@ power = .75
 
 train_batches = [i for i in range(0, num_train, batch_size)]
 
-output = net.buffers[fc4.name + "value"].reshape(batch_size, 16)
+output = fc4.get_value()
 prob = np.zeros_like(output)
 
-output_grad = net.buffers[fc4.name + "grad"].reshape(batch_size, 16)
+output_grad = np.zeros_like(output)
 
 for epoch in range(10):
     random.shuffle(train_batches)
@@ -71,6 +70,8 @@ for epoch in range(10):
         net.forward()
 
         # Compute loss
+        output = fc4.get_value()
+
         loss = compute_softmax_loss(output, prob, label_value)
 
         if i % 100 == 0:
@@ -78,6 +79,7 @@ for epoch in range(10):
 
         # Initialize gradients
         softmax_loss_backprop(output_grad, prob, label_value)
+        fc4.set_grad(output_grad)
 
         net.backward()
         lr = base_lr * (1 + gamma * i)**power
@@ -96,7 +98,7 @@ for epoch in range(10):
         label_value = test_label[n:n+batch_size]
         net.test()
 
-        acc += compute_accuracy(output, label_value)
+        acc += compute_accuracy(fc4.get_value(), label_value)
         net.clear_values()
     acc /= (num_test / batch_size)
     acc *= 100

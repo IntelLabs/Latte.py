@@ -13,11 +13,12 @@ def test_forward_backward():
     data = MemoryDataLayer(net, (channels, height, width))
     conv1 = ConvLayer(net, data, num_filters=8, kernel=3, stride=1, pad=1, dilation=1)
     relu1 = ReLULayer(net, conv1)
+
+    net.compile()
     
     data_value = np.random.rand(8, channels, height, width)
     data.set_value(data_value)
 
-    net.compile()
     net.forward()
     
     expected = (conv1.get_value() > 0.0) * conv1.get_value()

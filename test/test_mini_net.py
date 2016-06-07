@@ -23,10 +23,10 @@ def test_forward_backward():
     relu1 = ReLULayer(net, conv1)
     pool1 = MaxPoolingLayer(net, relu1, kernel=2, stride=2, pad=0)
 
+    net.compile()
+
     data_value = np.random.rand(batch_size, channels, height, width)
     data.set_value(data_value)
-
-    net.compile()
 
     weights = conv1.get_weights()
     bias    = conv1.get_bias()

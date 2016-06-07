@@ -12,10 +12,10 @@ def test_forward_backward():
     fc1 = FullyConnectedLayer(net, data, 24)
     fc2 = FullyConnectedLayer(net, fc1, 24)
 
+    net.compile()
+
     data_value = np.random.rand(8, 24)
     data.set_value(data_value)
-
-    net.compile()
 
     bias = fc1.get_bias()
     bias_value = np.random.rand(*bias.shape)
