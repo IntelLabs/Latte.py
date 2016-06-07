@@ -26,3 +26,16 @@ def compute_accuracy(output, label):
         if np.argmax(output[n]) == label[n, 0]:
             accuracy += 1
     return accuracy / batch_size
+
+def compute_seg_accuracy(output, label):
+    accuracy = 0.0
+    confusion_matrix = np.zeros((output.shape[0], output.shape[0]))
+    for n in range(batch_size):
+        actual = int(label[n,0])
+        pred = np.argmax(output[n])
+        confusion_matrix[actual][pred] += 1
+
+    if np.sum(confusion_matrix) != 0:
+        accuracy = np.trace(confusion_matrix)/np.sum(confusion_matrix)
+
+    return accuracy / batch_size
