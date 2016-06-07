@@ -2,7 +2,7 @@ import numpy as np
 import numbers
 import itertools
 import ast
-from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, AccuracyEnsemble
+from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, AccuracyEnsemble, EnsembleGroup
 import latte.util as util
 import astor
 from itertools import product
@@ -71,12 +71,16 @@ class Net:
         return ens
 
     def add_connections(self, source_ens, sink_ens, mapping, reshape=None, clamp=False):
+        if isinstance(source_ens, EnsembleGroup):
+            source_ens = source_ens.ensembles[-1]
         self.connections.append(Connection(source_ens, sink_ens, mapping, reshape, clamp))
 
     def add_loss_connection(self, source_ens, sink_ens):
         self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
 
     def add_one_to_one_connections(self, source_ens, sink_ens):
+        if isinstance(source_ens, EnsembleGroup):
+            source_ens = source_ens.ensembles[-1]
         self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
 
     def clear_grad(self):
@@ -200,6 +204,10 @@ class Net:
             self._initialize_value_grad_activation(ensemble)
         else:
             self._initialize_value_grad(ensemble)
+
+        for field in vars(neuron):
+            buffer_name = ensemble.name + field
+            ensemble.set_buffer(field, self.buffers[buffer_name])
 
     def compile(self):
         task_groups = {}
@@ -390,13 +398,19 @@ class Net:
                         "inputs" in name:
                     buf_shape[1] //= SIMDWIDTH
                     buf_shape.append(SIMDWIDTH)
+                    ensemble.buffer_tiled_dims[name] = [1]
                 elif "inputs" not in name:
                     buf_shape[0] //= SIMDWIDTH
                     buf_shape.append(SIMDWIDTH)
+                    ensemble.buffer_tiled_dims[name] = [0]
                 if name in tiled_buffers and not name.endswith("inputs"):
                     dim = len(buf_shape) - tiled_buffers[name] - 1
                     buf_shape[dim] //= SIMDWIDTH
                     buf_shape.append(SIMDWIDTH)
+                    if name in ensemble.buffer_tiled_dims:
+                        ensemble.buffer_tiled_dims[name].append(dim)
+                    else:
+                        ensemble.buffer_tiled_dims[name] = [dim]
 
                 self.reshaped_buffers[buf.ctypes._data] = buf_shape
                 self.buffers[name] = buf.reshape(buf_shape)
@@ -405,6 +419,7 @@ class Net:
                 buf_shape[1] //= SIMDWIDTH
                 buf_shape.append(SIMDWIDTH)
                 self.buffers[name] = buf.reshape(buf_shape)
+                ensemble.buffer_tiled_dims[name] = [1]
             else:
                 buf_shape = self.reshaped_buffers[buf.ctypes._data]
                 self.buffers[name] = buf.reshape(buf_shape)

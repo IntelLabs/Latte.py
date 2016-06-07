@@ -1,6 +1,6 @@
 import numpy as np
 from ..neuron import WeightedNeuron, BiasNeuron
-from ..ensemble import Ensemble
+from ..ensemble import Ensemble, EnsembleGroup
 
 class FCNeuron(WeightedNeuron):
     def forward(self):
@@ -40,4 +40,4 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
 
     bias_ens = net.init_activation_ensemble(bias_neurons, ens)
 
-    return ens, bias_ens
+    return EnsembleGroup(ens, bias_ens)

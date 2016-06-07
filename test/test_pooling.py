@@ -71,22 +71,19 @@ def test_forward_backward():
 
     expected, expected_mask = reference_pooling_forward(data_value, 2, pad, 2)
 
-    actual  = net.buffers[pool1.name + "value"]
-    actual_mask  = net.buffers[pool1.name + "mask"]
-    actual_converted = util.convert_5d_4d(actual)
-    check_equal(actual_converted, expected)
-    actual_mask = util.convert_6d_5d(actual_mask)
+    actual  = pool1.get_value()
+    actual_mask  = pool1.get_mask()
+    check_equal(actual, expected)
     check_equal(actual_mask, expected_mask)
 
-    top_grad = net.buffers[pool1.name + "grad"]
-    np.copyto(top_grad, np.random.rand(*top_grad.shape))
-    top_grad_converted = util.convert_5d_4d(top_grad)
+    top_grad = pool1.get_grad()
+    top_grad = np.random.rand(*top_grad.shape)
+    pool1.set_grad(top_grad)
 
     net.backward()
 
     expected_bot_grad = \
-        reference_pooling_backward(top_grad_converted, data_value, expected_mask, stride=2, kernel=2, pad=0)
+        reference_pooling_backward(top_grad, data_value, expected_mask, stride=2, kernel=2, pad=0)
 
-    bot_grad = net.buffers[pool1.name + "grad_inputs"]
-    bot_grad = util.convert_5d_4d(bot_grad)
+    bot_grad = pool1.get_grad_inputs()
     check_equal(bot_grad, expected_bot_grad)

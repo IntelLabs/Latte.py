@@ -6,6 +6,7 @@ import ctree
 import ctypes
 import os
 import latte.util as util
+import latte.core
 
 ENSEMBLE_COUNTER = 0
 class Ensemble:
@@ -15,6 +16,8 @@ class Ensemble:
         ENSEMBLE_COUNTER += 1
         self.name = "ensemble{}".format(ENSEMBLE_COUNTER)
         self.pad = tuple(0 for _ in neurons.shape)
+        self.parent_group = None
+        self.buffer_tiled_dims = {}
 
     @property
     def batch_fields(self):
@@ -36,6 +39,60 @@ class Ensemble:
 
     def set_padding(self, *padding):
         self.pad = padding
+
+    def is_tiled_field(self, field):
+        return self.name + field in self.buffer_tiled_dims
+
+    def get_tiled_dims(self, field):
+        return self.buffer_tiled_dims[self.name + field]
+
+    def set_buffer(self, field, buffer):
+        def get():
+            if self.is_tiled_field(field):
+                shape = buffer.shape
+                untiled = buffer
+                if not isinstance(self, ActivationEnsemble):
+                    tiled_shape = list(shape)
+                    for dim in self.get_tiled_dims(field):
+                        tiled_shape[dim] //= latte.core.SIMDWIDTH
+                        tiled_shape.append(latte.core.SIMDWIDTH)
+                    untiled = untiled.reshape(tiled_shape)
+                for dim in reversed(self.get_tiled_dims(field)):
+                    untiled = util.untile(untiled, dim)
+                to_return = untiled
+            else:
+                to_return = buffer
+            if field in ["value", "grad"] and any(p > 0 for p in self.pad):
+                _slice = [slice(None)]
+                for p in self.pad:
+                    if p > 0:
+                        _slice.append(slice(p, -p))
+                    else:
+                        _slice.append(slice(None))
+                to_return = to_return[tuple(_slice)]
+            return to_return
+
+        setattr(self, "get_" + field, get)
+
+        def set(value):
+            if self.is_tiled_field(field):
+                tiled = value
+                dest = buffer
+                if not isinstance(self, ActivationEnsemble):
+                    tiled_shape = list(buffer.shape)
+                    for dim in self.get_tiled_dims(field):
+                        tiled_shape[dim] //= latte.core.SIMDWIDTH
+                        tiled_shape.append(latte.core.SIMDWIDTH)
+                    dest = buffer.reshape(tiled_shape)
+                for dim in self.get_tiled_dims(field):
+                    tiled = util.tile(tiled, dim)
+                np.copyto(dest, tiled)
+            else:
+                np.copyto(buffer, value)
+        setattr(self, "set_" + field, set)
+        if self.parent_group is not None:
+            setattr(self.parent_group, "get_" + field, get)
+            setattr(self.parent_group, "set_" + field, set)
 
 reorder_storage_file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/reorder_storage.c")
 
@@ -80,14 +137,42 @@ class DataEnsemble(Ensemble):
 class ActivationEnsemble(Ensemble):
     def __init__(self, neurons, source):
         super().__init__(neurons)
+        if isinstance(source, EnsembleGroup):
+            source = source.ensembles[-1]
         self.source = source
 
     def set_padding(self, *padding):
         self.pad = padding
         self.source.set_padding(*padding)
 
+    def is_tiled_field(self, field):
+        return self.source.is_tiled_field(field)
+
+    def get_tiled_dims(self, field):
+        return self.source.get_tiled_dims(field)
+
 class LossEnsemble(Ensemble):
     pass
 
 class AccuracyEnsemble(Ensemble):
     pass
+
+class EnsembleGroup:
+    def __init__(self, *ensembles):
+        self.ensembles = ensembles
+        for ensemble in ensembles:
+            ensemble.parent_group = self
+
+    def __len__(self):
+        return len(self.ensembles[-1])
+
+    @property
+    def shape(self):
+        return self.ensembles[-1].shape
+
+    @property
+    def ndim(self):
+        return self.ensembles[-1].ndim
+
+    def set_padding(self, *args):
+        self.ensembles[-1].set_padding(*args)

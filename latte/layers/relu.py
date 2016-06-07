@@ -5,6 +5,7 @@ import itertools
 
 class ReLUNeuron(Neuron):
     def __init__(self):
+        super().__init__()
         self.inputs = []
         self.grad_inputs = []
 

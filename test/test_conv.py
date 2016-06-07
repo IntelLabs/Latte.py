@@ -59,129 +59,55 @@ def check_equal(actual, expected, atol=1e-6, rtol=1e-5):
     assert np.allclose(actual, expected, atol=atol, rtol=rtol)
 
 def test_forward_backward():
-    net = Net(3)
-    channels, height, width = 16, 14, 14
-    pad = 1
-    data = MemoryDataLayer(net, (channels, height, width))
-    conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad)
-    conv2, conv2bias = ConvLayer(net, conv1bias, num_filters=16, kernel=3, stride=1, pad=pad)
+    for dilation in range(1, 3):
+        net = Net(3)
+        channels, height, width = 16, 14, 14
+        pad = 1
+        data = MemoryDataLayer(net, (channels, height, width))
+        conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
+        conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
 
-    _input = np.random.rand(3, channels, height, width)
-    data.set_value(_input)
+        _input = np.random.rand(3, channels, height, width)
+        data.set_value(_input)
 
-    net.compile()
+        net.compile()
 
-    weights = net.buffers[conv1.name + "weights"]
-    bias    = net.buffers[conv1bias.name + "bias"]
-    np.copyto(bias, np.random.rand(*bias.shape))
-    weights_converted = util.convert_6d_4d(weights)
+        weights = conv1.get_weights()
+        bias    = conv1.get_bias()
+        bias    = np.random.rand(*bias.shape)
+        conv1.set_bias(bias)
 
-    bias = util.convert_3d_2d(bias)
-    conv1_expected = reference_conv_forward(_input, weights_converted, bias,
-            pad, 1)
+        conv1_expected = reference_conv_forward(_input, weights, bias,
+                pad, 1, dilation)
 
-    weights = net.buffers[conv2.name + "weights"]
-    bias    = net.buffers[conv2bias.name + "bias"]
-    np.copyto(bias, np.random.rand(*bias.shape))
-    bias = util.convert_3d_2d(bias)
-    weights_converted = util.convert_6d_4d(weights)
+        weights = conv2.get_weights()
+        bias    = conv2.get_bias()
+        bias    = np.random.rand(*bias.shape)
+        conv2.set_bias(bias)
 
-    expected = reference_conv_forward(conv1_expected, weights_converted, bias,
-            pad, 1)
-    net.forward()
+        expected = reference_conv_forward(conv1_expected, weights, bias,
+                pad, 1, dilation)
+        net.forward()
 
-    actual  = net.buffers[conv2.name + "value"]
-    actual_converted = util.convert_5d_4d(actual)
-    check_equal(actual_converted, expected)
+        actual  = conv2.get_value()
+        check_equal(actual, expected)
 
-    top_grad = net.buffers[conv2.name + "grad"]
-    np.copyto(top_grad, np.random.rand(*top_grad.shape))
-    top_grad_converted = util.convert_5d_4d(top_grad)
+        top_grad = conv2.get_grad()
+        top_grad = np.random.rand(*top_grad.shape)
+        conv2.set_grad(top_grad)
 
-    weights = net.buffers[conv2.name + "weights"]
-    weights_converted = util.convert_6d_4d(weights)
-    net.backward()
+        weights = conv2.get_weights()
+        net.backward()
 
-    expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-        reference_conv_backward(top_grad_converted, conv1_expected,
-                weights_converted, pad, 1)
+        expected_bot_grad, expected_weights_grad, expected_bias_grad = \
+            reference_conv_backward(top_grad, conv1_expected,
+                    weights, pad, 1, dilation)
 
-    bot_grad = net.buffers[conv1.name + "grad"]
-    bot_grad = util.convert_5d_4d(bot_grad)[:, :, pad:-pad, pad:-pad]
-    check_equal(bot_grad, expected_bot_grad)
+        bot_grad = conv1.get_grad()
+        check_equal(bot_grad, expected_bot_grad)
 
-    weights_grad = np.sum(net.buffers[conv2.name + "grad_weights"], axis=0)
-    # weights_grad = net.buffers[conv2.name + "grad_weights"]
-    # weights_grad = net.buffers[conv2.name + "grad_weights"][0]
-    weights_converted = util.convert_6d_4d(weights_grad)
-    check_equal(weights_converted, expected_weights_grad, atol=1e-4)
+        weights_grad = np.sum(conv2.get_grad_weights(), axis=0)
+        check_equal(weights_grad, expected_weights_grad, atol=1e-4)
 
-    bias_grad = np.sum(net.buffers[conv2bias.name + "grad_bias"], axis=0)
-    # bias_grad = net.buffers[conv2bias.name + "grad_bias"]
-    bias_grad = util.convert_3d_2d(bias_grad)
-    # bias_grad = net.buffers[conv2bias.name + "grad_bias"][0]
-    check_equal(bias_grad, expected_bias_grad)
-
-def test_hole():
-    net = Net(3)
-    channels, height, width = 16, 14, 14
-    pad = 1
-    data = MemoryDataLayer(net, (channels, height, width))
-    conv1, conv1bias = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad, dilation=2)
-    conv2, conv2bias = ConvLayer(net, conv1bias, num_filters=16, kernel=3, stride=1, pad=pad, dilation=2)
- 
-    _input = np.random.rand(3, channels, height, width)
-    data.set_value(_input)
- 
-    net.compile()
- 
-    weights = net.buffers[conv1.name + "weights"]
-    bias    = net.buffers[conv1bias.name + "bias"]
-    np.copyto(bias, np.random.rand(*bias.shape))
-    weights_converted = util.convert_6d_4d(weights)
- 
-    bias = util.convert_3d_2d(bias)
-    conv1_expected = reference_conv_forward(_input, weights_converted, bias,
-            pad, 1, 2)
- 
-    weights = net.buffers[conv2.name + "weights"]
-    bias    = net.buffers[conv2bias.name + "bias"]
-    np.copyto(bias, np.random.rand(*bias.shape))
-    bias = util.convert_3d_2d(bias)
-    weights_converted = util.convert_6d_4d(weights)
- 
-    expected = reference_conv_forward(conv1_expected, weights_converted, bias,
-            pad, 1, 2)
-    net.forward()
- 
-    actual  = net.buffers[conv2.name + "value"]
-    actual_converted = util.convert_5d_4d(actual)
-    check_equal(actual_converted, expected)
- 
-    top_grad = net.buffers[conv2.name + "grad"]
-    np.copyto(top_grad, np.random.rand(*top_grad.shape))
-    top_grad_converted = util.convert_5d_4d(top_grad)
- 
-    weights = net.buffers[conv2.name + "weights"]
-    weights_converted = util.convert_6d_4d(weights)
-    net.backward()
- 
-    expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-        reference_conv_backward(top_grad_converted, conv1_expected,
-                weights_converted, pad, 1, 2)
- 
-    bot_grad = net.buffers[conv1.name + "grad"]
-    bot_grad = util.convert_5d_4d(bot_grad)[:, :, pad:-pad, pad:-pad]
-    check_equal(bot_grad, expected_bot_grad)
- 
-    weights_grad = np.sum(net.buffers[conv2.name + "grad_weights"], axis=0)
-    # weights_grad = net.buffers[conv2.name + "grad_weights"]
-    # weights_grad = net.buffers[conv2.name + "grad_weights"][0]
-    weights_converted = util.convert_6d_4d(weights_grad)
-    check_equal(weights_converted, expected_weights_grad, atol=1e-4)
- 
-    bias_grad = np.sum(net.buffers[conv2bias.name + "grad_bias"], axis=0)
-    # bias_grad = net.buffers[conv2bias.name + "grad_bias"]
-    bias_grad = util.convert_3d_2d(bias_grad)
-    # bias_grad = net.buffers[conv2bias.name + "grad_bias"][0]
-    check_equal(bias_grad, expected_bias_grad)
+        bias_grad = np.sum(conv2.get_grad_bias(), axis=0)
+        check_equal(bias_grad, expected_bias_grad)

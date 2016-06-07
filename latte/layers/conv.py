@@ -1,6 +1,6 @@
 import numpy as np
 from ..neuron import WeightedNeuron, BiasNeuron
-from ..ensemble import Ensemble
+from ..ensemble import Ensemble, EnsembleGroup
 import itertools
 
 class ConvNeuron(WeightedNeuron):
@@ -85,4 +85,4 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     bias_ens = net.init_activation_ensemble(bias_neurons, conv_ens)
 
-    return conv_ens, bias_ens
+    return EnsembleGroup(conv_ens, bias_ens)

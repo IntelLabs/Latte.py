@@ -328,6 +328,31 @@ def collect_stores(ast):
     visitor.visit(ast)
     return visitor.seen
 
+def untile(buffer, dim):
+    shape = buffer.shape
+    untiled_shape = list(shape[:-1])
+    untiled_shape[dim] *= shape[-1]
+    untiled = np.zeros(untiled_shape, dtype=buffer.dtype)
+    for index in np.ndindex(shape):
+        untiled_index = list(index[:-1])
+        untiled_index[dim] = untiled_index[dim] * shape[-1] + index[-1]
+        untiled[tuple(untiled_index)] = buffer[index]
+    return untiled
+
+def tile(buffer, dim):
+    shape = buffer.shape
+    tiled_shape = list(shape)
+    tiled_shape[dim] //= latte.core.SIMDWIDTH
+    tiled_shape.append(latte.core.SIMDWIDTH)
+    tiled = np.zeros(tiled_shape, dtype=buffer.dtype)
+    for untiled_index in np.ndindex(shape):
+        tiled_index = list(untiled_index)
+        dim_index = tiled_index[dim]
+        tiled_index[dim] = dim_index // latte.core.SIMDWIDTH
+        tiled_index.append(dim_index % latte.core.SIMDWIDTH)
+        tiled[tuple(tiled_index)] = buffer[untiled_index]
+    return tiled
+
 def convert_6d_4d(arr):
     shape = arr.shape
     converted_shape = (shape[0] * shape[5], shape[1] * shape[4], shape[2], shape[3])

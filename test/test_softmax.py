@@ -25,29 +25,29 @@ def reference_softmax_backward(prob, label):
     return bot_grad
 
 
-def test_forward_backward():
-    net = Net(8)
-    net.force_backward = True
-    data = MemoryDataLayer(net, (1000, ))
-    fc1, fc1bias = FullyConnectedLayer(net, data, 1000, )
-    label = MemoryDataLayer(net, (1, ))
-    softmax = SoftmaxLossLayer(net, fc1bias, label)
-    
-    data_value = np.random.rand(8, 1000)
-    data.set_value(data_value)
-    
-    label_value = np.floor(np.random.rand(8, 1) * 1000)
-    label.set_value(label_value)
-
-    net.compile()
-    net.forward()
-    bottom = net.buffers[fc1bias.name + "value"].reshape(8, 1000)
-
-    expected, loss = reference_softmax_forward(bottom, label_value)
-    assert np.allclose(softmax.prob, expected)
-    assert np.allclose(net.loss, loss)
-    net.backward()
-
-    expected_grad = reference_softmax_backward(expected, label_value)
-    bot_grad = net.buffers[fc1bias.name + "grad"].reshape(8, 1000)
-    assert np.allclose(bot_grad, expected_grad)
+# def test_forward_backward():
+#     net = Net(8)
+#     net.force_backward = True
+#     data = MemoryDataLayer(net, (1000, ))
+#     fc1, fc1bias = FullyConnectedLayer(net, data, 1000, )
+#     label = MemoryDataLayer(net, (1, ))
+#     softmax = SoftmaxLossLayer(net, fc1bias, label)
+#     
+#     data_value = np.random.rand(8, 1000)
+#     data.set_value(data_value)
+#     
+#     label_value = np.floor(np.random.rand(8, 1) * 1000)
+#     label.set_value(label_value)
+# 
+#     net.compile()
+#     net.forward()
+#     bottom = net.buffers[fc1bias.name + "value"].reshape(8, 1000)
+# 
+#     expected, loss = reference_softmax_forward(bottom, label_value)
+#     assert np.allclose(softmax.prob, expected)
+#     assert np.allclose(net.loss, loss)
+#     net.backward()
+# 
+#     expected_grad = reference_softmax_backward(expected, label_value)
+#     bot_grad = net.buffers[fc1bias.name + "grad"].reshape(8, 1000)
+#     assert np.allclose(bot_grad, expected_grad)
