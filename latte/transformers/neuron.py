@@ -52,9 +52,15 @@ class NeuronTransformer(ast.NodeTransformer):
                 name += "s"
                 self.seen_vars.add(name)
                 args = [ast.Name("_neuron_index_{}".format(i), ast.Load()) for i in range(ndim + 1)]
+                field = name.replace(self.ensemble.name, "")
+                if field in self.ensemble.tiling_info:
+                    for dim, _ in self.ensemble.tiling_info[field]:
+                        dim += 1  # offset for batch dimension
+                        args.append(ast.Name("_neuron_index_{}_inner".format(dim), ast.Load()))
                 # Tile 1st (non-batch) dimension
-                args[1].id += "_outer"
-                args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
+                if False:
+                    args[1].id += "_outer"
+                    args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
                 for i, p in enumerate(self.ensemble.pad):
                     if p > 0:
                         args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p))
@@ -64,13 +70,13 @@ class NeuronTransformer(ast.NodeTransformer):
             # mark as seen
             self.seen_vars.add(name)
 
-            if node.attr in self.ensemble.batch_fields:
-                # increment ndim for fields that have a batch dimension
-                ndim += 1
-            elif node.attr in ["inputs", "grad_inputs"]:
+            if node.attr in ["inputs", "grad_inputs"]:
                 # only generate batch index for inputs/grad_inputs because
                 # the user will provide rest of indices in expression
                 ndim = 1
+            elif node.attr in self.ensemble.batch_fields:
+                # increment ndim for fields that have a batch dimension
+                ndim += 1
             else:
                 # fields that don't have a batch dimension start at an offset 1
                 # as 0 is the batch dimension
@@ -83,19 +89,22 @@ class NeuronTransformer(ast.NodeTransformer):
                 # end, removing need for synchronization.  This is done by
                 # adding an outer dimension of size num_threads to the buffer
                 if True:
-                    args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
-                    # args.append(ast.Name("_neuron_index_0", ast.Load()))
+                    # args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
+                    args.append(ast.Name("_neuron_index_0", ast.Load()))
 
             # only append dimensions if it is not fixed in self.buffer_dim_info
             # (used for values shared across a dimension)
             for i in range(ndim):
                 if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
                     args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
-                    if i + offset == 1:
-                        args[-1].id += "_outer"
+                    # if i + offset == 1:
+                    #     args[-1].id += "_outer"
 
             if node.attr in ["value", "grad"]:
-                args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
+                if node.attr in self.ensemble.tiling_info:
+                    for dim, _ in self.ensemble.tiling_info[node.attr]:
+                        dim += 1  # offset for batch dimension
+                        args.append(ast.Name("_neuron_index_{}_inner".format(dim), ast.Load()))
                 for i, p in enumerate(self.ensemble.pad):
                     if p > 0:
                         args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p))
@@ -122,21 +131,28 @@ class NeuronTransformer(ast.NodeTransformer):
             else:
                 raise NotImplementedError(node.slice.value)
 
+            field = value.value.id.replace(self.ensemble.name, '')
+            if field in self.ensemble.tiling_info:
+                for dim, _ in self.ensemble.tiling_info[field]:
+                    # dim += 1  # offset for batch dimension
+                    if "grad_" in field and field != "grad_inputs":
+                        dim += 1  # offset for omp_get_thread_num()
+                    elif field in self.ensemble.batch_fields:
+                        dim += 1
+                    orig_var = value.slice.value.elts[dim].id
+                    value.slice.value.elts.append(ast.Name(orig_var + "_inner", ast.Load()))
             if "inputs" in value.value.id or "grad_inputs" in value.value.id:
                 # Add the input offsets defined by user's mapping for the
                 # connection
                 ndim = self.ensemble.ndim
-                if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
-                    value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
-
+                # if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
+                #     value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
+            
                 value.slice.value.elts[1:ndim + 1] = [
                     ast.BinOp(value, ast.Add(), 
                         ast.Name("_input_offset_{}".format(i + 1), ast.Load())) 
                     for i, value in enumerate(value.slice.value.elts[1:ndim + 1])
                 ]
-            else:
-                value.slice.value.elts.append(ast.Name("_neuron_index_1_inner", ast.Load()))
-
             # return child node
             return value
         else:

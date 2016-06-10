@@ -59,7 +59,7 @@ def check_equal(actual, expected, atol=1e-6, rtol=1e-5):
     assert np.allclose(actual, expected, atol=atol, rtol=rtol)
 
 def test_forward_backward():
-    for dilation in range(1, 3):
+    for dilation in range(1, 2):
         net = Net(3)
         channels, height, width = 16, 14, 14
         pad = 1
@@ -89,6 +89,8 @@ def test_forward_backward():
                 pad, 1, dilation)
         net.forward()
 
+        check_equal(data.get_value(), _input)
+        check_equal(conv1.get_value(), conv1_expected)
         actual  = conv2.get_value()
         check_equal(actual, expected)
 
@@ -106,8 +108,10 @@ def test_forward_backward():
         bot_grad = conv1.get_grad()
         check_equal(bot_grad, expected_bot_grad)
 
-        weights_grad = np.sum(conv2.get_grad_weights(), axis=0)
+        # weights_grad = np.sum(conv2.get_grad_weights(), axis=0)
+        weights_grad = conv2.get_grad_weights()
         check_equal(weights_grad, expected_weights_grad, atol=1e-4)
 
-        bias_grad = np.sum(conv2.get_grad_bias(), axis=0)
+        # bias_grad = np.sum(conv2.get_grad_bias(), axis=0)
+        bias_grad = conv2.get_grad_bias()
         check_equal(bias_grad, expected_bias_grad)

@@ -147,8 +147,8 @@ class Net:
 
         if "grad_" in field:
             if True:
-                self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
-                # self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
+                # self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
+                self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
             else:
                 self.buffers[ensemble.name + field] = util.zeros(buff.shape, np.float32)
         elif field not in neuron.zero_init_fields:
@@ -307,13 +307,62 @@ class Net:
             c_file = transformers.simple_fusion(c_file)
             new_body = []
             for stmt in c_file.body[1].defn:
-                if isinstance(stmt, C.For) and hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                    new_body.extend(stmt.pre_trans)
-                new_body.append(stmt)
+                if isinstance(stmt, C.For):
+                    if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                        new_body.extend(stmt.pre_trans)
+                    new_body.append(stmt)
+            c_file.body[1].defn = new_body
+            new_body = []
+            for stmt in c_file.body[1].defn:
+                if isinstance(stmt, C.For):
+                    loopvar1 = C.SymbolRef(stmt.init.left.name)
+                    looplen1 = stmt.test.right
+                    loopvar2 = C.SymbolRef(stmt.body[0].init.left.name)
+                    looplen2 = stmt.body[0].test.right
+                    body = stmt.body[0].body
+                    new_body.append(
+                        StringTemplate("""
+                        parallel_for(blocked_range2d<int>(0,$looplen1,0,$looplen2),
+                          [=](const blocked_range2d<int>& r) {
+                             for (int $loopvar1 = r.rows().begin(); $loopvar1 != r.rows().end(); ++$loopvar1) {
+
+                               for (int $loopvar2 = r.cols().begin(); $loopvar2 != r.cols().end(); ++$loopvar2) {
+    $body;
+                        }}}, ap);
+                        """, {'loopvar1': loopvar1, 'looplen1': looplen1,
+                              'loopvar2': loopvar2, 'looplen2': looplen2,
+                              'body': body
+                        })
+                    )
+                    if hasattr(stmt, 'reduce_vars') and len(stmt.reduce_vars) > 0:
+                        for var in stmt.reduce_vars:
+                            size = np.prod(self.buffers[var].shape[1:])
+                            new_body.append(
+StringTemplate("""
+parallel_for(blocked_range<int>(0,$size),
+  [=](const blocked_range<int>& r) {
+    #pragma simd
+    for (int x = r.begin(); x != r.end(); ++x) {
+      float sum = _$arr[x];
+      #pragma unroll
+      for (int i = 1; i < $batch_size; ++ i) {
+        sum += _$arr[i * $size + x];
+      }
+      _$arr[x] = sum;
+    }
+  }, 
+  ap
+);
+""", {'size': C.Constant(size),
+      'batch_size': C.Constant(self.batch_size),
+      'arr': C.SymbolRef(var)}))
+                else:
+                    new_body.append(stmt)
             c_file.body[1].defn = new_body
             c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-            c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
+            # c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
+            c_file.body[1].defn.insert(0, StringTemplate("static affinity_partitioner ap;"))
             # c_file.body[1].defn.insert(0, StringTemplate("unsigned long long t0 = __rdtsc();"))
             # c_file.body[1].defn.insert(0, StringTemplate("""
             #     unsigned long long _t0, _t1;
@@ -322,7 +371,7 @@ class Net:
             #     _t1 = __rdtsc();
             #     double freq = (double)(_t1 - _t0);
             #     """))
-            c_file.body[1].defn.append(StringTemplate("}"))
+            # c_file.body[1].defn.append(StringTemplate("}"))
             # c_file.body[1].defn.append(StringTemplate("t0 = __rdtsc() - t0;"))
             # c_file.body[1].defn.append(StringTemplate("printf(\"Time: %.5g\\n\", t0 / freq);"))
             # c_file = transformers.remove_repeated_declarations(c_file)
@@ -349,7 +398,7 @@ class Net:
         This is used as an argument to the mapping function which expects an
         untiled _neuron_index_1
         """
-        base_str = "_neuron_index_1 = _neuron_index_1_outer * {SIMDWIDTH} + _neuron_index_1_inner"
+        base_str = "_neuron_index_1_untiled = _neuron_index_1 * {SIMDWIDTH} + _neuron_index_1_inner"
         return ast.parse(base_str.format(SIMDWIDTH=SIMDWIDTH)).body[0]
 
     def _parallelize_loops(self, func_def, ndim):
@@ -368,60 +417,55 @@ class Net:
             if self.nowait:
                 loop.pragma += " nowait"
 
-    def _unroll(self, func_def, ensemble, unroll_target_loop_var, direction):
-        if unroll_target_loop_var == "_neuron_index_1_inner":
-            unroll_factor = SIMDWIDTH
-        else:
-            if direction == "forward":
-                unroll_factor = forward_unroll_factor
-            else:
-                unroll_factor = backward_unroll_factor
-            if ensemble.ndim == 1:
-                unroll_dim = self.batch_size
-            else:
-                unroll_dim = ensemble.shape[-1]
-            while unroll_factor > unroll_dim or unroll_dim % unroll_factor != 0 :
-                unroll_factor -= 1
-                if unroll_factor == 0:
-                    break
-        if unroll_factor > 1:
-            transformers.unroll_inner_neuron_loop(func_def, unroll_target_loop_var, unroll_factor)
-            # func_def = transformers.promote_single_use_registers(func_def)
-            # func_def = transformers.interleave_loads(func_def)
+    def _unroll(self, func_def, ensemble, unroll_target_loop_var, unroll_factor):
+        transformers.unroll.unroll_loop(func_def,
+            unroll_target_loop_var, unroll_factor)
+        # func_def = transformers.promote_single_use_registers(func_def)
+        # func_def = transformers.interleave_loads(func_def)
 
     def _reshape_buffer(self, args, ensemble, tiled_buffers):
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
             buf_shape = list(buf.shape)
+            field = name.replace(ensemble.name, "")
             if buf.ctypes._data not in self.reshaped_buffers:
-                if (True and "grad_" in name and "grad_inputs" not in name) or \
-                        name.replace(ensemble.name, "") in ensemble.batch_fields or \
-                        "inputs" in name:
-                    buf_shape[1] //= SIMDWIDTH
-                    buf_shape.append(SIMDWIDTH)
-                    ensemble.buffer_tiled_dims[name] = [1]
-                elif "inputs" not in name:
-                    buf_shape[0] //= SIMDWIDTH
-                    buf_shape.append(SIMDWIDTH)
-                    ensemble.buffer_tiled_dims[name] = [0]
-                if name in tiled_buffers and not name.endswith("inputs"):
-                    dim = len(buf_shape) - tiled_buffers[name] - 1
-                    buf_shape[dim] //= SIMDWIDTH
-                    buf_shape.append(SIMDWIDTH)
-                    if name in ensemble.buffer_tiled_dims:
-                        ensemble.buffer_tiled_dims[name].append(dim)
-                    else:
-                        ensemble.buffer_tiled_dims[name] = [dim]
+                if field in ensemble.tiling_info:
+                    for dim, factor in ensemble.tiling_info[field]:
+                        if field in ensemble.batch_fields:
+                            dim += 1
+                        elif "grad_" in field and field != "grad_inputs":
+                            dim += 1  # offset for omp_get_thread_num()
+                        assert buf_shape[dim] % factor == 0, "Invalid tiling factor"
+                        buf_shape[dim] //= factor
+                        buf_shape.append(factor)
+                # elif False and (True and "grad_" in name and "grad_inputs" not in name) or \
+                #         name.replace(ensemble.name, "") in ensemble.batch_fields: # or \
+                #         # "inputs" in name:
+                #     buf_shape[1] //= SIMDWIDTH
+                #     buf_shape.append(SIMDWIDTH)
+                #     ensemble.buffer_tiled_dims[name] = [1]
+                # elif False and "inputs" not in name:
+                #     buf_shape[0] //= SIMDWIDTH
+                #     buf_shape.append(SIMDWIDTH)
+                #     ensemble.buffer_tiled_dims[name] = [0]
+                # if False and name in tiled_buffers and not name.endswith("inputs"):
+                #     dim = len(buf_shape) - tiled_buffers[name] - 1
+                #     buf_shape[dim] //= SIMDWIDTH
+                #     buf_shape.append(SIMDWIDTH)
+                #     if name in ensemble.buffer_tiled_dims:
+                #         ensemble.buffer_tiled_dims[name].append(dim)
+                #     else:
+                #         ensemble.buffer_tiled_dims[name] = [dim]
 
                 self.reshaped_buffers[buf.ctypes._data] = buf_shape
                 self.buffers[name] = buf.reshape(buf_shape)
-            elif "inputs" in name and self.connections_map[ensemble][0].reshape is not None:
-                buf_shape = list((self.batch_size, ) + self.connections_map[ensemble][0].reshape)
-                buf_shape[1] //= SIMDWIDTH
-                buf_shape.append(SIMDWIDTH)
-                self.buffers[name] = buf.reshape(buf_shape)
-                ensemble.buffer_tiled_dims[name] = [1]
+            # elif "inputs" in name and self.connections_map[ensemble][0].reshape is not None:
+            #     buf_shape = list((self.batch_size, ) + self.connections_map[ensemble][0].reshape)
+            #     buf_shape[1] //= SIMDWIDTH
+            #     buf_shape.append(SIMDWIDTH)
+            #     self.buffers[name] = buf.reshape(buf_shape)
+            #     ensemble.buffer_tiled_dims[name] = [1]
             else:
                 buf_shape = self.reshaped_buffers[buf.ctypes._data]
                 self.buffers[name] = buf.reshape(buf_shape)
@@ -489,15 +533,21 @@ class Net:
                 self.connections_map[ensemble], self.buffer_dim_info)
         fn_def = transformer.visit(fn_def)
 
-        # Reverse iteration space for row major indexing
-        loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)][::-1]
-        loop_vars[-2] += "_outer"
-        loop_vars.insert(0, "_neuron_index_1_inner")
+        loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)]
+        # loop_vars[-2] += "_outer"
+        # loop_vars.insert(0, "_neuron_index_1_inner")
         # pad = ensemble.pad + (0, )
         shape = list(ensemble.shape)
-        shape[0] //= SIMDWIDTH
-        shape.append(SIMDWIDTH)
-        # loop_ranges = ([(0, self.batch_size)] + [(p, p + d) for p, d in zip(pad, shape)])[::-1]
+
+        if "value" in ensemble.tiling_info:
+            for dim, factor in ensemble.tiling_info["value"]:
+                assert shape[dim] % factor == 0, "Invalid tiling factor"
+                shape[dim] //= factor
+                shape.append(factor)
+                loop_vars.append(loop_vars[dim + 1] + "_inner")
+
+        # Reverse iteration space for row major indexing
+        loop_vars = loop_vars[::-1]
         loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
 
         body = fn_def.body
@@ -517,17 +567,17 @@ class Net:
                 ast.arguments(args, None, [], [], None, []), nests,
                 [], None)
 
-        func_def = transformers.pattern_match_gemm(func_def)
+        # func_def = transformers.pattern_match_gemm(func_def)
         func_def = transformers.simple_fusion(func_def)
         for loop in func_def.body:
-            loop = loop.body[0]
-            for dim in range(ensemble.ndim):
+            for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
 
             mapping = self.connections_map[ensemble][0].mapping
             mapping_func = mapping.ast
 
-            body = [self._gen_untiled_neuron_index_1()]
+            # body = [self._gen_untiled_neuron_index_1()]
+            body = []
 
             for dim in range(1, ensemble.ndim):
                 offset = mapping.get_offset(dim)
@@ -546,15 +596,16 @@ class Net:
             # else its the remainder and floor division of the mapping result
             if mapping.is_one_to_one():
                 body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-                                       ast.Name("_neuron_index_1_outer", ast.Load())))
-                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-                                       ast.Name("_neuron_index_1_inner", ast.Load())))
+                                       ast.Name("_neuron_index_1", ast.Load())))
+                # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
+                #                        ast.Name("_neuron_index_1_inner", ast.Load())))
             else:
                 offset = mapping.get_offset(0)
                 body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-                                       ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
-                body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-                                       ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
+                                       offset))
+                                       # ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
+                # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
+                #                        ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
 
             # Prepend to body
             loop.body = body + loop.body
@@ -563,7 +614,7 @@ class Net:
         func_def = transformers.convert_tuple_subscripts(func_def)
         # convert semantic (domain) ast nodes introduced by the neuron
         # transformer
-        func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction)
+        func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
         # func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
 
@@ -571,7 +622,7 @@ class Net:
         # defaults to using longs for range based for loops
         for loop in func_def.defn:
             loop.init.left.type = ctypes.c_int()
-            for dim in range(ensemble.ndim + 1):
+            for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
                 loop.init.left.type = ctypes.c_int()
                 input_shape = self.connections_map[ensemble][0].source.shape
@@ -609,6 +660,7 @@ class Net:
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
 
         # Basic type inference and constant propogation
+        # print(func_def)
         func_def = transformers.BasicTypeInference().visit(func_def)
         func_def = transformers.SimpleConstantPropogation().visit(func_def)
         # print(func_def)
@@ -619,8 +671,9 @@ class Net:
         # vectorized_buffers[ensemble.name+"grad_inputs"] = [(2, SIMDWIDTH)]
 
         candidate = transformers.get_loop_to_vectorize(func_def)
+        candidate = None
 
-        unroll = True
+        unroll = False
         if ensemble.ndim > 1:
             unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
         else:
@@ -635,6 +688,13 @@ class Net:
         #     unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
         #     # unroll = False
         # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
+        if direction in ensemble.vectorize_info:
+            func_def, transposed_buffers = transformers.vectorize_loop(func_def, ensemble.vectorize_info[direction][0])
+            func_def = transformers.push_inner_loop_down(func_def)
+            func_def = transformers.register_promote_vector_loads_stores(func_def)
+            func_def = transformers.lift_invariant_load_stores(func_def)
+            func_def = transformers.fma_replace(func_def)
+
         if candidate is not None:
             func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
             func_def = transformers.push_inner_loop_down(func_def)
@@ -650,10 +710,15 @@ class Net:
 
         self._parallelize_loops(func_def, ensemble.ndim)
 
+        if direction in ensemble.unroll_info:
+            unroll_var, unroll_factor = ensemble.unroll_info[direction]
+            self._unroll(func_def, ensemble, unroll_var, unroll_factor)
+
         if candidate is not None and unroll:
             self._unroll(func_def, ensemble, unroll_target_loop_var, direction)
         else:
-            func_def = transformers.insert_pragma_simd(func_def)
+            pass
+            # func_def = transformers.insert_pragma_simd(func_def)
 
         type_sig = []
         casts = []
@@ -666,7 +731,8 @@ class Net:
             self._insert_cast(casts, buf.shape[1:], name, buf.dtype)
             # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
 
-        if candidate is not None:
+        # if candidate is not None:
+        if direction in ensemble.vectorize_info:
             pre_trans, post_trans = self._gen_transposes(transposed_buffers)
 
             if True:
@@ -684,6 +750,11 @@ class Net:
 
         assert isinstance(func_def.defn[0], C.For)
         func_def.defn[0].pre_trans = pre_trans
+        reduce_vars = []
+        func_def.defn[0].reduce_vars = reduce_vars
+        for arg in args:
+            if "grad_" in arg.arg and "inputs" not in arg.arg:
+                reduce_vars.append(arg.arg)
         return casts, func_def.defn, args, pre_trans, post_trans
 
     def _insert_cast(self, body, shape, name, dtype):

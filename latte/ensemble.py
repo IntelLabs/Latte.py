@@ -18,6 +18,43 @@ class Ensemble:
         self.pad = tuple(0 for _ in neurons.shape)
         self.parent_group = None
         self.buffer_tiled_dims = {}
+        self._tiling_info = {}
+        self._transpose_info = {}
+        self._vectorize_info = {}
+        self._unroll_info = {}
+
+    @property
+    def tiling_info(self):
+        return self._tiling_info
+
+    @property
+    def transpose_info(self):
+        return self._transpose_info
+
+    @property
+    def vectorize_info(self):
+        return self._vectorize_info
+
+    @property
+    def unroll_info(self):
+        return self._unroll_info
+
+    def tile(self, field, dim, factor):
+        if field not in self.tiling_info:
+            self.tiling_info[field] = []
+        if (dim, factor) not in self.tiling_info[field]:
+            self.tiling_info[field].append((dim, factor))
+
+    def transpose(self, field, dim1, dim2):
+        if field not in self.transpose_info:
+            self.transpose_info[field] = []
+        self.transpose_info[field].append((dim1, dim2))
+
+    def vectorize(self, direction, loop_var, factor):
+        self._vectorize_info[direction] = (loop_var, factor)
+
+    def unroll(self, direction, loop_var, factor):
+        self._unroll_info[direction] = (loop_var, factor)
 
     @property
     def batch_fields(self):
@@ -48,20 +85,29 @@ class Ensemble:
 
     def set_buffer(self, field, buffer):
         def get():
-            if self.is_tiled_field(field):
-                shape = buffer.shape
+            if field in self.tiling_info:
                 untiled = buffer
-                if not isinstance(self, ActivationEnsemble):
-                    tiled_shape = list(shape)
-                    for dim in self.get_tiled_dims(field):
-                        tiled_shape[dim] //= latte.core.SIMDWIDTH
-                        tiled_shape.append(latte.core.SIMDWIDTH)
-                    untiled = untiled.reshape(tiled_shape)
-                for dim in reversed(self.get_tiled_dims(field)):
+                if "grad_" in field and field != "grad_inputs":
+                    untiled = untiled[0]
+                    # untiled = np.sum(untiled, axis=0)
+                shape = untiled.shape
+                tiled_shape = list(shape)
+                if not isinstance(self, ActivationEnsemble) or field not in ["value", "grad"]:
+                    for dim, factor in self.tiling_info[field]:
+                        if field in self.batch_fields:
+                            dim += 1
+                        tiled_shape[dim] //= factor
+                        tiled_shape.append(factor)
+                untiled = untiled.reshape(tiled_shape)
+                for dim, _ in reversed(self.tiling_info[field]):
+                    if field in self.batch_fields:
+                        dim += 1
                     untiled = util.untile(untiled, dim)
                 to_return = untiled
             else:
                 to_return = buffer
+                if "grad_" in field and field != "grad_inputs":
+                    to_return = to_return[0]
             if field in ["value", "grad"] and any(p > 0 for p in self.pad):
                 _slice = [slice(None)]
                 for p in self.pad:
@@ -89,15 +135,19 @@ class Ensemble:
                 # dest = dest[tuple(_slice)]
             else:
                 _slice = tuple(slice(None) for _ in dest.shape)
-            if self.is_tiled_field(field):
+            if field in self.tiling_info:
                 tiled = value
-                if not isinstance(self, ActivationEnsemble):
-                    tiled_shape = list(dest.shape)
-                    for dim in self.get_tiled_dims(field):
-                        tiled_shape[dim] //= latte.core.SIMDWIDTH
-                        tiled_shape.append(latte.core.SIMDWIDTH)
-                    dest = dest.reshape(tiled_shape)
-                for dim in self.get_tiled_dims(field):
+                tiled_shape = list(dest.shape)
+                if not isinstance(self, ActivationEnsemble) or field not in ["value", "grad"]:
+                    for dim, factor in self.tiling_info[field]:
+                        if field in self.batch_fields:
+                            dim += 1
+                        tiled_shape[dim] //= factor
+                        tiled_shape.append(factor)
+                dest = dest.reshape(tiled_shape)
+                for dim, _ in self.tiling_info[field]:
+                    if field in self.batch_fields:
+                        dim += 1
                     tiled = util.tile(tiled, dim)
                 dest[_slice] = tiled
             else:
@@ -163,8 +213,24 @@ class ActivationEnsemble(Ensemble):
     def is_tiled_field(self, field):
         return self.source.is_tiled_field(field)
 
-    def get_tiled_dims(self, field):
-        return self.source.get_tiled_dims(field)
+    @property
+    def tiling_info(self):
+        info = self.source.tiling_info
+        if "value" in info:
+            info["inputs"] = info["value"]
+        return info
+
+    @property
+    def transpose_info(self):
+        return self.source.transpose_info
+
+    @property
+    def vectorize_info(self):
+        return self._vectorize_info
+
+    @property
+    def unroll_info(self):
+        return self._unroll_info
 
 class LossEnsemble(Ensemble):
     pass
@@ -191,3 +257,6 @@ class EnsembleGroup:
 
     def set_padding(self, *args):
         self.ensembles[-1].set_padding(*args)
+
+    def tile(self, field, dim, factor):
+        self.ensembles[-1].tile(field, dim, factor)

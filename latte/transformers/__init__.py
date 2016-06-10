@@ -7,7 +7,7 @@ from .convert_enumerate_range import convert_enumerate_ranges
 from .register_promote_value_refs import register_promote_value_refs
 from .vectorize_outer_loop import vectorize_outer_loop
 from .neuron import NeuronTransformer
-from .unroll import unroll_inner_neuron_loop, unroll_constant_loops
+import latte.transformers.unroll
 from .register_promote import register_promote_vector_loads_stores, lift_invariant_load_stores
 from .vectorize import tile_outer_loop, get_loop_to_vectorize, vectorize_loop, fma_replace
 
@@ -275,7 +275,7 @@ class InnerLoopPusher(ast.NodeTransformer):
                 curr_node.body[-1].pragma = tmp_pragma
                 curr_node = curr_node.body[-1]
             curr_node.body = outer_body + curr_node.body
-            # curr_node.pragma = "unroll"
+            curr_node.pragma = "unroll"
             return node
 
         node.body = [self.visit(s) for s in node.body]

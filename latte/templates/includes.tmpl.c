@@ -4,6 +4,8 @@
 #include <cmath>
 #include <omp.h>
 #include <unistd.h>
+#include <tbb/tbb.h>
+using namespace tbb;
 #define SIMDWIDTH 8
 #define TILE_SIZE 8
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
