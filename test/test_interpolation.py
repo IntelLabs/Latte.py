@@ -78,7 +78,7 @@ def test_forward_backward_double():
     pad = 0
     resize_factor = 2.0
     data = MemoryDataLayer(net, (channels, height, width))
-    interp1 = InterpolationLayer(net, data, resize_factor=resize_factor)
+    interp1 = InterpolationLayer(net, data, pad=pad, resize_factor=resize_factor)
     
     net.compile()
 
@@ -111,7 +111,7 @@ def test_forward_backward_enlarge():
     pad = 0
     resize_factor = 8.0
     data = MemoryDataLayer(net, (channels, height, width))
-    interp1 = InterpolationLayer(net, data, resize_factor=resize_factor)
+    interp1 = InterpolationLayer(net, data, pad=pad, resize_factor=resize_factor)
 
     net.compile()
     
