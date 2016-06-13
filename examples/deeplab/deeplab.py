@@ -2,20 +2,15 @@ import numpy as np
 from latte import *
 from latte.solvers import sgd_update
 import random
-from data_loader import load_deeplab
+from data_loader import load_data, load_images
 from latte.math import compute_softmax_loss, softmax_loss_backprop, compute_seg_accuracy
 
-print("Loading data...")
-train_data, train_label = load_deeplab(dataset="training", path="CityScapes/list/", data_folder="./data/", is_color=True, crop_size=306)
-test_data, test_label   = load_deeplab(dataset="testing", path="CityScapes/list/", data_folder="./data/", is_color=True, crop_size=306)
-
-num_train = len(train_data)
-num_test = len(test_data)
 
 batch_size = 20
 net = Net(batch_size)
 
 data     = MemoryDataLayer(net, (8, 306, 306))
+label     = MemoryDataLayer(net, (8, 306, 306))
 conv1_1 = ConvLayer(net, data, num_filters=64, kernel=3, stride=1, pad=1)
 relu1_1 = ReLULayer(net, conv1_1)
 conv1_2 = ConvLayer(net, conv1_1, num_filters=64, kernel=3, stride=1, pad=1)
@@ -53,8 +48,8 @@ drop6 = DropoutLayer(net, fc6, ratio=0.5)
 fc7 = ConvLayer(net, fc6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
 drop7 = DropoutLayer(net, fc7, ratio=0.5)
-fc8_pascal = ConvLayer(net, fc7, num_filters=19, kernel=1, stride=1, pad=0)
-#label_shrink = InterpolationLayer(net, np.asarray(train_label), resize_factor=8)
+fc8_pascal = ConvLayer(net, fc7, num_filters=24, kernel=1, stride=1, pad=0)
+#shrink_label = InterpolationLayer(net, label, resize_factor=8)
 
 print("Compiling...")
 net.compile()
@@ -108,24 +103,31 @@ prob = np.zeros_like(output)
 
 output_grad = np.zeros_like(output)
 
+training_images_list = load_data(dataset="training", path="CityScapes/list/")
+test_images_list = load_data(dataset="testing", path="CityScapes/list/")
+
+num_train = len(training_images_list)
+num_test = len(test_images_list)
+
 for epoch in range(10):
     random.shuffle(train_batches)
     print("Epoch {} - Training...".format(epoch))
     for i, n in enumerate(train_batches):
-        data.set_value(train_data[n:n+batch_size])
-        label_value = train_label[n:n+batch_size]
+        train_data, train_label = load_images(training_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
+        data.set_value(train_data)
+        label.set_value(train_label)
         net.forward()
 
         # Compute loss
         output = fc8_pascal.get_value()
 
-        loss = compute_softmax_loss(output, prob, label_value)
+        loss = compute_softmax_loss(output, prob, shrink_label.get_value())
 
         if i % 100 == 0:
             print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
 
         # Initialize gradients
-        softmax_loss_backprop(output_grad, prob, label_value)
+        softmax_loss_backprop(output_grad, prob, shrink_label.get_value())
         fc4.set_grad(output_grad)
 
         net.backward()
@@ -141,11 +143,12 @@ for epoch in range(10):
     print("Epoch {} - Testing...".format(epoch))
     acc = 0
     for i, n in enumerate(range(0, num_test, batch_size)):
+        test_data, test_label  = load_images(test_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
         data.set_value(test_data[n:n+batch_size])
-        label_value = test_label[n:n+batch_size]
+        label.set_value = test_label[n:n+batch_size]
         net.test()
 
-        acc += compute_seg_accuracy(fc8_pascal.get_value(), label_value)
+        acc += compute_seg_accuracy(fc8_pascal.get_value(), shrink_label.get_value())
         net.clear_values()
     acc /= (num_test / batch_size)
     acc *= 100
