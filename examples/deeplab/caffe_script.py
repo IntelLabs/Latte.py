@@ -39,6 +39,7 @@ for layer in range(len(net.layers)):
 
     if net.layers[layer].type == 41: #interp
         s += str(net.layers[layer].name) + ' = InterpolationLayer(net, ' + str(net.layers[layer].bottom[0]) + \
+            ', pad=' + str(-int(net.layers[layer].interp_param.pad_beg)) + \
             ', resize_factor=' + str(net.layers[layer].interp_param.shrink_factor) + ')\n'        
 
 print(s)
