@@ -36,6 +36,12 @@ class InterpolatedNeuron(Neuron):
 
 def InterpolationLayer(net, input_ensemble, pad=0, resize_factor=1.0):
     assert input_ensemble.ndim == 3, "InterpolationLayer only supports 3-d input"
+    
+    if isinstance(pad, tuple):
+        assert len(pad) == 2, "pad as a tuple must be of length 2"
+        pad_h, pad_w = pad
+    else:
+        pad_h, pad_w = pad, pad
 
     input_channels, input_height, input_width = input_ensemble.shape
     output_width = math.floor(input_width * resize_factor)
