@@ -1,5 +1,7 @@
 import numpy as np
+from numba import jit
 
+@jit
 def compute_softmax_loss(output, prob, label):
     assert output.shape == prob.shape
     assert len(label) == len(output)
@@ -12,6 +14,7 @@ def compute_softmax_loss(output, prob, label):
         loss -= np.log(max(prob[n, int(label[n, 0])], np.finfo(np.float32).min))
     return loss / batch_size
 
+@jit
 def softmax_loss_backprop(output_grad, prob, label):
     batch_size = output_grad.shape[0]
     np.copyto(output_grad, prob)
@@ -19,6 +22,7 @@ def softmax_loss_backprop(output_grad, prob, label):
         output_grad[n, int(label[n, 0])] -= 1
     output_grad /= batch_size
 
+@jit
 def compute_accuracy(output, label):
     batch_size = output.shape[0]
     accuracy = 0.0

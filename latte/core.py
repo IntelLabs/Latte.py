@@ -629,6 +629,7 @@ parallel_for(blocked_range<int>(0,$size),
         func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
         # func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
+        func_def = transformers.PatternMatchMath().visit(func_def)
 
         # convert loopvars from long to int. we do this as PyBasicConversion
         # defaults to using longs for range based for loops
@@ -800,3 +801,4 @@ parallel_for(blocked_range<int>(0,$size),
             task()
         for task in self.backward_tasks:
             task()
+

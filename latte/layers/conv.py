@@ -52,6 +52,9 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     else:
         pad_h, pad_w = pad, pad
 
+    # remainder = num_filters % SIMDWIDTH
+    # num_filters += remainder
+
     input_channels, input_height, input_width = input_ensemble.shape
     output_width = ((input_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
     output_height = ((input_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1

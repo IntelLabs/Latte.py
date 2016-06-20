@@ -13,44 +13,44 @@ data     = MemoryDataLayer(net, (8, 306, 306))
 label     = MemoryDataLayer(net, (8, 306, 306))
 conv1_1 = ConvLayer(net, data, num_filters=64, kernel=3, stride=1, pad=1)
 relu1_1 = ReLULayer(net, conv1_1)
-conv1_2 = ConvLayer(net, conv1_1, num_filters=64, kernel=3, stride=1, pad=1)
+conv1_2 = ConvLayer(net, relu1_1, num_filters=64, kernel=3, stride=1, pad=1)
 relu1_2 = ReLULayer(net, conv1_2)
-pool1 = MaxPoolingLayer(net, conv1_2, kernel=2, stride=2, pad=1)
+pool1 = MaxPoolingLayer(net, relu1_2, kernel=2, stride=2, pad=1)
 conv2_1 = ConvLayer(net, pool1, num_filters=128, kernel=3, stride=1, pad=1)
 relu2_1 = ReLULayer(net, conv2_1)
-conv2_2 = ConvLayer(net, conv2_1, num_filters=128, kernel=3, stride=1, pad=1)
+conv2_2 = ConvLayer(net, relu2_1, num_filters=128, kernel=3, stride=1, pad=1)
 relu2_2 = ReLULayer(net, conv2_2)
-pool2 = MaxPoolingLayer(net, conv2_2, kernel=2, stride=2, pad=1)
+pool2 = MaxPoolingLayer(net, relu2_2, kernel=2, stride=2, pad=1)
 conv3_1 = ConvLayer(net, pool2, num_filters=256, kernel=3, stride=1, pad=1)
 relu3_1 = ReLULayer(net, conv3_1)
-conv3_2 = ConvLayer(net, conv3_1, num_filters=256, kernel=3, stride=1, pad=1)
+conv3_2 = ConvLayer(net, relu3_1, num_filters=256, kernel=3, stride=1, pad=1)
 relu3_2 = ReLULayer(net, conv3_2)
-conv3_3 = ConvLayer(net, conv3_2, num_filters=256, kernel=3, stride=1, pad=1)
+conv3_3 = ConvLayer(net, relu3_2, num_filters=256, kernel=3, stride=1, pad=1)
 relu3_3 = ReLULayer(net, conv3_3)
-pool3 = MaxPoolingLayer(net, conv3_3, kernel=2, stride=2, pad=1)
+pool3 = MaxPoolingLayer(net, relu3_3, kernel=2, stride=2, pad=1)
 conv4_1 = ConvLayer(net, pool3, num_filters=512, kernel=3, stride=1, pad=1)
 relu4_1 = ReLULayer(net, conv4_1)
-conv4_2 = ConvLayer(net, conv4_1, num_filters=512, kernel=3, stride=1, pad=1)
+conv4_2 = ConvLayer(net, relu4_1, num_filters=512, kernel=3, stride=1, pad=1)
 relu4_2 = ReLULayer(net, conv4_2)
-conv4_3 = ConvLayer(net, conv4_2, num_filters=512, kernel=3, stride=1, pad=1)
+conv4_3 = ConvLayer(net, relu4_2, num_filters=512, kernel=3, stride=1, pad=1)
 relu4_3 = ReLULayer(net, conv4_3)
-pool4 = MaxPoolingLayer(net, conv4_3, kernel=2, stride=1, pad=0)
+pool4 = MaxPoolingLayer(net, relu4_3, kernel=2, stride=1, pad=0)
 conv5_1 = ConvLayer(net, pool4, num_filters=512, kernel=3, stride=1, pad=2)
 relu5_1 = ReLULayer(net, conv5_1)
-conv5_2 = ConvLayer(net, conv5_1, num_filters=512, kernel=3, stride=1, pad=2)
+conv5_2 = ConvLayer(net, relu5_1, num_filters=512, kernel=3, stride=1, pad=2)
 relu5_2 = ReLULayer(net, conv5_2)
-conv5_3 = ConvLayer(net, conv5_2, num_filters=512, kernel=3, stride=1, pad=2)
+conv5_3 = ConvLayer(net, relu5_2, num_filters=512, kernel=3, stride=1, pad=2)
 relu5_3 = ReLULayer(net, conv5_3)
-pool5 = MaxPoolingLayer(net, conv5_3, kernel=3, stride=1, pad=1)
+pool5 = MaxPoolingLayer(net, relu5_3, kernel=3, stride=1, pad=1)
 fc6 = ConvLayer(net, pool5, num_filters=4096, kernel=4, stride=1, pad=6)
 relu6 = ReLULayer(net, fc6)
-drop6 = DropoutLayer(net, fc6, ratio=0.5)
-fc7 = ConvLayer(net, fc6, num_filters=4096, kernel=1, stride=1, pad=0)
+drop6 = DropoutLayer(net, relu6, ratio=0.5)
+fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
-drop7 = DropoutLayer(net, fc7, ratio=0.5)
-fc8_pascal = ConvLayer(net, fc7, num_filters=24, kernel=1, stride=1, pad=0)
+drop7 = DropoutLayer(net, relu7, ratio=0.5)
+fc8_pascal = ConvLayer(net, drop7, num_filters=24, kernel=1, stride=1, pad=0)
 #shrink_label = InterpolationLayer(net, label, resize_factor=8)
-
+exit()
 print("Compiling...")
 net.compile()
 
@@ -84,10 +84,10 @@ params = [
     make_param(conv5_2.get_bias_view()    , conv5_2.get_grad_bias_view()    ),
     make_param(conv5_3.get_weights_view() , conv5_3.get_grad_weights_view() ),
     make_param(conv5_3.get_bias_view()    , conv5_3.get_grad_bias_view()    ),
-    make_param(fc6.get_weights_view()   , fc6.get_grad_weights_view()   ),
-    make_param(fc6.get_bias_view()      , fc6.get_grad_bias_view()      ),
-    make_param(fc7.get_weights_view()   , fc7.get_grad_weights_view()   ), 
-    make_param(fc7.get_bias_view()      , fc7.get_grad_bias_view()      ),
+    make_param(fc6.get_weights_view()     , fc6.get_grad_weights_view()   ),
+    make_param(fc6.get_bias_view()        , fc6.get_grad_bias_view()      ),
+    make_param(fc7.get_weights_view()     , fc7.get_grad_weights_view()   ), 
+    make_param(fc7.get_bias_view()        , fc7.get_grad_bias_view()      ),
     make_param(fc8_pascal.get_weights_view()   , fc8_pascal.get_grad_weights_view()   ), 
     make_param(fc8_pascal.get_bias_view()      , fc8_pascal.get_grad_bias_view()      ),
 ]
@@ -117,13 +117,14 @@ for epoch in range(10):
     for i, n in enumerate(train_batches):
         # train_data, train_label = load_images(training_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
         train_data = np.array(training_images_list[n:n+batch_size])
-        train_label = np.random.rand(batch_size, 1) * 100
+        train_label = np.random.rand(batch_size, 8, 306, 306) * 100
         data.set_value(train_data)
         label.set_value(train_label)
         net.forward()
 
         # Compute loss
         output = fc8_pascal.get_value()
+        print(output)
 
         loss = compute_softmax_loss(output, prob, shrink_label.get_value())
 

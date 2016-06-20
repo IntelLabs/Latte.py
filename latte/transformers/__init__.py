@@ -10,6 +10,7 @@ from .neuron import NeuronTransformer
 import latte.transformers.unroll
 from .register_promote import register_promote_vector_loads_stores, lift_invariant_load_stores
 from .vectorize import tile_outer_loop, get_loop_to_vectorize, vectorize_loop, fma_replace
+from .pattern_match_math import PatternMatchMath
 
 
 import ast
