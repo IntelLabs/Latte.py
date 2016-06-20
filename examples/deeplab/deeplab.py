@@ -2,7 +2,7 @@ import numpy as np
 from latte import *
 from latte.solvers import sgd_update
 import random
-from data_loader import load_data, load_images
+# from data_loader import load_data, load_images
 from latte.math import compute_softmax_loss, softmax_loss_backprop, compute_seg_accuracy
 
 
@@ -96,24 +96,28 @@ base_lr = .01
 gamma = .0001
 power = .75
 
-train_batches = [i for i in range(0, num_train, batch_size)]
-
 output = fc8_pascal.get_value()
 prob = np.zeros_like(output)
 
 output_grad = np.zeros_like(output)
 
-training_images_list = load_data(dataset="training", path="CityScapes/list/")
-test_images_list = load_data(dataset="testing", path="CityScapes/list/")
+# training_images_list = load_data(dataset="training", path="CityScapes/list/")
+# test_images_list = load_data(dataset="testing", path="CityScapes/list/")
+training_images_list = [np.random.rand(8, 306, 306) for _ in range(100)]
+test_images_list = [np.random.rand(8, 306, 306) for _ in range(100)]
 
 num_train = len(training_images_list)
 num_test = len(test_images_list)
+
+train_batches = [i for i in range(0, num_train, batch_size)]
 
 for epoch in range(10):
     random.shuffle(train_batches)
     print("Epoch {} - Training...".format(epoch))
     for i, n in enumerate(train_batches):
-        train_data, train_label = load_images(training_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
+        # train_data, train_label = load_images(training_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
+        train_data = np.array(training_images_list[n:n+batch_size])
+        train_label = np.random.rand(batch_size, 1) * 100
         data.set_value(train_data)
         label.set_value(train_label)
         net.forward()

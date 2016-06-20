@@ -8,4 +8,4 @@ from .layers.softmax import SoftmaxLossLayer
 from .layers.accuracy import AccuracyLayer
 from .layers.seg_accuracy import SegAccuracyLayer
 from .layers.interpolation import InterpolationLayer
-# from .layers.dropout import DropoutLayer
+from .layers.dropout import DropoutLayer

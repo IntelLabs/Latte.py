@@ -90,6 +90,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     # Begin Optimizations
     input_ensemble.tile('value', dim=0, factor=SIMDWIDTH)
+    input_ensemble.tile('grad', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('inputs', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad_inputs', dim=0, factor=SIMDWIDTH)
 
