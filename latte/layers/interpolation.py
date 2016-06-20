@@ -34,8 +34,14 @@ class InterpolatedNeuron(Neuron):
         self.grad_inputs[0,0,1] += (1-delta_r) * delta_c     * self.grad
         self.grad_inputs[0,1,1] += delta_r     * delta_c     * self.grad
 
-def InterpolationLayer(net, input_ensemble, resize_factor=1.0):
+def InterpolationLayer(net, input_ensemble, pad=0, resize_factor=1.0):
     assert input_ensemble.ndim == 3, "InterpolationLayer only supports 3-d input"
+    
+    if isinstance(pad, tuple):
+        assert len(pad) == 2, "pad as a tuple must be of length 2"
+        pad_h, pad_w = pad
+    else:
+        pad_h, pad_w = pad, pad
 
     input_channels, input_height, input_width = input_ensemble.shape
     output_width = math.floor(input_width * resize_factor)
@@ -59,8 +65,8 @@ def InterpolationLayer(net, input_ensemble, resize_factor=1.0):
     input_shape = input_ensemble.shape
 
     def mapping(c, y, x):
-        in_y = floor(y / resize_factor)
-        in_x = floor(x / resize_factor)
+        in_y = floor(y / resize_factor) - pad
+        in_x = floor(x / resize_factor) - pad
         return range(c, c+1), range(in_y, in_y+1), range(in_x, in_x+1)
 
     net.add_connections(input_ensemble, interpolation_ens, mapping, clamp=True)

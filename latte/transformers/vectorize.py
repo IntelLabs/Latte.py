@@ -249,7 +249,7 @@ class Vectorizer(ast.NodeTransformer):
             node.right = self.visit(node.right)
             if isinstance(node.right, C.FunctionCall) and \
                     node.right.func.name in ["_mm256_load_ps", "_mm256_broadcast_ss"] and \
-                    node.left.type is not None:
+                    isinstance(node.left, C.SymbolRef) and node.left.type is not None:
                 node.left.type = simd.types.m256()
                 self.symbol_table[node.left.name] = node.left.type
                 return node
