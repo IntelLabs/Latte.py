@@ -106,7 +106,7 @@ def test_forward_backward():
                     weights, pad, 1, dilation)
 
         bot_grad = conv1.get_grad()
-        check_equal(bot_grad, expected_bot_grad)
+        check_equal(bot_grad, expected_bot_grad, atol=1e-4)
 
         # weights_grad = np.sum(conv2.get_grad_weights(), axis=0)
         weights_grad = conv2.get_grad_weights()

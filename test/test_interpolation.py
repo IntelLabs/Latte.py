@@ -134,6 +134,6 @@ def test_forward_backward_enlarge():
             data_value, pad, resize_factor)
 
     bot_grad = interp1.get_grad_inputs()
-    check_equal(bot_grad, expected_bot_grad)
+    check_equal(bot_grad, expected_bot_grad, atol=1e-4)
 
 

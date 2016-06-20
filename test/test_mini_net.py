@@ -75,8 +75,10 @@ def test_forward_backward():
     # bot_grad = conv1.get_grad_inputs()
     # check_equal(bot_grad, expected_bot_grad, 1e-5)
 
-    weights_grad = np.sum(conv1.get_grad_weights(), axis=0)
+    # weights_grad = np.sum(conv1.get_grad_weights(), axis=0)
+    weights_grad = conv1.get_grad_weights()
     check_equal(weights_grad, expected_weights_grad, 1e-5)
 
-    bias_grad = np.sum(conv1.get_grad_bias(), axis=0)
+    # bias_grad = np.sum(conv1.get_grad_bias(), axis=0)
+    bias_grad = conv1.get_grad_bias()
     check_equal(bias_grad, expected_bias_grad)
