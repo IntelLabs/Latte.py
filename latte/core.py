@@ -579,7 +579,7 @@ parallel_for(blocked_range<int>(0,$size),
             # body = [self._gen_untiled_neuron_index_1()]
             body = []
 
-            for dim in range(1, ensemble.ndim):
+            for dim in range(0, ensemble.ndim):
                 offset = mapping.get_offset(dim)
                 input_offset = "_input_offset_{}".format(dim + 1)
 
@@ -588,24 +588,36 @@ parallel_for(blocked_range<int>(0,$size),
                 if not isinstance(offset, ast.Num):
                     body += util.get_dependent_statements(mapping_func.body[:-1], offset.id)
 
-                # Store the offset value
-                body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
+                is_tiled_dim = False
+                if "inputs" in ensemble.tiling_info:
+                    for tiled_dim, factor in ensemble.tiling_info["inputs"]:
+                        if tiled_dim == dim:
+                            is_tiled_dim = True
+                            break
+                if is_tiled_dim:
+                    outer_offset = ast.BinOp(offset, ast.Div(), ast.Num(factor))
+                    body.append(ast.Assign([ast.Name(input_offset, ast.Store())], outer_offset))
+                    inner_offset = ast.BinOp(offset, ast.Mod(), ast.Num(factor))
+                    body.append(ast.Assign([ast.Name(input_offset + "_inner", ast.Store())], inner_offset))
+                else:
+                    # Store the offset value
+                    body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
 
             # Compute the tiled offsets from the result of the mapping function
             # For a one_to_one connection it is just the current neuron index
             # else its the remainder and floor division of the mapping result
-            if mapping.is_one_to_one():
-                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-                                       ast.Name("_neuron_index_1", ast.Load())))
-                # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-                #                        ast.Name("_neuron_index_1_inner", ast.Load())))
-            else:
-                offset = mapping.get_offset(0)
-                body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-                                       offset))
-                                       # ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
-                # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-                #                        ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
+            # if mapping.is_one_to_one():
+            #     body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
+            #                            ast.Name("_neuron_index_1", ast.Load())))
+            #     # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
+            #     #                        ast.Name("_neuron_index_1_inner", ast.Load())))
+            # else:
+            #     offset = mapping.get_offset(0)
+            #     body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
+            #                            offset))
+            #                            # ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
+            #     # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
+            #     #                        ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
 
             # Prepend to body
             loop.body = body + loop.body
@@ -630,7 +642,7 @@ parallel_for(blocked_range<int>(0,$size),
                 if dim > 0:
                     input_offset = "_input_offset_{}".format(dim)
                     if mapping.clamp:
-                        if dim == 1:
+                        if dim in ensemble.tiling_info:
                             def gen_clamp(index):
                                 return C.FunctionCall(C.SymbolRef("MIN"), 
                                     [C.FunctionCall(C.SymbolRef("MAX"), 

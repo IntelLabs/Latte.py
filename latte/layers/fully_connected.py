@@ -41,6 +41,7 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
 
     bias_ens = net.init_activation_ensemble(bias_neurons, ens)
 
-    ens.tile('inputs', dim=0, factor=latte.core.SIMDWIDTH)
+    if "value" in input_ensemble.tiling_info:
+        ens.tile('weights', dim=1, factor=latte.core.SIMDWIDTH)
 
     return EnsembleGroup(ens, bias_ens)

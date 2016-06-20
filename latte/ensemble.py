@@ -214,13 +214,6 @@ class ActivationEnsemble(Ensemble):
         return self.source.is_tiled_field(field)
 
     @property
-    def tiling_info(self):
-        info = self.source.tiling_info
-        if "value" in info:
-            info["inputs"] = info["value"]
-        return info
-
-    @property
     def transpose_info(self):
         return self.source.transpose_info
 
@@ -231,6 +224,17 @@ class ActivationEnsemble(Ensemble):
     @property
     def unroll_info(self):
         return self._unroll_info
+
+    @property
+    def tiling_info(self):
+        source_tiling_info = self.source.tiling_info
+        if "value" in source_tiling_info:
+            self._tiling_info["inputs"] = source_tiling_info["value"]
+            self._tiling_info["value"] = source_tiling_info["value"]
+        if "grad" in source_tiling_info:
+            self._tiling_info["grad_inputs"] = source_tiling_info["grad"]
+            self._tiling_info["grad"] = source_tiling_info["grad"]
+        return self._tiling_info
 
 class LossEnsemble(Ensemble):
     pass
@@ -260,3 +264,7 @@ class EnsembleGroup:
 
     def tile(self, field, dim, factor):
         self.ensembles[-1].tile(field, dim, factor)
+
+    @property
+    def tiling_info(self):
+        return self.ensembles[-1].tiling_info

@@ -139,8 +139,16 @@ class NeuronTransformer(ast.NodeTransformer):
                         dim += 1  # offset for omp_get_thread_num()
                     elif field in self.ensemble.batch_fields:
                         dim += 1
-                    orig_var = value.slice.value.elts[dim].id
-                    value.slice.value.elts.append(ast.Name(orig_var + "_inner", ast.Load()))
+                    index = value.slice.value.elts[dim]
+                    if isinstance(index, ast.Name):
+                        orig_var = index.id
+                        value.slice.value.elts.append(ast.Name(orig_var + "_inner", ast.Load()))
+                    elif isinstance(value.slice.value.elts[dim], ast.Num) and \
+                            index.n == 0:
+                        value.slice.value.elts.append(
+                            ast.Name("_input_offset_{}_inner".format(dim), ast.Load()))
+                    else:
+                        raise NotImplementedError(type(value.slice.value.elts[dim]))
             if "inputs" in value.value.id or "grad_inputs" in value.value.id:
                 # Add the input offsets defined by user's mapping for the
                 # connection
