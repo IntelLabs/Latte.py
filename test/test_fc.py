@@ -10,7 +10,7 @@ def test_forward_backward():
     net = Net(8)
     data = MemoryDataLayer(net, (24, ))
     fc1 = FullyConnectedLayer(net, data, 24)
-    fc2 = FullyConnectedLayer(net, fc1, 24)
+    fc2 = FullyConnectedLayer(net, fc1, 16)
 
     net.compile()
 
@@ -22,10 +22,8 @@ def test_forward_backward():
     fc1.set_bias(bias_value)
     net.forward()
 
-    weights = net.buffers[fc1.ensembles[0].name + "weights"]
-    weights_converted = util.convert_4d_2d(weights)
     weights = fc1.get_weights()
-    assert np.allclose(weights, weights_converted)
+    assert np.allclose(weights, weights)
     actual  = fc1.get_value()
     expected = np.dot(data_value, weights.transpose())
 
@@ -43,12 +41,13 @@ def test_forward_backward():
 
     bot_grad = fc1.get_grad()
     expected_bot_grad = np.dot(top_grad, weights)
-    check_equal(bot_grad, expected_bot_grad)
+    check_equal(bot_grad, expected_bot_grad, atol=1e-4)
 
-    weights_grad = np.sum(fc2.get_grad_weights(), axis=0)
+    # weights_grad = np.sum(fc2.get_grad_weights(), axis=0)
+    weights_grad = fc2.get_grad_weights()
     expected_weights_grad = np.dot(top_grad.transpose(), actual)
-    check_equal(weights_grad, expected_weights_grad)
+    check_equal(weights_grad, expected_weights_grad, atol=1e-4)
 
-    bias_grad = np.sum(fc2.get_grad_bias(), axis=0)
-    expected_bias_grad = np.sum(top_grad, 0).reshape(24, 1)
-    check_equal(bias_grad, expected_bias_grad)
+    bias_grad = fc2.get_grad_bias()
+    expected_bias_grad = np.sum(top_grad, 0).reshape(16, 1)
+    check_equal(bias_grad, expected_bias_grad, atol=1e-4)

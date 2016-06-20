@@ -2,6 +2,9 @@ import numpy as np
 from ..neuron import WeightedNeuron, BiasNeuron
 from ..ensemble import Ensemble, EnsembleGroup
 import itertools
+import latte.core
+
+SIMDWIDTH = latte.core.SIMDWIDTH
 
 class ConvNeuron(WeightedNeuron):
     def forward(self):
@@ -84,5 +87,42 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
         bias_neurons[o, :, :] = BiasNeuron(bias[o], grad_bias[o])
 
     bias_ens = net.init_activation_ensemble(bias_neurons, conv_ens)
+
+    # Begin Optimizations
+    input_ensemble.tile('value', dim=0, factor=SIMDWIDTH)
+    conv_ens.tile('inputs', dim=0, factor=SIMDWIDTH)
+    conv_ens.tile('grad_inputs', dim=0, factor=SIMDWIDTH)
+
+    conv_ens.tile('weights', dim=0, factor=SIMDWIDTH)
+    conv_ens.tile('weights', dim=1, factor=SIMDWIDTH)
+    conv_ens.transpose('weights', -2, -1)
+
+    conv_ens.tile('grad_weights', dim=0, factor=SIMDWIDTH)
+    conv_ens.tile('grad_weights', dim=1, factor=SIMDWIDTH)
+    conv_ens.transpose('grad_weights', -2, -1)
+
+    conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
+    conv_ens.tile('grad', dim=0, factor=SIMDWIDTH)
+
+    conv_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+    bias_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+    conv_ens.vectorize(direction="backward", loop_var="i_inner", factor=SIMDWIDTH)
+    bias_ens.vectorize(direction="backward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+
+    factor = 8
+    while output_width % factor != 0:
+        factor -= 1
+    conv_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
+    bias_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
+
+    factor = 4
+    while output_width % factor != 0:
+        factor -= 1
+    conv_ens.unroll(direction="backward", loop_var="_neuron_index_3", factor=factor)
+    bias_ens.unroll(direction="backward", loop_var="_neuron_index_3", factor=factor)
+
+    bias_ens.tile('bias', dim=0, factor=SIMDWIDTH)
+    bias_ens.tile('grad_bias', dim=0, factor=SIMDWIDTH)
+    # End Optimizations
 
     return EnsembleGroup(conv_ens, bias_ens)

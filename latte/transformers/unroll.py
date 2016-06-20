@@ -144,7 +144,7 @@ class LoopUnroller(ast.NodeTransformer):
             return node
 
 
-def unroll_inner_neuron_loop(ast, target_var, factor):
+def unroll_loop(ast, target_var, factor):
     return LoopUnroller(target_var, factor).visit(ast)
 
 

@@ -3,7 +3,7 @@ import numpy as np
 class Neuron:
     # Fields that store a value for each item in the batch (default behavior is
     # one value per neuron)
-    batch_fields     = ["value", "grad"]
+    batch_fields     = ["value", "grad", "inputs", "grad_inputs"]
 
     # A list of neuron fields that are initialized as 0, this improves
     # performance of initialization (latte can allocate the entire array of

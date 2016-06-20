@@ -1,3 +1,6 @@
+# FP    : 212.61279582977295 ms, 1454.7795816750504 GFLOPS/s
+# BP+WU : 359.9848985671997 ms, 1718.2454095988542 GFLOPS/s
+
 import unittest
 import numpy as np
 from latte import *
@@ -23,12 +26,12 @@ def main():
     print("    width      = {}".format(width))
     print("    ofm        = {}".format(ofm))
     data = MemoryDataLayer(net, (channels, height, width))
-    conv1, conv1bias = ConvLayer(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
-
-    data.set_value(np.random.rand(batch_size, channels, height, width))
+    conv1 = ConvLayer(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
 
     print("Compiling...")
     net.compile()
+
+    # data.set_value(np.random.rand(batch_size, channels, height, width))
 
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)
@@ -44,7 +47,7 @@ def main():
 
     forward_t_total = 0.0
     backward_t_total = 0.0
-    num_trials = 10
+    num_trials = 5
     print("Running trials")
     for _ in range(num_trials):
         t = time.time()
@@ -54,9 +57,12 @@ def main():
             t = time.time()
             net.backward_tasks[0]()
             backward_t_total += time.time() - t 
+    print("Done")
 
-    _, ofm_outer, oh, ow, ofm_inner = net.buffers[conv1.name + "value"].shape
-    ofm = ofm_outer * ofm_inner
+    if pad == 1:
+        ofm, oh, ow = ofm, height, width
+    else:
+        raise NotImplementedError()
     flops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3))
     forward_flops = flops + batch_size * ofm * oh * ow
     backward_flops = 2 * flops + batch_size * ofm * oh * ow

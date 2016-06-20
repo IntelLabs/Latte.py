@@ -2,6 +2,7 @@ import numpy as np
 from ..neuron import Neuron
 from ..ensemble import Ensemble
 import itertools
+import latte
 
 class MaxNeuron(Neuron):
     batch_fields     = Neuron.batch_fields + ["mask"]
@@ -67,6 +68,16 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         return range(c, c+1), range(in_y, in_y+kernel_h), range(in_x, in_x+kernel_w)
 
     net.add_connections(input_ensemble, pooling_ens, mapping)
+
+    if "value" in input_ensemble.tiling_info:
+        tiled_dims = input_ensemble.tiling_info["value"]
+        for dim, factor in tiled_dims:
+            pooling_ens.tile('inputs', dim=dim, factor=factor)
+
+    if "grad" in input_ensemble.tiling_info:
+        tiled_dims = input_ensemble.tiling_info["grad"]
+        for dim, factor in tiled_dims:
+            pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
 
     return pooling_ens
 

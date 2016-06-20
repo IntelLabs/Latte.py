@@ -22,11 +22,12 @@ class ConvertEnumerateRange(ast.NodeTransformer):
     """
     converts for ... in enumerate(range(...)) into a valid C for loop
     """
-    def __init__(self, direction):
+    def __init__(self, direction, ensemble):
         super().__init__()
-        self.blocked_loops = []
+        self.tiled_loops = []
         self.tiled_buffers = {}
         self.direction = direction
+        self.ensemble = ensemble
 
     def visit(self, node):
         node = super().visit(node)
@@ -36,19 +37,19 @@ class ConvertEnumerateRange(ast.NodeTransformer):
 
     def visit_For(self, node):
         if isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
-            (self.direction == "forward" and node.target.id == "_neuron_index_1_outer") or \
+            (self.direction == "forward" and node.target.id == "_neuron_index_1") or \
             (self.direction == "backward" and node.target.id == "_neuron_index_0"):
             new_body = []
             for statement in node.body:
                 result = self.visit(statement)
-                if len(self.blocked_loops) > 0:
-                    curr_loop = self.blocked_loops[0]
+                if len(self.tiled_loops) > 0:
+                    curr_loop = self.tiled_loops[0]
                     new_body.append(curr_loop)
-                    for loop in self.blocked_loops[1:]:
+                    for loop in self.tiled_loops[1:]:
                         curr_loop.body = [loop]
                         curr_loop = loop
                     curr_loop.body = [result]
-                    self.blocked_loops = []
+                    self.tiled_loops = []
                 else:
                     new_body.append(result)
             node.body = new_body
@@ -134,7 +135,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             # )
         elif isinstance(iter, ast.Call) and iter.func.id == "range_dim":
             loop_var = node.child_for.target.id
-            if dim == 0:
+            if False and dim == 0:
                 # self.blocked_loops.append(
                 #     C.For(
                 #         C.Assign(C.SymbolRef(loop_var + "_tile", ctypes.c_int()), C.Constant(0)),
@@ -165,26 +166,25 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             #     if dim == 0:
             #         node.child_for.body = [ClampInputIndex(loop_var + "_inner", gen_clamp).visit(s) for s in node.child_for.body]
             body += [self.visit(s) for s in node.child_for.body]
-            if dim == 0:
+            if "inputs" in self.ensemble.tiling_info and \
+               any(dim == x[0] for x in self.ensemble.tiling_info["inputs"]):
                 # body.insert(0, (
                 #     C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
                 #              C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))
-                self.blocked_loops.append(C.For(
+                outer_loop = C.For(
                     C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var), C.Constant(length // latte.core.SIMDWIDTH)),
                     C.AddAssign(C.SymbolRef(loop_var), C.Constant(1)),
-                    [],
-                    # "unroll_and_jam"
-                ))
-                return C.For(
+                    []
+                )
+                self.tiled_loops.append(outer_loop)
+                inner_loop = C.For(
                     C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
                     C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.core.SIMDWIDTH)),
                     C.AddAssign(C.SymbolRef(loop_var + "_inner"), C.Constant(1)),
                     body,
-                    # "unroll_and_jam({})".format(latte.core.SIMDWIDTH)
-                    # "unroll({})".format(latte.core.SIMDWIDTH)
-                    # "unroll"
                 )
+                return inner_loop
             else:
                 body = [UpdateInputIndices(loop_var, C.Mul(C.SymbolRef(loop_var), C.Constant(step))).visit(s) for s in body]
                 return C.For(
@@ -197,8 +197,8 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 )
         raise NotImplementedError()
 
-def convert_enumerate_ranges(ast, direction):
-    visitor = ConvertEnumerateRange(direction)
+def convert_enumerate_ranges(ast, direction, ensemble):
+    visitor = ConvertEnumerateRange(direction, ensemble)
     ast = visitor.visit(ast)
     return ast, visitor.tiled_buffers
 

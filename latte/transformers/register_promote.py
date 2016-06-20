@@ -85,7 +85,7 @@ class InvariantLoadStoreLifter(ast.NodeTransformer):
 
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
-        if node.init.left.name == "_neuron_index_1_outer":
+        if node.init.left.name == "_neuron_index_1":
             # Don't lift out of outer most loop
             return node
         pre_stmts = []
@@ -105,13 +105,19 @@ class InvariantLoadStoreLifter(ast.NodeTransformer):
                     not util.contains_symbol(stmt, loop_var) and \
                     not any(util.contains_symbol(stmt, dep) for dep in deps):
                 pre_stmts.append(stmt)
-            elif isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and stmt.left.type is not None and \
+            elif isinstance(stmt, C.BinaryOp) and \
+                 isinstance(stmt.op, C.Op.Assign) and \
+                 isinstance(stmt.left, C.SymbolRef) and \
+                 stmt.left.type is not None and \
                     not util.contains_symbol(stmt, loop_var) and \
                     not any(util.contains_symbol(stmt, dep) for dep in deps):
                 pre_stmts.append(stmt)
             else:
                 new_body.append(stmt)
-                if isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and stmt.left.type is not None:
+                if isinstance(stmt, C.BinaryOp) and \
+                   isinstance(stmt.op, C.Op.Assign) and \
+                   isinstance(stmt.left, C.SymbolRef) and \
+                   stmt.left.type is not None:
                     deps.add(stmt.left.name)
         node.body = new_body
         return pre_stmts + [node] + post_stmts
