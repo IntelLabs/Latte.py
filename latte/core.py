@@ -24,6 +24,8 @@ from latte.task import Task
 import latte.transformers.vectorize as vectorizer
 import latte.transformers.code_motion as code_motion
 import latte.transformers.unroll as unroller
+import latte.analysis as analyzer
+import latte.optimizations as optimizer
 
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
@@ -660,8 +662,8 @@ class Net:
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
 
         # Basic type inference and constant propogation
-        func_def = transformers.BasicTypeInference().visit(func_def)
-        func_def = transformers.SimpleConstantPropogation().visit(func_def)
+        func_def = analyzer.type_infer(func_def)
+        func_def = optimizer.propogate_constants(func_def)
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
 
