@@ -5,7 +5,7 @@
 #include <omp.h>
 #include <unistd.h>
 #include <tbb/tbb.h>
-using namespace tbb;
+#include "$LATTE_PACKAGE_PATH/runtime/runtime.h"
 #define SIMDWIDTH 8
 #define TILE_SIZE 8
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
