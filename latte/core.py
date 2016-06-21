@@ -21,6 +21,9 @@ import inspect
 from latte.mapping import Mapping, one_to_one
 from latte.connection import Connection
 from latte.task import Task
+import latte.transformers.vectorize as vectorizer
+import latte.transformers.code_motion as code_motion
+import latte.transformers.unroll as unroller
 
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
@@ -55,9 +58,7 @@ class Net:
         self.connections = []
         self.buffers = {}
         self.forward_tasks = []
-        self.forward_loss_tasks = []
         self.backward_tasks = []
-        self.backward_loss_tasks = []
         self.accuracy_tasks = []
         self.connections_map = {}
         self.buffer_dim_info = {}
@@ -231,25 +232,20 @@ class Net:
         forward_body = []
         forward_casts = []
         forward_args = set()
-        forward_pre_trans = []
-        forward_post_trans = []
 
         backward_body = []
         backward_casts = []
         backward_args = set()
-        backward_pre_trans = []
-        backward_post_trans = []
 
         in_place_buffer_map = {}
 
         print("Initializing ensembles and synthesizing functions...")
         for ensemble in self.ensembles:
             print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
-            if not isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
-                self._init_buffers(ensemble)
+            if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
+                raise NotImplementedError("Ensemble type {} no longer supported".format(type(ensemble)))
+            self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
-                # idx = [slice(None)]
-                # idx += [slice(p, d + p) for p, d in zip(ensemble.pad, ensemble.shape)]
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
                 value_buffer = self.buffers[ensemble.name + "value"]
@@ -263,59 +259,36 @@ class Net:
                     buf_shape = compute_tiled_shape(list(grad_buffer.shape), "grad", ensemble)
                     grad_buffer = grad_buffer.reshape(buf_shape)
                     self.buffers[ensemble.name + "grad"] = grad_buffer
-            elif isinstance(ensemble, LossEnsemble):
-                bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
-                label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
-                self.forward_loss_tasks.append(
-                    Task(ensemble.forward, [bottom, label]))
-                bottom_grad = self.buffers[self.connections_map[ensemble][0].source.name + "grad"].reshape((self.batch_size, ) + ensemble.shape)
-                self.backward_loss_tasks.append(
-                    Task(ensemble.backward, [bottom_grad, label]))
-            elif isinstance(ensemble, AccuracyEnsemble):
-                bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
-                label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
-                self.accuracy_tasks.append(
-                    Task(ensemble.forward, [bottom, label]))
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron, "forward")
+                casts, body, args = self._synthesize_ast(ensemble, neuron, "forward")
                 forward_args = forward_args.union(args)
                 forward_casts += casts
                 forward_body += body
-                # forward_pre_trans += pre_trans
-                forward_post_trans += post_trans
 
-                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron, "backward")
+                casts, body, args = self._synthesize_ast(ensemble, neuron, "backward")
                 backward_args = backward_args.union(args)
                 backward_casts += casts
                 backward_body = body + backward_body
-                # backward_pre_trans += pre_trans
-                backward_post_trans += post_trans
 
             if isinstance(ensemble, ActivationEnsemble):
                 source = self.connections_map[ensemble][0].source
                 in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
-                # in_place_buffer_map[ensemble.name + "inputs"] = [source.name + "value", ensemble.name + "value"]
-                # in_place_buffer_map[ensemble.name + "value"] = [ensemble.name + "inputs", source.name + "value"]
-                # in_place_buffer_map[ensemble.name + "inputs"] = source.name + "value"
 
         print("Compiling functions...")
-        for args, direction, body, casts, tasks, pre_trans, post_trans in zip([forward_args, backward_args], 
-                                                                              ["forward", "backward"],
-                                                                              [forward_body, backward_body],
-                                                                              [forward_casts, backward_casts],
-                                                                              [self.forward_tasks, self.backward_tasks],
-                                                                              [forward_pre_trans, backward_pre_trans],
-                                                                              [forward_post_trans, backward_post_trans]
-                                                                              ):
+        for args, direction, body, casts, tasks, in zip([forward_args, backward_args], 
+                                                        ["forward", "backward"],
+                                                        [forward_body, backward_body],
+                                                        [forward_casts, backward_casts],
+                                                        [self.forward_tasks, self.backward_tasks],
+                                                        ):
             args = list(args)
             arg_bufs = [self.buffers[arg.arg] for arg in args]
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
-            params = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
+            params   = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
 
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-            # pre_trans.append(StringTemplate("#pragma omp barrier"))
 
             _id = self._uniqueid()
             c_file = C.CFile(direction + _id, [
@@ -336,118 +309,37 @@ class Net:
                         new_body.extend(stmt.pre_trans)
                     loopvar1 = C.SymbolRef(stmt.init.left.name)
                     looplen1 = stmt.test.right
-                    loopvar2 = C.SymbolRef(stmt.body[0].init.left.name)
-                    looplen2 = stmt.body[0].test.right
-                    body = stmt.body[0].body
-                    new_body.append(
-                        StringTemplate("""
-                        // parallel_for(0,$looplen1,
-                        //   [=](int low1, int high1) {
-                        //    for (int $loopvar1 = low1; $loopvar1 != high1; ++$loopvar1) {
-                        std::vector<ContinueNode> $node_list;
-                        for (int __z = 0; __z < $looplen1; __z++) {
-                          $node_list.push_back(ContinueNode(&graph, [=]() {
-                            int $loopvar1 = __z;
-                            //parallel_for(0,$looplen2,
-                              //[=](int low2, int high2) {
-                                //for (int $loopvar2 = low2; $loopvar2 != high2; ++$loopvar2) {
-                                for (int $loopvar2 = 0; $loopvar2 != $looplen2; ++$loopvar2) {
-                                  $body;
-                                }
-                              //}
-                            //);
-                          }));
-                        }
-                        //    }
-                        //   }
-                        // );
-                        """, {'loopvar1': loopvar1, 'looplen1': looplen1,
-                              'loopvar2': loopvar2, 'looplen2': looplen2,
-                              'body': body, 
-                              'node_list': C.SymbolRef("node_list_" + str(incr))
-                        })
-                    )
+                    body = stmt.body
+                    new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
                     if incr > 0:
-                        new_body.append(StringTemplate("""
-                          for (int i = 0; i < $looplen1; ++i) {
-                            make_edge($prev_node_list[i], $node_list[i]);
-                          }
-                        """, {
-                            'looplen1': C.Constant(looplen1.value), 
-                            'node_list': C.SymbolRef("node_list_" + str(incr)),
-                            'prev_node_list': C.SymbolRef("node_list_" + str(incr - 1)),
-                        }))
+                        new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
                     else:
-                        execute_stmt = StringTemplate("""
-                          for (int i = 0; i < $looplen1; ++i) {
-                            $node_list[i].execute();
-                          }
-                        """, {
-                            'looplen1': C.Constant(looplen1.value), 
-                            'node_list': C.SymbolRef("node_list_" + str(incr)),
-                            'prev_node_list': C.SymbolRef("node_list_" + str(incr - 1)),
-                        })
+                        execute_stmt = self._gen_execute_for_loop(stmt, incr)
                     if hasattr(stmt, 'reduce_vars') and len(stmt.reduce_vars) > 0:
                         for var in stmt.reduce_vars:
                             size = np.prod(self.buffers[var].shape[1:])
-                            new_body.append(
-StringTemplate("""
-{
-  ContinueNode $reduce_node(&graph, [=]() {
-  parallel_for(0,$size,
-    [=](int low, int high) {
-      #pragma simd
-      for (int x = low; x != high; ++x) {
-        float sum = _$arr[x];
-        #pragma unroll
-        for (int i = 1; i < $batch_size; ++ i) {
-          sum += _$arr[i * $size + x];
-        }
-        _$arr[x] = sum;
-      }
-    });
-  });
-  for (int i = 0; i < $looplen1; ++i) {
-    make_edge($node_list[i], $reduce_node);
-  }
-};
-""", {'size': C.Constant(size),
-      'batch_size': C.Constant(self.batch_size),
-      'arr': C.SymbolRef(var),
-      'node_list': C.SymbolRef("node_list_" + str(incr)),
-      'reduce_node': C.SymbolRef("reduce_node_" + str(incr)),
-      'looplen1': C.Constant(looplen1.value)
-      }))
+                            new_body.append(self._gen_reduce_for_loop(stmt, var, size, incr))
                 else:
                     new_body.append(stmt)
             c_file.body[1].defn = new_body + [execute_stmt]
-            c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
+            c_file.body[1].defn = casts + c_file.body[1].defn
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-            # c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
-            # c_file.body[1].defn.insert(0, StringTemplate("static affinity_partitioner ap;"))
             c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
             c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
-            # c_file.body[1].defn.insert(0, StringTemplate("unsigned long long t0 = __rdtsc();"))
-            # c_file.body[1].defn.insert(0, StringTemplate("""
-            #     unsigned long long _t0, _t1;
-            #     _t0 = __rdtsc();
-            #     sleep(1);
-            #     _t1 = __rdtsc();
-            #     double freq = (double)(_t1 - _t0);
-            #     """))
-            # c_file.body[1].defn.append(StringTemplate("}"))
-            # c_file.body[1].defn.append(StringTemplate("t0 = __rdtsc() - t0;"))
-            # c_file.body[1].defn.append(StringTemplate("printf(\"Time: %.5g\\n\", t0 / freq);"))
             # c_file = transformers.remove_repeated_declarations(c_file)
             module = util.mpi_compile(ctree.nodes.Project([c_file]))
             fn = module.get_callable(direction + _id, type_sig)
             tasks.append(Task(fn, arg_bufs))
+
+        self._collect_value_grad_bufs()
+        print("Done")
+
+    def _collect_value_grad_bufs(self):
         for key, buf in self.buffers.items():
             if "value" in key:
                 self.value_buffers.append(buf)
             if "grad" in key:
                 self.grad_buffers.append(buf)
-        print("Done")
 
     unique_id = -1
     def _uniqueid(self):
@@ -468,12 +360,6 @@ StringTemplate("""
     def _parallelize_loops(self, func_def, ndim):
         for loop in func_def.defn:
             if ndim > 1:
-                # count = 1
-                # curr_loop = loop
-                # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
-                #     count += 1
-                #     curr_loop = curr_loop.body[0]
-                # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
                 loop.pragma = "omp for collapse(2)"
             else:
                 loop.pragma = "omp for collapse(2)"
@@ -481,11 +367,6 @@ StringTemplate("""
             if self.nowait:
                 loop.pragma += " nowait"
 
-    def _unroll(self, func_def, ensemble, unroll_target_loop_var, unroll_factor):
-        transformers.unroll.unroll_loop(func_def,
-            unroll_target_loop_var, unroll_factor)
-        # func_def = transformers.promote_single_use_registers(func_def)
-        # func_def = transformers.interleave_loads(func_def)
 
     def _reshape_buffer(self, args, ensemble, tiled_buffers):
         for arg in args:
@@ -493,41 +374,88 @@ StringTemplate("""
             buf = self.buffers[name]
             buf_shape = list(buf.shape)
             field = name.replace(ensemble.name, "")
-            if isinstance(ensemble, ActivationEnsemble) and field in ["value", "grad", "inputs", "grad_inputs"]:
+            if isinstance(ensemble, ActivationEnsemble) and \
+                    field in ["value", "grad", "inputs", "grad_inputs"]:
+                # ActivationEnsembles execute in place, if a field is tiled
+                # then the buffer should have already been tiled when handling
+                # the input ensemble
                 continue
-            if name not in self.reshaped_buffers:
-                if field in ensemble.tiling_info and field not in ["inputs", "grad_inputs"]:
+            if field in ensemble.tiling_info and field not in ["inputs", "grad_inputs"]:
+                if name not in self.reshaped_buffers:
                     buf_shape = compute_tiled_shape(buf_shape, field, ensemble)
-                # elif False and (True and "grad_" in name and "grad_inputs" not in name) or \
-                #         name.replace(ensemble.name, "") in ensemble.batch_fields: # or \
-                #         # "inputs" in name:
-                #     buf_shape[1] //= SIMDWIDTH
-                #     buf_shape.append(SIMDWIDTH)
-                #     ensemble.buffer_tiled_dims[name] = [1]
-                # elif False and "inputs" not in name:
-                #     buf_shape[0] //= SIMDWIDTH
-                #     buf_shape.append(SIMDWIDTH)
-                #     ensemble.buffer_tiled_dims[name] = [0]
-                # if False and name in tiled_buffers and not name.endswith("inputs"):
-                #     dim = len(buf_shape) - tiled_buffers[name] - 1
-                #     buf_shape[dim] //= SIMDWIDTH
-                #     buf_shape.append(SIMDWIDTH)
-                #     if name in ensemble.buffer_tiled_dims:
-                #         ensemble.buffer_tiled_dims[name].append(dim)
-                #     else:
-                #         ensemble.buffer_tiled_dims[name] = [dim]
+                    self.reshaped_buffers[name] = buf_shape
+                    self.buffers[name] = buf.reshape(buf_shape)
 
-                self.reshaped_buffers[name] = buf_shape
-                self.buffers[name] = buf.reshape(buf_shape)
-            # elif "inputs" in name and self.connections_map[ensemble][0].reshape is not None:
-            #     buf_shape = list((self.batch_size, ) + self.connections_map[ensemble][0].reshape)
-            #     buf_shape[1] //= SIMDWIDTH
-            #     buf_shape.append(SIMDWIDTH)
-            #     self.buffers[name] = buf.reshape(buf_shape)
-            #     ensemble.buffer_tiled_dims[name] = [1]
-            # else:
-            #     buf_shape = self.reshaped_buffers[name]
-            #     self.buffers[name] = buf.reshape(buf_shape)
+    def _gen_graph_nodes_from_loop(self, loop, id):
+        loopvar1 = C.SymbolRef(loop.init.left.name)
+        looplen1 = loop.test.right
+        body = loop.body
+        return StringTemplate("""
+        std::vector<ContinueNode> $node_list;
+        for (int __z = 0; __z < $looplen1; __z++) {
+          $node_list.push_back(ContinueNode(&graph, [=]() {
+            int $loopvar1 = __z;
+            $body;
+          }));
+        }
+        """, {'loopvar1': loopvar1, 'looplen1': looplen1,
+              'body': body, 
+              'node_list': C.SymbolRef("node_list_" + str(id))
+        })
+
+    def _gen_graph_edges_for_loop(self, loop, source_id, sink_id):
+        loopvar1 = C.SymbolRef(loop.init.left.name)
+        looplen1 = loop.test.right
+        return StringTemplate("""
+          for (int i = 0; i < $looplen1; ++i) {
+            make_edge($prev_node_list[i], $node_list[i]);
+          }
+        """, {
+            'looplen1': C.Constant(looplen1.value), 
+            'node_list': C.SymbolRef("node_list_" + str(sink_id)),
+            'prev_node_list': C.SymbolRef("node_list_" + str(source_id)),
+        })
+
+    def _gen_execute_for_loop(self, loop, id):
+        looplen1 = loop.test.right
+        return StringTemplate("""
+          for (int i = 0; i < $looplen1; ++i) {
+            $node_list[i].execute();
+          }
+        """, {
+            'looplen1': C.Constant(looplen1.value), 
+            'node_list': C.SymbolRef("node_list_" + str(id)),
+        })
+
+    def _gen_reduce_for_loop(self, loop, var, size, id):
+        looplen1 = loop.test.right
+        return StringTemplate("""
+            {
+              ContinueNode $reduce_node(&graph, [=]() {
+              parallel_for(0,$size,
+                [=](int low, int high) {
+                  #pragma simd
+                  for (int x = low; x != high; ++x) {
+                    float sum = _$arr[x];
+                    #pragma unroll
+                    for (int i = 1; i < $batch_size; ++ i) {
+                      sum += _$arr[i * $size + x];
+                    }
+                    _$arr[x] = sum;
+                  }
+                });
+              });
+              for (int i = 0; i < $looplen1; ++i) {
+                make_edge($node_list[i], $reduce_node);
+              }
+            };
+            """, {'size': C.Constant(size),
+                  'batch_size': C.Constant(self.batch_size),
+                  'arr': C.SymbolRef(var),
+                  'node_list': C.SymbolRef("node_list_" + str(id)),
+                  'reduce_node': C.SymbolRef("reduce_node_" + str(id)),
+                  'looplen1': C.Constant(looplen1.value)
+                  })
 
     def _gen_transposes(self, transposed_buffers):
         pre_trans = []
@@ -732,65 +660,29 @@ StringTemplate("""
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
 
         # Basic type inference and constant propogation
-        # print(func_def)
         func_def = transformers.BasicTypeInference().visit(func_def)
         func_def = transformers.SimpleConstantPropogation().visit(func_def)
-        # print(func_def)
-        # exit()
 
         vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
-        # vectorized_buffers[ensemble.name+"inputs"] = [(2, SIMDWIDTH)]
-        # vectorized_buffers[ensemble.name+"grad_inputs"] = [(2, SIMDWIDTH)]
-
-        candidate = transformers.get_loop_to_vectorize(func_def)
-        candidate = None
 
         unroll = False
         if ensemble.ndim > 1:
             unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
         else:
             unroll_target_loop_var = "_neuron_index_0"
-        # if candidate == "_neuron_index_1_inner":
-        #     if ensemble.ndim > 1:
-        #         unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
-        #     else:
-        #         unroll_target_loop_var = "_neuron_index_0"
-        # else:
-        #     # unroll_target_loop_var = "_neuron_index_1_inner"
-        #     unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
-        #     # unroll = False
-        # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
         if direction in ensemble.vectorize_info:
-            func_def, transposed_buffers = transformers.vectorize_loop(func_def, ensemble.vectorize_info[direction][0])
+            func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
+                    ensemble.vectorize_info[direction][0])
             func_def = transformers.push_inner_loop_down(func_def)
-            func_def = transformers.register_promote_vector_loads_stores(func_def)
-            func_def = transformers.lift_invariant_load_stores(func_def)
-            func_def = transformers.fma_replace(func_def)
-
-        if candidate is not None:
-            func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
-            func_def = transformers.push_inner_loop_down(func_def)
-            # func_def = transformers.interchange_inner_loop(func_def)
-            # func_def, _ = transformers.tile_outer_loop(func_def, ensemble.ndim)
-            # func_def = transformers.interchange_tiled_loops(func_def)
-            func_def = transformers.register_promote_vector_loads_stores(func_def)
-            func_def = transformers.lift_invariant_load_stores(func_def)
-            # func_def = transformers.lift_loads(func_def)
-            func_def = transformers.fma_replace(func_def)
-            # func_def = transformers.move_inner_index(func_def)
-            # func_def = transformers.unroll_constant_loops(func_def)
+            func_def = vectorizer.register_promote_vector_loads_stores(func_def)
+            func_def = code_motion.lift_invariant_load_stores(func_def)
+            func_def = vectorizer.fuse_multiply_adds(func_def)
 
         self._parallelize_loops(func_def, ensemble.ndim)
 
         if direction in ensemble.unroll_info:
             unroll_var, unroll_factor = ensemble.unroll_info[direction]
-            self._unroll(func_def, ensemble, unroll_var, unroll_factor)
-
-        if candidate is not None and unroll:
-            self._unroll(func_def, ensemble, unroll_target_loop_var, direction)
-        else:
-            pass
-            # func_def = transformers.insert_pragma_simd(func_def)
+            unroller.unroll_loop(func_def, unroll_var, unroll_factor)
 
         type_sig = []
         casts = []
@@ -801,21 +693,18 @@ StringTemplate("""
             buf = self.buffers[name]
             casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
             self._insert_cast(casts, buf.shape[1:], name, buf.dtype)
-            # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
 
-        # if candidate is not None:
         if direction in ensemble.vectorize_info:
             pre_trans, post_trans = self._gen_transposes(transposed_buffers)
 
-            if True:
-                for buffer_name, trans_dim in transposed_buffers.items():
-                    curr_body = []
-                    shape = self.buffers[buffer_name].shape
-                    shape_str = "".join("[{}]".format(d) for d in shape)
+            for buffer_name, trans_dim in transposed_buffers.items():
+                curr_body = []
+                shape = self.buffers[buffer_name].shape
+                shape_str = "".join("[{}]".format(d) for d in shape)
 
-                    args.append(ast.arg(buffer_name + "_transposed", None))
-                    self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-                    self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
+                args.append(ast.arg(buffer_name + "_transposed", None))
+                self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
+                self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
         else:
             pre_trans = []
             post_trans = []
@@ -827,7 +716,7 @@ StringTemplate("""
         for arg in args:
             if "grad_" in arg.arg and "inputs" not in arg.arg:
                 reduce_vars.append(arg.arg)
-        return casts, func_def.defn, args, pre_trans, post_trans
+        return casts, func_def.defn, args
 
     def _insert_cast(self, body, shape, name, dtype):
         shape_str = "".join("[{}]".format(d) for d in shape)
@@ -851,13 +740,9 @@ StringTemplate("""
         # os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
         for task in self.forward_tasks:
             task()
-        for task in self.forward_loss_tasks:
-            task()
 
     def backward(self):
         # os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
-        for task in self.backward_loss_tasks:
-            task()
         for task in self.backward_tasks:
             task()
 

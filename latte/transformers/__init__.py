@@ -8,10 +8,8 @@ from .register_promote_value_refs import register_promote_value_refs
 from .vectorize_outer_loop import vectorize_outer_loop
 from .neuron import NeuronTransformer
 import latte.transformers.unroll
-from .register_promote import register_promote_vector_loads_stores, lift_invariant_load_stores
-from .vectorize import tile_outer_loop, get_loop_to_vectorize, vectorize_loop, fma_replace
 from .pattern_match_math import PatternMatchMath
-
+from .vectorize import fuse_multiply_adds, vectorize_loop
 
 import ast
 import ctree.c.nodes as C
