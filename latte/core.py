@@ -33,7 +33,9 @@ TILE_SIZE = SIMDWIDTH
 forward_unroll_factor = 8
 backward_unroll_factor = 4
 
-include = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/includes.tmpl.c")
+package_path = os.path.dirname(os.path.abspath(__file__))
+include = FileTemplate(package_path + "/templates/includes.tmpl.c",
+        {"LATTE_PACKAGE_PATH": StringTemplate(package_path)})
 
 class Net:
     def __init__(self, batch_size):
@@ -313,6 +315,7 @@ class Net:
                     new_body.append(stmt)
             c_file.body[1].defn = new_body
             new_body = []
+            incr = 0
             for stmt in c_file.body[1].defn:
                 if isinstance(stmt, C.For):
                     loopvar1 = C.SymbolRef(stmt.init.left.name)
@@ -322,27 +325,61 @@ class Net:
                     body = stmt.body[0].body
                     new_body.append(
                         StringTemplate("""
-                        parallel_for(blocked_range2d<int>(0,$looplen1,0,$looplen2),
-                          [=](const blocked_range2d<int>& r) {
-                             for (int $loopvar1 = r.rows().begin(); $loopvar1 != r.rows().end(); ++$loopvar1) {
-
-                               for (int $loopvar2 = r.cols().begin(); $loopvar2 != r.cols().end(); ++$loopvar2) {
-    $body;
-                        }}}, ap);
+                        // parallel_for(0,$looplen1,
+                        //   [=](int low1, int high1) {
+                        //    for (int $loopvar1 = low1; $loopvar1 != high1; ++$loopvar1) {
+                        std::vector<ContinueNode> $node_list;
+                        for (int __z = 0; __z < $looplen1; __z++) {
+                          $node_list.push_back(ContinueNode(&graph, [=]() {
+                            int $loopvar1 = __z;
+                            parallel_for(0,$looplen2,
+                              [=](int low2, int high2) {
+                                for (int $loopvar2 = low2; $loopvar2 != high2; ++$loopvar2) {
+                                  $body;
+                                }
+                              }
+                            );
+                          }));
+                        }
+                        //    }
+                        //   }
+                        // );
                         """, {'loopvar1': loopvar1, 'looplen1': looplen1,
                               'loopvar2': loopvar2, 'looplen2': looplen2,
-                              'body': body
+                              'body': body, 
+                              'node_list': C.SymbolRef("node_list_" + str(incr))
                         })
                     )
+                    if incr > 0:
+                        new_body.append(StringTemplate("""
+                          for (int i = 0; i < $looplen1; ++i) {
+                            make_edge($node_list[i], $prev_node_list[i]);
+                          }
+                        """, {
+                            'looplen1': C.Constant(looplen1.value), 
+                            'node_list': C.SymbolRef("node_list_" + str(incr)),
+                            'prev_node_list': C.SymbolRef("node_list_" + str(incr - 1)),
+                        }))
+                    else:
+                        new_body.append(StringTemplate("""
+                          for (int i = 0; i < $looplen1; ++i) {
+                            $node_list[i].execute();
+                          }
+                        """, {
+                            'looplen1': C.Constant(looplen1.value), 
+                            'node_list': C.SymbolRef("node_list_" + str(incr)),
+                            'prev_node_list': C.SymbolRef("node_list_" + str(incr - 1)),
+                        }))
+                    incr += 1
                     if hasattr(stmt, 'reduce_vars') and len(stmt.reduce_vars) > 0:
                         for var in stmt.reduce_vars:
                             size = np.prod(self.buffers[var].shape[1:])
                             new_body.append(
 StringTemplate("""
-parallel_for(blocked_range<int>(0,$size),
-  [=](const blocked_range<int>& r) {
+parallel_for(0,$size,
+  [=](int low, int high) {
     #pragma simd
-    for (int x = r.begin(); x != r.end(); ++x) {
+    for (int x = low; x != high; ++x) {
       float sum = _$arr[x];
       #pragma unroll
       for (int i = 1; i < $batch_size; ++ i) {
@@ -350,9 +387,7 @@ parallel_for(blocked_range<int>(0,$size),
       }
       _$arr[x] = sum;
     }
-  }, 
-  ap
-);
+  });
 """, {'size': C.Constant(size),
       'batch_size': C.Constant(self.batch_size),
       'arr': C.SymbolRef(var)}))
@@ -362,7 +397,9 @@ parallel_for(blocked_range<int>(0,$size),
             c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             # c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
-            c_file.body[1].defn.insert(0, StringTemplate("static affinity_partitioner ap;"))
+            # c_file.body[1].defn.insert(0, StringTemplate("static affinity_partitioner ap;"))
+            c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
+            c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
             # c_file.body[1].defn.insert(0, StringTemplate("unsigned long long t0 = __rdtsc();"))
             # c_file.body[1].defn.insert(0, StringTemplate("""
             #     unsigned long long _t0, _t1;
