@@ -258,6 +258,11 @@ class Net:
                     buf_shape = compute_tiled_shape(list(value_buffer.shape), "value", ensemble)
                     value_buffer = value_buffer.reshape(buf_shape)
                     self.buffers[ensemble.name + "value"] = value_buffer
+                if "grad" in ensemble.tiling_info:
+                    grad_buffer = self.buffers[ensemble.name + "grad"]
+                    buf_shape = compute_tiled_shape(list(grad_buffer.shape), "grad", ensemble)
+                    grad_buffer = grad_buffer.reshape(buf_shape)
+                    self.buffers[ensemble.name + "grad"] = grad_buffer
             elif isinstance(ensemble, LossEnsemble):
                 bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
                 label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
@@ -323,16 +328,12 @@ class Net:
             # print(c_file)
             c_file = transformers.simple_fusion(c_file)
             new_body = []
+            incr = -1
             for stmt in c_file.body[1].defn:
+                incr += 1
                 if isinstance(stmt, C.For):
                     if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
                         new_body.extend(stmt.pre_trans)
-                    new_body.append(stmt)
-            c_file.body[1].defn = new_body
-            new_body = []
-            incr = 0
-            for stmt in c_file.body[1].defn:
-                if isinstance(stmt, C.For):
                     loopvar1 = C.SymbolRef(stmt.init.left.name)
                     looplen1 = stmt.test.right
                     loopvar2 = C.SymbolRef(stmt.body[0].init.left.name)
@@ -347,13 +348,14 @@ class Net:
                         for (int __z = 0; __z < $looplen1; __z++) {
                           $node_list.push_back(ContinueNode(&graph, [=]() {
                             int $loopvar1 = __z;
-                            parallel_for(0,$looplen2,
-                              [=](int low2, int high2) {
-                                for (int $loopvar2 = low2; $loopvar2 != high2; ++$loopvar2) {
+                            //parallel_for(0,$looplen2,
+                              //[=](int low2, int high2) {
+                                //for (int $loopvar2 = low2; $loopvar2 != high2; ++$loopvar2) {
+                                for (int $loopvar2 = 0; $loopvar2 != $looplen2; ++$loopvar2) {
                                   $body;
                                 }
-                              }
-                            );
+                              //}
+                            //);
                           }));
                         }
                         //    }
@@ -368,7 +370,7 @@ class Net:
                     if incr > 0:
                         new_body.append(StringTemplate("""
                           for (int i = 0; i < $looplen1; ++i) {
-                            make_edge($node_list[i], $prev_node_list[i]);
+                            make_edge($prev_node_list[i], $node_list[i]);
                           }
                         """, {
                             'looplen1': C.Constant(looplen1.value), 
@@ -376,7 +378,7 @@ class Net:
                             'prev_node_list': C.SymbolRef("node_list_" + str(incr - 1)),
                         }))
                     else:
-                        new_body.append(StringTemplate("""
+                        execute_stmt = StringTemplate("""
                           for (int i = 0; i < $looplen1; ++i) {
                             $node_list[i].execute();
                           }
@@ -384,31 +386,41 @@ class Net:
                             'looplen1': C.Constant(looplen1.value), 
                             'node_list': C.SymbolRef("node_list_" + str(incr)),
                             'prev_node_list': C.SymbolRef("node_list_" + str(incr - 1)),
-                        }))
-                    incr += 1
+                        })
                     if hasattr(stmt, 'reduce_vars') and len(stmt.reduce_vars) > 0:
                         for var in stmt.reduce_vars:
                             size = np.prod(self.buffers[var].shape[1:])
                             new_body.append(
 StringTemplate("""
-parallel_for(0,$size,
-  [=](int low, int high) {
-    #pragma simd
-    for (int x = low; x != high; ++x) {
-      float sum = _$arr[x];
-      #pragma unroll
-      for (int i = 1; i < $batch_size; ++ i) {
-        sum += _$arr[i * $size + x];
+{
+  ContinueNode $reduce_node(&graph, [=]() {
+  parallel_for(0,$size,
+    [=](int low, int high) {
+      #pragma simd
+      for (int x = low; x != high; ++x) {
+        float sum = _$arr[x];
+        #pragma unroll
+        for (int i = 1; i < $batch_size; ++ i) {
+          sum += _$arr[i * $size + x];
+        }
+        _$arr[x] = sum;
       }
-      _$arr[x] = sum;
-    }
+    });
   });
+  for (int i = 0; i < $looplen1; ++i) {
+    make_edge($node_list[i], $reduce_node);
+  }
+};
 """, {'size': C.Constant(size),
       'batch_size': C.Constant(self.batch_size),
-      'arr': C.SymbolRef(var)}))
+      'arr': C.SymbolRef(var),
+      'node_list': C.SymbolRef("node_list_" + str(incr)),
+      'reduce_node': C.SymbolRef("reduce_node_" + str(incr)),
+      'looplen1': C.Constant(looplen1.value)
+      }))
                 else:
                     new_body.append(stmt)
-            c_file.body[1].defn = new_body
+            c_file.body[1].defn = new_body + [execute_stmt]
             c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             # c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
