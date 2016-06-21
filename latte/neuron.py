@@ -36,6 +36,18 @@ class WeightedNeuron(Neuron):
         self.weights = weights
         self.grad_weights = grad_weights
 
+    def forward(self):
+        for i in eachindex(self.inputs):
+            self.value += self.inputs[i] * self.weights[i]
+
+    def backward(self):
+        for i in eachindex(self.inputs):
+            self.grad_inputs[i] += self.grad * self.weights[i]
+
+    def update_internal(self):
+        for i in eachindex(self.inputs):
+            self.grad_weights[i] += self.grad * self.inputs[i]
+
 
 class BiasNeuron(Neuron):
     def __init__(self, bias, grad_bias):

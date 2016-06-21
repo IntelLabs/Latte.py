@@ -35,6 +35,17 @@ backward_unroll_factor = 4
 
 include = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/includes.tmpl.c")
 
+def compute_tiled_shape(buf_shape, field, ensemble):
+    for dim, factor in ensemble.tiling_info[field]:
+        if field in ensemble.batch_fields:
+            dim += 1
+        elif "grad_" in field and field != "grad_inputs":
+            dim += 1  # offset for omp_get_thread_num()
+        assert buf_shape[dim] % factor == 0, "Invalid tiling factor"
+        buf_shape[dim] //= factor
+        buf_shape.append(factor)
+    return buf_shape
+
 class Net:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -239,8 +250,12 @@ class Net:
                 # idx += [slice(p, d + p) for p, d in zip(ensemble.pad, ensemble.shape)]
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
-                ensemble.set_buffer("value", self.buffers[ensemble.name + "value"])
-                ensemble.buffer_tiled_dims[ensemble.name + "value"] = [1]
+                value_buffer = self.buffers[ensemble.name + "value"]
+                ensemble.set_buffer("value", value_buffer)
+                if "value" in ensemble.tiling_info:
+                    buf_shape = compute_tiled_shape(list(value_buffer.shape), "value", ensemble)
+                    value_buffer = value_buffer.reshape(buf_shape)
+                    self.buffers[ensemble.name + "value"] = value_buffer
             elif isinstance(ensemble, LossEnsemble):
                 bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
                 label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
@@ -429,16 +444,11 @@ parallel_for(blocked_range<int>(0,$size),
             buf = self.buffers[name]
             buf_shape = list(buf.shape)
             field = name.replace(ensemble.name, "")
-            if buf.ctypes._data not in self.reshaped_buffers:
-                if field in ensemble.tiling_info:
-                    for dim, factor in ensemble.tiling_info[field]:
-                        if field in ensemble.batch_fields:
-                            dim += 1
-                        elif "grad_" in field and field != "grad_inputs":
-                            dim += 1  # offset for omp_get_thread_num()
-                        assert buf_shape[dim] % factor == 0, "Invalid tiling factor"
-                        buf_shape[dim] //= factor
-                        buf_shape.append(factor)
+            if isinstance(ensemble, ActivationEnsemble) and field in ["value", "grad", "inputs", "grad_inputs"]:
+                continue
+            if name not in self.reshaped_buffers:
+                if field in ensemble.tiling_info and field not in ["inputs", "grad_inputs"]:
+                    buf_shape = compute_tiled_shape(buf_shape, field, ensemble)
                 # elif False and (True and "grad_" in name and "grad_inputs" not in name) or \
                 #         name.replace(ensemble.name, "") in ensemble.batch_fields: # or \
                 #         # "inputs" in name:
@@ -458,7 +468,7 @@ parallel_for(blocked_range<int>(0,$size),
                 #     else:
                 #         ensemble.buffer_tiled_dims[name] = [dim]
 
-                self.reshaped_buffers[buf.ctypes._data] = buf_shape
+                self.reshaped_buffers[name] = buf_shape
                 self.buffers[name] = buf.reshape(buf_shape)
             # elif "inputs" in name and self.connections_map[ensemble][0].reshape is not None:
             #     buf_shape = list((self.batch_size, ) + self.connections_map[ensemble][0].reshape)
@@ -466,9 +476,9 @@ parallel_for(blocked_range<int>(0,$size),
             #     buf_shape.append(SIMDWIDTH)
             #     self.buffers[name] = buf.reshape(buf_shape)
             #     ensemble.buffer_tiled_dims[name] = [1]
-            else:
-                buf_shape = self.reshaped_buffers[buf.ctypes._data]
-                self.buffers[name] = buf.reshape(buf_shape)
+            # else:
+            #     buf_shape = self.reshaped_buffers[name]
+            #     self.buffers[name] = buf.reshape(buf_shape)
 
     def _gen_transposes(self, transposed_buffers):
         pre_trans = []

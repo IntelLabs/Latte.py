@@ -167,12 +167,33 @@ class NeuronTransformer(ast.NodeTransformer):
             raise NotImplementedError()
         return node
 
+    counter = -1
+    def _gen_unique_variable(self):
+        NeuronTransformer.counter += 1
+        return "__unique_loopvar{}".format(NeuronTransformer.counter)
+
     def visit_For(self, node):
         """
         Converts iteration expressions into RangeDim semantic nodes
         """
         _range = node.iter
-        if isinstance(_range, ast.Call) and _range.func.id in ["enumerate_dim", "range_dim"]:
+        if isinstance(_range, ast.Call) and _range.func.id == "eachindex":
+            loopvars = []
+            for dim in self.connections[0].mapping.shape:
+                loopvars.append(self._gen_unique_variable())
+            nodes = []
+            for index, var in enumerate(loopvars):
+                nodes.append(ast.For(
+                    ast.Name(var, ast.Store()),
+                    ast.Call(ast.Name("range_dim", ast.Load()), [_range.args[0], ast.Num(index)], []),
+                    [], []
+                ))
+            index_expr = ast.Tuple([ast.Name(var, ast.Load()) for var in loopvars], ast.Load())
+            nodes[-1].body = [util.replace_name(node.target, index_expr, s) for s in node.body]
+            for i in reversed(range(1, len(nodes))):
+                nodes[i - 1].body.append(nodes[i])
+            return self.visit(nodes[0])
+        elif isinstance(_range, ast.Call) and _range.func.id in ["enumerate_dim", "range_dim"]:
             node.body = [self.visit(s) for s in node.body]
             node.body = util.flatten(node.body)
             return RangeDim(node, self.connections[0].mapping, self.connections[0].source)

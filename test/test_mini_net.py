@@ -14,7 +14,6 @@ def test_forward_backward():
 
     net = Net(batch_size)
     net.nowait = False
-    net.force_backward = True
 
     channels, height, width = 8, 8, 8
     pad = 1
