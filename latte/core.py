@@ -53,6 +53,13 @@ def compute_tiled_shape(buf_shape, field, ensemble):
         buf_shape.append(factor)
     return buf_shape
 
+def gen_gen_clamp(_max):
+    return lambda index: C.FunctionCall(C.SymbolRef("MIN"), 
+            [C.FunctionCall(C.SymbolRef("MAX"), 
+                [index,
+                 C.Constant(0)]), 
+             C.Constant(_max)])
+
 class Net:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -162,11 +169,7 @@ class Net:
             self.buffer_dim_info[ensemble.name + field].insert(0, False)
 
         if "grad_" in field:
-            if True:
-                # self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
-                self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
-            else:
-                self.buffers[ensemble.name + field] = util.zeros(buff.shape, np.float32)
+            self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
         elif field not in neuron.zero_init_fields:
             for index in np.ndindex(*_iter):
                 _index = []
@@ -492,9 +495,8 @@ class Net:
                 shape_str = ""
                 for d in shape:
                     shape_str += "[{}]".format(d)
-                if False:
-                    pre_trans.append(
-                            StringTemplate("float {}{} __attribute__((aligned(64)));".format(buffer_name + "_transposed", shape_str)))
+                    # pre_trans.append(
+                    #         StringTemplate("float {}{} __attribute__((aligned(64)));".format(buffer_name + "_transposed", shape_str)))
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
@@ -502,10 +504,11 @@ class Net:
         return pre_trans, post_trans
 
     def _synthesize_ast(self, ensemble, neuron, direction):
-        # get_ast returns a ast.Module, grab the first item for the function
+        # get_ast returns an ast.Module, grab the first item for the function
         if direction == "forward":
             fn_def = util.get_ast(neuron.forward).body[0]
         else:
+            # Don't backpropogate to DataEnsemble
             if not isinstance(self.connections_map[ensemble][0].source, DataEnsemble) or \
                     self.force_backward:
                 fn_def = util.get_ast(neuron.backward).body[0]
@@ -515,6 +518,7 @@ class Net:
             elif hasattr(neuron, 'update_internal'):
                 fn_def = util.get_ast(neuron.update_internal).body[0]
             else:
+                # No-op
                 return [], [], set(), [], []
 
         # transform domain constructs
@@ -523,9 +527,6 @@ class Net:
         fn_def = transformer.visit(fn_def)
 
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)]
-        # loop_vars[-2] += "_outer"
-        # loop_vars.insert(0, "_neuron_index_1_inner")
-        # pad = ensemble.pad + (0, )
         shape = list(ensemble.shape)
 
         if "value" in ensemble.tiling_info:
@@ -535,29 +536,22 @@ class Net:
                 shape.append(factor)
                 loop_vars.append(loop_vars[dim + 1] + "_inner")
 
-        # Reverse iteration space for row major indexing
+        # Reverse ([::-1]) iteration space for row major indexing
         loop_vars = loop_vars[::-1]
         loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
 
         body = fn_def.body
-
-        # Each statement in body is put into a separate nest (distributed loops)
-        # This allows statements to be pattern matched independently
-        # Fusion will merge the loops eventually (unless they are pattern matched)
-        nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in body]
-
+        body = [util.gen_loop_nest(body, loop_vars, loop_ranges)]
 
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
 
         # This placeholder function is used to wrap the body of statements for
         # convenience, after transformations have completed, the function body
-        # is returned and the function node discarded
+        # is returned and this function node will be discarded
         func_def = ast.FunctionDef('func',
-                ast.arguments(args, None, [], [], None, []), nests,
+                ast.arguments(args, None, [], [], None, []), body,
                 [], None)
 
-        # func_def = transformers.pattern_match_gemm(func_def)
-        func_def = transformers.simple_fusion(func_def)
         for loop in func_def.body:
             for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
@@ -565,7 +559,6 @@ class Net:
             mapping = self.connections_map[ensemble][0].mapping
             mapping_func = mapping.ast
 
-            # body = [self._gen_untiled_neuron_index_1()]
             body = []
 
             for dim in range(0, ensemble.ndim):
@@ -577,12 +570,10 @@ class Net:
                 if not isinstance(offset, ast.Num):
                     body += util.get_dependent_statements(mapping_func.body[:-1], offset.id)
 
-                is_tiled_dim = False
-                if "inputs" in ensemble.tiling_info:
-                    for tiled_dim, factor in ensemble.tiling_info["inputs"]:
-                        if tiled_dim == dim:
-                            is_tiled_dim = True
-                            break
+                is_tiled_dim = "inputs" in ensemble.tiling_info and \
+                    any(tiled_dim == dim 
+                        for tiled_dim, _ in ensemble.tiling_info["inputs"])
+
                 if is_tiled_dim:
                     outer_offset = ast.BinOp(offset, ast.Div(), ast.Num(factor))
                     body.append(ast.Assign([ast.Name(input_offset, ast.Store())], outer_offset))
@@ -592,22 +583,6 @@ class Net:
                     # Store the offset value
                     body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
 
-            # Compute the tiled offsets from the result of the mapping function
-            # For a one_to_one connection it is just the current neuron index
-            # else its the remainder and floor division of the mapping result
-            # if mapping.is_one_to_one():
-            #     body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-            #                            ast.Name("_neuron_index_1", ast.Load())))
-            #     # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-            #     #                        ast.Name("_neuron_index_1_inner", ast.Load())))
-            # else:
-            #     offset = mapping.get_offset(0)
-            #     body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-            #                            offset))
-            #                            # ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
-            #     # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-            #     #                        ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
-
             # Prepend to body
             loop.body = body + loop.body
 
@@ -616,45 +591,33 @@ class Net:
         # convert semantic (domain) ast nodes introduced by the neuron
         # transformer
         func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
-        # func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
         func_def = transformers.PatternMatchMath().visit(func_def)
 
-        # convert loopvars from long to int. we do this as PyBasicConversion
-        # defaults to using longs for range based for loops
         for loop in func_def.defn:
+            # convert loopvars from long to int
+            # we do this because PyBasicConversion defaults to using longs for
+            # range based for loops
             loop.init.left.type = ctypes.c_int()
             for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
                 loop.init.left.type = ctypes.c_int()
                 input_shape = self.connections_map[ensemble][0].source.shape
 
-                if dim > 0:
-                    input_offset = "_input_offset_{}".format(dim)
-                    if mapping.clamp:
-                        if dim in ensemble.tiling_info:
-                            def gen_clamp(index):
-                                return C.FunctionCall(C.SymbolRef("MIN"), 
-                                    [C.FunctionCall(C.SymbolRef("MAX"), 
-                                        [index,
-                                         C.Constant(0)]), 
-                                     C.Constant(input_shape[dim - 1] // SIMDWIDTH - 1)])
-                            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
-                            def gen_clamp(index):
-                                return C.FunctionCall(C.SymbolRef("MIN"), 
-                                    [C.FunctionCall(C.SymbolRef("MAX"), 
-                                        [index,
-                                         C.Constant(0)]), 
-                                     C.Constant(SIMDWIDTH - 1)])
-                            loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
-                        else:
-                            def gen_clamp(index):
-                                return C.FunctionCall(C.SymbolRef("MIN"), 
-                                    [C.FunctionCall(C.SymbolRef("MAX"), 
-                                        [index,
-                                         C.Constant(0)]), 
-                                     C.Constant(input_shape[dim - 1] - 1)])
-                            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
+                if dim == 0:
+                    # Do not need to clamp batch dimension
+                    continue
+
+                input_offset = "_input_offset_{}".format(dim)
+                if mapping.clamp:
+                    if dim in ensemble.tiling_info:
+                        gen_clamp = gen_gen_clamp(input_shape[dim - 1] // SIMDWIDTH - 1)
+                        loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
+                        gen_clamp = gen_gen_clamp(SIMDWIDTH - 1)
+                        loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
+                    else:
+                        gen_clamp = gen_gen_clamp(input_shape[dim - 1] - 1)
+                        loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
