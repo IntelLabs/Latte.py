@@ -12,16 +12,16 @@ class DropoutNeuron(Neuron):
         self.inputs = []
         self.grad_inputs = []
 
-        self.ratio = np.array([dropout_ratio], dtype=np.float32)
-        self.randval = np.zeros((1,), dtype=np.float32)
+        self.ratio = dropout_ratio
+        self.randval = 0.0
 
     def forward(self):
-        self.randval[0] = rand()
-        if self.randval[0] < self.ratio[0]:
+        self.randval = rand()
+        if self.randval < self.ratio:
             self.value = 0.0
         
     def backward(self):
-        if self.randval[0] < self.ratio[0]:
+        if self.randval < self.ratio:
             self.grad_input = 0.0 
         
 def DropoutLayer(net, input_ensemble, ratio=0.5):

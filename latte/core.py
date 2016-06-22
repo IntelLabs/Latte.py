@@ -136,10 +136,16 @@ class Net:
     def _initialize_numeric_field(self, ensemble, field):
         neuron = ensemble.neurons.flat[0]
         value = getattr(neuron, field)
-        buff = util.empty(ensemble.shape, type(value))
-        self.buffers[ensemble.name + field] = buff
-        for index, neuron in ensemble:
-            buff[index] = getattr(neuron, field)
+        if field in ensemble.batch_fields:
+            buff = util.empty((self.batch_size, ) + ensemble.shape, type(value))
+            self.buffers[ensemble.name + field] = buff
+            for index, neuron in ensemble:
+                buff[:, index] = getattr(neuron, field)
+        else:
+            buff = util.empty(ensemble.shape, type(value))
+            self.buffers[ensemble.name + field] = buff
+            for index, neuron in ensemble:
+                buff[index] = getattr(neuron, field)
 
     def _initialize_ndarray_field(self, ensemble, field):
         neuron = ensemble.neurons.flat[0]

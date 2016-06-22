@@ -23,7 +23,7 @@ def test_forward_backward():
     net.forward()    
 
     randvals = drop1.get_randval()
-    randvals = randvals.reshape(randvals.shape[:-1])
+    randvals = randvals.reshape(randvals.shape)
     expected = (randvals > ratio) * data_value
     print(expected.shape)
 
