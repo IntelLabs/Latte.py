@@ -166,7 +166,14 @@ class Vectorizer(ast.NodeTransformer):
 
 def vectorize_loop(ast, loopvar):
     transformer = Vectorizer(loopvar)
-    ast = transformer.visit(ast)
+    try:
+        ast = transformer.visit(ast)
+    except Exception as e:
+        print("ERROR: Failed to vectorize loop with variable {}".format(loopvar))
+        print("---------- BEGIN AST ----------")
+        print(ast)
+        print("---------- END AST   ----------")
+        raise e
     return ast, transformer.transposed_buffers
 
 class FMAReplacer(ast.NodeTransformer):

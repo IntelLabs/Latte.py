@@ -658,15 +658,8 @@ class Net:
         func_def = optimizer.propogate_constants(func_def)
 
         if direction in ensemble.vectorize_info:
-            try:
-                func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
-                        ensemble.vectorize_info[direction][0])
-            except Exception as e:
-                print("Failed to vectorize loop with variable {}".format(ensemble.vectorize_info[direction][0]))
-                print("---------- BEGIN AST ----------")
-                print(func_def)
-                print("---------- END AST   ----------")
-                raise e
+            func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
+                    ensemble.vectorize_info[direction][0])
             func_def = transformers.push_inner_loop_down(func_def)
             func_def = vectorizer.register_promote_vector_loads_stores(func_def)
             func_def = code_motion.lift_invariant_load_stores(func_def)
