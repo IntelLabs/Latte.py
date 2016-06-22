@@ -344,17 +344,6 @@ class Net:
         Net.unique_id += 1
         return str(self.unique_id)
 
-    def _gen_untiled_neuron_index_1(self):
-        """
-        Generates the ast for the following expression:
-        _neuron_index_1 = _neuron_index_1_outer * SIMDWIDTH + _neuron_index_1_inner
-
-        This is used as an argument to the mapping function which expects an
-        untiled _neuron_index_1
-        """
-        base_str = "_neuron_index_1_untiled = _neuron_index_1 * {SIMDWIDTH} + _neuron_index_1_inner"
-        return ast.parse(base_str.format(SIMDWIDTH=SIMDWIDTH)).body[0]
-
     def _parallelize_loops(self, func_def, ndim):
         for loop in func_def.defn:
             if ndim > 1:
@@ -364,7 +353,6 @@ class Net:
 
             if self.nowait:
                 loop.pragma += " nowait"
-
 
     def _reshape_buffer(self, args, ensemble, tiled_buffers):
         for arg in args:
