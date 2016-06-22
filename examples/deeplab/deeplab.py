@@ -54,6 +54,7 @@ fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
 drop7 = DropoutLayer(net, relu7, ratio=0.5)
 fc8_pascal = ConvLayer(net, drop7, num_filters=24, kernel=1, stride=1, pad=0)
+exit()
 
 #shrink_label = InterpolationLayer(net, label, resize_factor=8)
 print("Compiling...")
