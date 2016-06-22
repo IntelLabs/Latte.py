@@ -575,6 +575,11 @@ class Net:
                         for tiled_dim, _ in ensemble.tiling_info["inputs"])
 
                 if is_tiled_dim:
+                    for tiled_dim, factor in ensemble.tiling_info["inputs"]:
+                        if tiled_dim == dim:
+                            # factor is now the tiling factor for tiled_dim
+                            break
+
                     outer_offset = ast.BinOp(offset, ast.Div(), ast.Num(factor))
                     body.append(ast.Assign([ast.Name(input_offset, ast.Store())], outer_offset))
                     inner_offset = ast.BinOp(offset, ast.Mod(), ast.Num(factor))
@@ -628,13 +633,6 @@ class Net:
         func_def = analyzer.type_infer(func_def)
         func_def = optimizer.propogate_constants(func_def)
 
-        vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
-
-        unroll = False
-        if ensemble.ndim > 1:
-            unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
-        else:
-            unroll_target_loop_var = "_neuron_index_0"
         if direction in ensemble.vectorize_info:
             func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
                     ensemble.vectorize_info[direction][0])
