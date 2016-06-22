@@ -118,7 +118,7 @@ def interchange_inner_loop(ast):
 
 class InnerLoopPusher(ast.NodeTransformer):
     def visit_For(self, node):
-        if node.init.left.name == "_neuron_index_1_inner":
+        if "_inner" in node.init.left.name:
             curr_node = node
             outer_body = node.body[:-1]
             node.body = [node.body[-1]]

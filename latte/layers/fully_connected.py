@@ -43,16 +43,33 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
 
     bias_ens = net.init_activation_ensemble(bias_neurons, ens)
 
-    if "value" in input_ensemble.tiling_info:
-        ens.tile('inputs', dim=0, factor=latte.core.SIMDWIDTH)
-        ens.tile('weights', dim=1, factor=latte.core.SIMDWIDTH)
-        # ens.tile('value', dim=0, factor=latte.core.SIMDWIDTH)
-        # bias_ens.tile('bias', dim=0, factor=latte.core.SIMDWIDTH)
+    input_ensemble.tile('value', dim=0, factor=latte.core.SIMDWIDTH)
+    ens.tile('inputs', dim=0, factor=latte.core.SIMDWIDTH)
+    ens.tile('weights', dim=0, factor=latte.core.SIMDWIDTH)
+    ens.tile('weights', dim=1, factor=latte.core.SIMDWIDTH)
+    ens.tile('value', dim=0, factor=latte.core.SIMDWIDTH)
+    ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.core.SIMDWIDTH)
+    ens.unroll(direction="forward", loop_var="_neuron_index_0", factor=8)
+    ens.parallelize(direction="forward", loop_var="_neuron_index_1")
+    bias_ens.tile('bias', dim=0, factor=latte.core.SIMDWIDTH)
+    bias_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.core.SIMDWIDTH)
+    bias_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
+    bias_ens.unroll(direction="forward", loop_var="_neuron_index_0", factor=8)
 
-    if "grad" in input_ensemble.tiling_info:
-        ens.tile('grad_inputs', dim=0, factor=latte.core.SIMDWIDTH)
-        ens.tile('grad_weights', dim=1, factor=latte.core.SIMDWIDTH)
-        # ens.tile('grad', dim=0, factor=latte.core.SIMDWIDTH)
-        # bias_ens.tile('grad_bias', dim=0, factor=latte.core.SIMDWIDTH)
+    # if "grad" in input_ensemble.tiling_info:
+    input_ensemble.tile('grad', dim=0, factor=latte.core.SIMDWIDTH)
+    ens.tile('grad_inputs', dim=0, factor=latte.core.SIMDWIDTH)
+    ens.vectorize(direction="backward", loop_var="__unique_loopvar0_inner", factor=latte.core.SIMDWIDTH)
+    ens.unroll(direction="backward", loop_var="_neuron_index_0", factor=4)
+    # ens.parallelize(direction="backward", loop_var="_neuron_index_1")
+    # ens.swap_loops(direction="backward", loop_vars=("_neuron_index_0", "__unique_loopvar0"))
+    ens.privatize('grad_weights')
+    ens.tile('grad_weights', dim=0, factor=latte.core.SIMDWIDTH)
+    ens.tile('grad_weights', dim=1, factor=latte.core.SIMDWIDTH)
+    ens.tile('grad', dim=0, factor=latte.core.SIMDWIDTH)
+    bias_ens.tile('grad_bias', dim=0, factor=latte.core.SIMDWIDTH)
+    bias_ens.privatize('grad_bias')
+    # bias_ens.parallelize(direction="backward", loop_var="__unique_loopvar0")
+    # bias_ens.unroll(direction="backward", loop_var="_neuron_index_0", factor=8)
 
     return EnsembleGroup(ens, bias_ens)

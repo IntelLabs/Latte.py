@@ -48,7 +48,7 @@ class Vectorizer(ast.NodeTransformer):
     def visit_AugAssign(self, node):
         node.value = self.visit(node.value)
         if util.contains_symbol(node.target, self.loop_var):
-            if node.target.right.name != self.loop_var:
+            if not util.contains_symbol(node.target.right, self.loop_var):
                 target = self.visit(deepcopy(node.target))
                 curr_node = node.target
                 idx = 1
@@ -56,7 +56,7 @@ class Vectorizer(ast.NodeTransformer):
                     curr_node = curr_node.left
                     idx += 1
                 curr_node.left = curr_node.left.left
-                node = C.ArrayRef(node, C.SymbolRef(self.loop_var))
+                node.target = C.ArrayRef(node.target, C.SymbolRef(self.loop_var))
                 while not isinstance(curr_node, C.SymbolRef):
                     curr_node = curr_node.left
                 if curr_node.name in self.transposed_buffers and self.transposed_buffers[curr_node.name] != idx:
@@ -91,7 +91,7 @@ class Vectorizer(ast.NodeTransformer):
     def visit_BinaryOp(self, node):
         if isinstance(node.op, C.Op.ArrayRef):
             if util.contains_symbol(node, self.loop_var):
-                if node.right.name != self.loop_var:
+                if not util.contains_symbol(node.right, self.loop_var):
                     curr_node = node
                     idx = 1
                     while curr_node.left.right.name != self.loop_var:

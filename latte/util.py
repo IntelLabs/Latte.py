@@ -104,6 +104,22 @@ def gen_flat_index(idxs, shape):
 def print_ast(ast):
     print(astor.to_source(ast))
 
+def find_loop(tree, loop_var):
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.loop = None
+        
+        def visit_For(self, node):
+            if node.init.left.name == loop_var:
+                self.loop = node
+            else:
+                [self.visit(s) for s in node.body]
+    visitor = Visitor()
+    visitor.visit(tree)
+    assert visitor.loop is not None, "Did not find loop with variable {}".format(loop_var)
+    return visitor.loop
+
+
 def get_ast(obj):
     indented_program_txt = inspect.getsource(obj)
     program_txt = textwrap.dedent(indented_program_txt)

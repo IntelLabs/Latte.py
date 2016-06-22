@@ -103,6 +103,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     conv_ens.tile('grad_weights', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad_weights', dim=1, factor=SIMDWIDTH)
+    conv_ens.privatize('grad_weights')
     conv_ens.transpose('grad_weights', -2, -1)
 
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
@@ -118,6 +119,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
         factor -= 1
     conv_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
     bias_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
+    bias_ens.privatize('grad_bias')
 
     factor = 4
     while output_width % factor != 0:

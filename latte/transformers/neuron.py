@@ -74,7 +74,7 @@ class NeuronTransformer(ast.NodeTransformer):
                 # only generate batch index for inputs/grad_inputs because
                 # the user will provide rest of indices in expression
                 ndim = 1
-            elif node.attr in self.ensemble.batch_fields:
+            elif node.attr in self.ensemble.batch_fields or node.attr in self.ensemble.private_info:
                 # increment ndim for fields that have a batch dimension
                 ndim += 1
             else:
@@ -84,13 +84,13 @@ class NeuronTransformer(ast.NodeTransformer):
 
             args = []
 
-            if "grad_" in node.attr and not node.attr.endswith("inputs"):
-                # We privatize these buffers and reduce across threads at the
-                # end, removing need for synchronization.  This is done by
-                # adding an outer dimension of size num_threads to the buffer
-                if True:
-                    # args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
-                    args.append(ast.Name("_neuron_index_0", ast.Load()))
+            # if "grad_" in node.attr and not node.attr.endswith("inputs"):
+            # if node.attr in self.ensemble.private_info:
+            #     # We privatize these buffers and reduce across threads at the
+            #     # end, removing need for synchronization.  This is done by
+            #     # adding an outer dimension of size num_threads to the buffer
+            #     # args.append(ast.Call(ast.Name("omp_get_thread_num", ast.Load()), [], []))
+            #     args.append(ast.Name("_neuron_index_0", ast.Load()))
 
             # only append dimensions if it is not fixed in self.buffer_dim_info
             # (used for values shared across a dimension)
@@ -135,7 +135,7 @@ class NeuronTransformer(ast.NodeTransformer):
             if field in self.ensemble.tiling_info:
                 for dim, _ in self.ensemble.tiling_info[field]:
                     # dim += 1  # offset for batch dimension
-                    if "grad_" in field and field != "grad_inputs":
+                    if field in self.ensemble.private_info:
                         dim += 1  # offset for omp_get_thread_num()
                     elif field in self.ensemble.batch_fields:
                         dim += 1
@@ -169,8 +169,8 @@ class NeuronTransformer(ast.NodeTransformer):
 
     counter = -1
     def _gen_unique_variable(self):
-        NeuronTransformer.counter += 1
-        return "__unique_loopvar{}".format(NeuronTransformer.counter)
+        self.counter += 1
+        return "__unique_loopvar{}".format(self.counter)
 
     def visit_For(self, node):
         """

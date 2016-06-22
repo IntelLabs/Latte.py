@@ -1,5 +1,7 @@
 #include <tbb/tbb.h>
 
+static tbb::affinity_partitioner ap;
+
 class FlowGraph {
     public:
         tbb::flow::graph _graph;
@@ -20,8 +22,8 @@ class ContinueNode {
         };
 };
 
-void make_edge(ContinueNode source, ContinueNode sink) {
-    tbb::flow::make_edge(*(source._node), *(sink._node));
+void make_edge(ContinueNode *source, ContinueNode *sink) {
+    tbb::flow::make_edge(*(source->_node), *(sink->_node));
 }
 
 void parallel_for(int range_start, int range_end, std::function<void(int, int)> kernel) {
@@ -29,5 +31,5 @@ void parallel_for(int range_start, int range_end, std::function<void(int, int)> 
             [=](const tbb::blocked_range<int>& r) {
                 kernel(r.begin(), r.end());
             }
-    );
+    , ap);
 }

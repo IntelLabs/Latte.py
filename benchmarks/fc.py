@@ -7,13 +7,14 @@ from scipy import linalg
 def main():
     batch_size = 64
     net = Net(batch_size)
+    net.force_backward = True
     channels, height, width = 512, 7, 7
     data = MemoryDataLayer(net, (channels, height, width))
     fc1 = FullyConnectedLayer(net, data, 1024)
 
-    data.set_value(np.random.rand(batch_size, channels, height, width))
-
     net.compile()
+
+    data.set_value(np.random.rand(batch_size, channels, height, width))
 
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)
