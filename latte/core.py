@@ -135,18 +135,22 @@ class Net:
         self.buffers[buffer_name] = buff
 
     def _initialize_numeric_field(self, ensemble, field):
-        neuron = ensemble.neurons.flat[0]
-        value = getattr(neuron, field)
-        if field in ensemble.batch_fields:
-            buff = util.empty((self.batch_size, ) + ensemble.shape, type(value))
-            self.buffers[ensemble.name + field] = buff
-            for index, neuron in ensemble:
-                buff[:, index] = getattr(neuron, field)
-        else:
-            buff = util.empty(ensemble.shape, type(value))
-            self.buffers[ensemble.name + field] = buff
-            for index, neuron in ensemble:
-                buff[index] = getattr(neuron, field)
+        try:
+            neuron = ensemble.neurons.flat[0]
+            value = getattr(neuron, field)
+            if field in ensemble.batch_fields:
+                buff = util.empty((self.batch_size, ) + ensemble.shape, type(value))
+                self.buffers[ensemble.name + field] = buff
+                for index, neuron in ensemble:
+                    buff[(slice(None),) + index] = getattr(neuron, field)   
+            else:
+                buff = util.empty(ensemble.shape, type(value))
+                self.buffers[ensemble.name + field] = buff
+                for index, neuron in ensemble:
+                    buff[index] = getattr(neuron, field)
+        except Exception as e:
+            print("error initializing numeric field for " + str(type(ensemble.neurons.flat[0])) + ", field: " + str(field))
+            raise e
 
     def _initialize_ndarray_field(self, ensemble, field):
         neuron = ensemble.neurons.flat[0]
@@ -543,7 +547,7 @@ class Net:
                 fn_def = util.get_ast(neuron.update_internal).body[0]
             else:
                 # No-op
-                return [], [], set(), [], []
+                return [], [], set()
 
         # transform domain constructs
         transformer = transformers.NeuronTransformer(ensemble,

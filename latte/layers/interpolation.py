@@ -12,27 +12,23 @@ class InterpolatedNeuron(Neuron):
         self.inputs = []
         self.grad_inputs = []
     
-        self.delta_r = np.array([delta_r], dtype=np.float32)
-        self.delta_c = np.array([delta_c], dtype=np.float32)
+        self.delta_r = delta_r
+        self.delta_c = delta_c
 
     def forward(self):
-        delta_r = self.delta_r[0]
-        delta_c = self.delta_c[0] 
-    
+      
         self.value = \
-            self.inputs[0,0,0] * (1-delta_r) * (1-delta_c) + \
-            self.inputs[0,1,0] * delta_r     * (1-delta_c) + \
-            self.inputs[0,0,1] * (1-delta_r) * delta_c     + \
-            self.inputs[0,1,1] * delta_r     * delta_c 
+            self.inputs[0,0,0] * (1-self.delta_r) * (1-self.delta_c) + \
+            self.inputs[0,1,0] * self.delta_r     * (1-self.delta_c) + \
+            self.inputs[0,0,1] * (1-self.delta_r) * self.delta_c     + \
+            self.inputs[0,1,1] * self.delta_r     * self.delta_c 
 
     def backward(self):
-        delta_r = self.delta_r[0]
-        delta_c = self.delta_c[0] 
 
-        self.grad_inputs[0,0,0] += (1-delta_r) * (1-delta_c) * self.grad
-        self.grad_inputs[0,1,0] += delta_r     * (1-delta_c) * self.grad
-        self.grad_inputs[0,0,1] += (1-delta_r) * delta_c     * self.grad
-        self.grad_inputs[0,1,1] += delta_r     * delta_c     * self.grad
+        self.grad_inputs[0,0,0] += (1-self.delta_r) * (1-self.delta_c) * self.grad
+        self.grad_inputs[0,1,0] += self.delta_r     * (1-self.delta_c) * self.grad
+        self.grad_inputs[0,0,1] += (1-self.delta_r) * self.delta_c     * self.grad
+        self.grad_inputs[0,1,1] += self.delta_r     * self.delta_c     * self.grad
 
 def InterpolationLayer(net, input_ensemble, pad=0, resize_factor=1.0):
     assert input_ensemble.ndim == 3, "InterpolationLayer only supports 3-d input"
