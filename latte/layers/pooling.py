@@ -5,15 +5,16 @@ import itertools
 import latte
 
 class MaxNeuron(Neuron):
-    batch_fields     = Neuron.batch_fields + ["mask"]
-    zero_init_fields = Neuron.zero_init_fields + ["mask"]
+    batch_fields     = Neuron.batch_fields + ["mask_j", "mask_k"]
+    zero_init_fields = Neuron.zero_init_fields + ["mask_j", "mask_k"]
 
     def __init__(self):
         super().__init__()
         self.inputs = []
         self.grad_inputs = []
 
-        self.mask = np.zeros((2,), dtype=np.int32)
+        self.mask_j = 0
+        self.mask_k = 0
 
     def forward(self):
         max_value = -INFINITY
@@ -21,13 +22,13 @@ class MaxNeuron(Neuron):
             for k in range_dim(self.inputs, 2):
                 if self.inputs[0,j,k] > max_value:
                     max_value = self.inputs[0,j,k]
-                    self.mask[0] = j
-                    self.mask[1] = k
+                    self.mask_j = j
+                    self.mask_k = k
         self.value = max_value
 
     def backward(self):
-        j = self.mask[0]
-        k = self.mask[1]
+        j = self.mask_j
+        k = self.mask_k
         self.grad_inputs[0,j,k] += self.grad
 
 def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
@@ -56,7 +57,8 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     output_height = ((input_height - kernel_h + 2 * pad_h) // stride_h) + 1
 
     shape = (input_channels, output_height, output_width)
-    neurons = np.array([MaxNeuron() for _ in range(np.prod(shape))]).reshape(shape)
+    neurons = np.empty(shape, dtype='object')
+    neurons[:] = MaxNeuron()
 
     pooling_ens = net.init_ensemble(neurons)
 
@@ -75,7 +77,7 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
             pooling_ens.tile('inputs', dim=dim, factor=factor)
 
     if "grad" in input_ensemble.tiling_info:
-        tiled_dims = input_ensemble.tiling_info["grad"]
+        tiled_dims = input_ensemble.tiling_info["value"]
         for dim, factor in tiled_dims:
             pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
 

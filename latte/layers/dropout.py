@@ -37,8 +37,10 @@ def DropoutLayer(net, input_ensemble, ratio=0.5):
     #         ('randval', float)
     #         ]
     # )
-    neurons = np.array([DropoutNeuron(ratio) for _ in range(np.prod(input_ensemble.shape))])
-    neurons = neurons.reshape(input_ensemble.shape)
+    neurons = np.empty(input_ensemble.shape, dtype='object')
+    neurons[:] = DropoutNeuron(ratio)
+    # neurons = np.array([DropoutNeuron(ratio) for _ in range(np.prod(input_ensemble.shape))])
+    # neurons = neurons.reshape(input_ensemble.shape)
 
     dropout_ens = net.init_activation_ensemble(neurons, input_ensemble)
 

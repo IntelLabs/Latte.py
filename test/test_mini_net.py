@@ -47,8 +47,10 @@ def test_forward_backward():
     actual  = pool1.get_value()
     check_equal(actual, expected_pooling_output)
 
-    actual_mask  = pool1.get_mask()
-    check_equal(actual_mask, expected_mask)
+    actual_mask_j  = pool1.get_mask_j()
+    actual_mask_k  = pool1.get_mask_k()
+    check_equal(actual_mask_j, expected_mask[:,:,:,:,0])
+    check_equal(actual_mask_k, expected_mask[:,:,:,:,1])
 
     top_grad = pool1.get_grad()
     top_grad = np.random.rand(*top_grad.shape)
