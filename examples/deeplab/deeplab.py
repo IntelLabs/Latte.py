@@ -6,7 +6,7 @@ import random
 from latte.math import compute_softmax_loss, softmax_loss_backprop, compute_seg_accuracy
 
 
-batch_size = 20
+batch_size = 1
 net = Net(batch_size)
 
 data     = MemoryDataLayer(net, (8, 306, 306))
@@ -54,11 +54,66 @@ fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
 drop7 = DropoutLayer(net, relu7, ratio=0.5)
 fc8_pascal = ConvLayer(net, drop7, num_filters=24, kernel=1, stride=1, pad=0)
-exit()
-
-#shrink_label = InterpolationLayer(net, label, resize_factor=8)
+shrink_label = InterpolationLayer(net, label, resize_factor=8)
 print("Compiling...")
+
+
+conv1_1.name = 'conv1_1'
+relu1_1.name = 'relu1_1'
+conv1_2.name = 'conv1_2'
+relu1_2.name = 'relu1_2'
+pool1.name = 'pool1'
+
+conv2_1.name = 'conv2_1'
+relu2_1.name = 'relu2_1'
+conv2_2.name = 'conv2_2'
+relu2_2.name = 'relu2_2'
+pool2.name = 'pool2'
+
+conv3_1.name = 'conv3_1'
+relu3_1.name = 'relu3_1'
+conv3_2.name = 'conv3_2'
+relu3_2.name = 'relu3_2'
+conv3_3.name = 'conv3_3'
+relu3_3.name = 'relu3_3'
+pool3.name = 'pool3'
+
+conv4_1.name = 'conv4_1'
+relu4_1.name = 'relu4_1'
+conv4_2.name = 'conv4_2'
+relu4_2.name = 'relu4_2'
+conv4_3.name = 'conv4_3'
+relu4_3.name = 'relu4_3'
+pool4.name = 'pool4'
+
+conv5_1.name = 'conv5_1'
+relu5_1.name = 'relu5_1'
+conv5_2.name = 'conv5_2'
+relu5_2.name = 'relu5_2'
+conv5_3.name = 'conv5_3'
+relu5_3.name = 'relu5_3'
+pool5.name = 'pool5'
+
+fc6.name = 'fc6'
+relu6.name = 'relu6'
+drop6.name = 'drop6'
+fc7.name = 'fc7'
+drop7.name = 'drop7'
+fc8_pascal.name = 'fc8'
+
+
 net.compile()
+
+sizes = dict()
+bytes = 0
+for key, value in net.buffers.items():
+    bytes += value.nbytes
+    sizes[key] = value.nbytes
+
+for key in sorted(sizes, key=sizes.get, reverse=True):
+    print(key + ": " + str(sizes[key]))
+
+print("TOTAL MEM: " + str(bytes))
 
 def make_param(buffer, grad):
     return buffer, grad, np.zeros_like(buffer)
@@ -153,7 +208,9 @@ for epoch in range(10):
     print("Epoch {} - Testing...".format(epoch))
     acc = 0
     for i, n in enumerate(range(0, num_test, batch_size)):
-        test_data, test_label  = load_images(test_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
+        #test_data, test_label  = load_images(test_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
+        test_data = np.array(test_images_list[n:n+batch_size])
+        test_label = np.random.rand(batch_size, 8, 306, 306) * 100
         data.set_value(test_data[n:n+batch_size])
         label.set_value = test_label[n:n+batch_size]
         net.test()
