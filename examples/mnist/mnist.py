@@ -17,7 +17,7 @@ test_data = np.pad(test_data.reshape(num_test, 1, 28, 28), [(0, 0), (0, 7), (0, 
 test_label = test_label.reshape(num_test, 1)
 
 
-batch_size = 100
+batch_size = 50
 net = Net(batch_size)
 
 data  = MemoryDataLayer(net, train_data[0].shape)
@@ -30,9 +30,9 @@ conv2 = ConvLayer(net, pool1, num_filters=64, kernel=5, stride=1, pad=0)
 relu2 = ReLULayer(net, conv2)
 pool2 = MaxPoolingLayer(net, relu2, kernel=2, stride=2, pad=0)
 
-fc3   = FullyConnectedLayer(net, pool2, 512)
+fc3   = FullyConnectedLayer(net, pool2, 128)
 relu3 = ReLULayer(net, fc3)
-fc4   = FullyConnectedLayer(net, relu3, 16)
+fc4   = FullyConnectedLayer(net, relu3, 10)
 
 net.compile()
 

@@ -21,6 +21,11 @@ import inspect
 from latte.mapping import Mapping, one_to_one
 from latte.connection import Connection
 from latte.task import Task
+import latte.transformers.vectorize as vectorizer
+import latte.transformers.code_motion as code_motion
+import latte.transformers.unroll as unroller
+import latte.analysis as analyzer
+import latte.optimizations as optimizer
 
 num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 os.environ["OMP_NUM_THREADS"] = str(num_threads)
@@ -33,7 +38,9 @@ TILE_SIZE = SIMDWIDTH
 forward_unroll_factor = 8
 backward_unroll_factor = 4
 
-include = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/includes.tmpl.c")
+package_path = os.path.dirname(os.path.abspath(__file__))
+include = FileTemplate(package_path + "/templates/includes.tmpl.c",
+        {"LATTE_PACKAGE_PATH": StringTemplate(package_path)})
 
 def compute_tiled_shape(buf_shape, field, ensemble):
     for dim, factor in ensemble.tiling_info[field]:
@@ -46,6 +53,13 @@ def compute_tiled_shape(buf_shape, field, ensemble):
         buf_shape.append(factor)
     return buf_shape
 
+def gen_gen_clamp(_max):
+    return lambda index: C.FunctionCall(C.SymbolRef("MIN"), 
+            [C.FunctionCall(C.SymbolRef("MAX"), 
+                [index,
+                 C.Constant(0)]), 
+             C.Constant(_max)])
+
 class Net:
     def __init__(self, batch_size):
         self.batch_size = batch_size
@@ -53,10 +67,7 @@ class Net:
         self.connections = []
         self.buffers = {}
         self.forward_tasks = []
-        self.forward_loss_tasks = []
         self.backward_tasks = []
-        self.backward_loss_tasks = []
-        self.accuracy_tasks = []
         self.connections_map = {}
         self.buffer_dim_info = {}
         self.reshaped_buffers = {}
@@ -157,27 +168,22 @@ class Net:
             self.buffer_dim_info[ensemble.name + field].insert(0, False)
 
         if "grad_" in field:
-            if True:
-                # self.buffers[ensemble.name + field] = util.zeros((num_threads, ) + buff.shape, np.float32)
-                self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
-            else:
-                self.buffers[ensemble.name + field] = util.zeros(buff.shape, np.float32)
+            self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
         elif field not in neuron.zero_init_fields:
+            if field in neuron.batch_fields:
+                # Skip batch dimension
+                uniform_across_dim = uniform_across_dim[1:]
             for index in np.ndindex(*_iter):
-                _index = []
+                attr = getattr(ensemble.neurons[index], field)
+                _index = ()
+                for i in range(len(uniform_across_dim)):
+                    if not uniform_across_dim[i]:
+                        _index += (index[i], )
                 if field in neuron.batch_fields:
-                    # skip batch dimension
-                    for i in range(len(uniform_across_dim[1:])):
-                        if not uniform_across_dim[i + 1]:
-                            _index.append(index[i])
-                    attr = getattr(ensemble.neurons[index], field)
                     for i in range(self.batch_size):
-                        buff[i][tuple(_index)] = attr
+                        buff[i][_index] = attr
                 else:
-                    for i in range(len(uniform_across_dim)):
-                        if not uniform_across_dim[i]:
-                            _index.append(index[i])
-                    buff[tuple(_index)] = getattr(ensemble.neurons[index], field)
+                    buff[_index] = attr
 
     def _initialize_value_grad_activation(self, ensemble):
         for field, target in [("value", "inputs"), ("grad", "grad_inputs")]:
@@ -229,86 +235,58 @@ class Net:
         forward_body = []
         forward_casts = []
         forward_args = set()
-        forward_pre_trans = []
-        forward_post_trans = []
 
         backward_body = []
         backward_casts = []
         backward_args = set()
-        backward_pre_trans = []
-        backward_post_trans = []
 
         in_place_buffer_map = {}
 
         print("Initializing ensembles and synthesizing functions...")
         for ensemble in self.ensembles:
             print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
-            if not isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
-                self._init_buffers(ensemble)
+            if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
+                raise NotImplementedError("Ensemble type {} no longer supported".format(type(ensemble)))
+            self._init_buffers(ensemble)
             if isinstance(ensemble, DataEnsemble):
-                # idx = [slice(None)]
-                # idx += [slice(p, d + p) for p, d in zip(ensemble.pad, ensemble.shape)]
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
-                value_buffer = self.buffers[ensemble.name + "value"]
-                ensemble.set_buffer("value", value_buffer)
-                if "value" in ensemble.tiling_info:
-                    buf_shape = compute_tiled_shape(list(value_buffer.shape), "value", ensemble)
-                    value_buffer = value_buffer.reshape(buf_shape)
-                    self.buffers[ensemble.name + "value"] = value_buffer
-            elif isinstance(ensemble, LossEnsemble):
-                bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
-                label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
-                self.forward_loss_tasks.append(
-                    Task(ensemble.forward, [bottom, label]))
-                bottom_grad = self.buffers[self.connections_map[ensemble][0].source.name + "grad"].reshape((self.batch_size, ) + ensemble.shape)
-                self.backward_loss_tasks.append(
-                    Task(ensemble.backward, [bottom_grad, label]))
-            elif isinstance(ensemble, AccuracyEnsemble):
-                bottom = self.buffers[self.connections_map[ensemble][0].source.name + "value"].reshape((self.batch_size, ) + ensemble.shape)
-                label  = self.buffers[self.connections_map[ensemble][1].source.name + "value"]
-                self.accuracy_tasks.append(
-                    Task(ensemble.forward, [bottom, label]))
+                for field in ["value", "grad"]:
+                    if field in ensemble.tiling_info:
+                        buffer = self.buffers[ensemble.name + field]
+                        buf_shape = compute_tiled_shape(list(buffer.shape), field, ensemble)
+                        buffer = buffer.reshape(buf_shape)
+                        self.buffers[ensemble.name + field] = buffer
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron, "forward")
+                casts, body, args = self._synthesize_ast(ensemble, neuron, "forward")
                 forward_args = forward_args.union(args)
                 forward_casts += casts
                 forward_body += body
-                # forward_pre_trans += pre_trans
-                forward_post_trans += post_trans
 
-                casts, body, args, pre_trans, post_trans = self._synthesize_ast(ensemble, neuron, "backward")
+                casts, body, args = self._synthesize_ast(ensemble, neuron, "backward")
                 backward_args = backward_args.union(args)
                 backward_casts += casts
                 backward_body = body + backward_body
-                # backward_pre_trans += pre_trans
-                backward_post_trans += post_trans
 
             if isinstance(ensemble, ActivationEnsemble):
                 source = self.connections_map[ensemble][0].source
                 in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
-                # in_place_buffer_map[ensemble.name + "inputs"] = [source.name + "value", ensemble.name + "value"]
-                # in_place_buffer_map[ensemble.name + "value"] = [ensemble.name + "inputs", source.name + "value"]
-                # in_place_buffer_map[ensemble.name + "inputs"] = source.name + "value"
 
         print("Compiling functions...")
-        for args, direction, body, casts, tasks, pre_trans, post_trans in zip([forward_args, backward_args], 
-                                                                              ["forward", "backward"],
-                                                                              [forward_body, backward_body],
-                                                                              [forward_casts, backward_casts],
-                                                                              [self.forward_tasks, self.backward_tasks],
-                                                                              [forward_pre_trans, backward_pre_trans],
-                                                                              [forward_post_trans, backward_post_trans]
-                                                                              ):
+        for args, direction, body, casts, tasks, in zip([forward_args, backward_args], 
+                                                        ["forward", "backward"],
+                                                        [forward_body, backward_body],
+                                                        [forward_casts, backward_casts],
+                                                        [self.forward_tasks, self.backward_tasks],
+                                                        ):
             args = list(args)
             arg_bufs = [self.buffers[arg.arg] for arg in args]
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
-            params = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
+            params   = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
 
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-            # pre_trans.append(StringTemplate("#pragma omp barrier"))
 
             _id = self._uniqueid()
             c_file = C.CFile(direction + _id, [
@@ -321,110 +299,54 @@ class Net:
             # print(c_file)
             c_file = transformers.simple_fusion(c_file)
             new_body = []
+            incr = -1
             for stmt in c_file.body[1].defn:
+                incr += 1
                 if isinstance(stmt, C.For):
                     if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
                         new_body.extend(stmt.pre_trans)
-                    new_body.append(stmt)
-            c_file.body[1].defn = new_body
-            new_body = []
-            for stmt in c_file.body[1].defn:
-                if isinstance(stmt, C.For):
                     loopvar1 = C.SymbolRef(stmt.init.left.name)
                     looplen1 = stmt.test.right
-                    loopvar2 = C.SymbolRef(stmt.body[0].init.left.name)
-                    looplen2 = stmt.body[0].test.right
-                    body = stmt.body[0].body
-                    new_body.append(
-                        StringTemplate("""
-                        parallel_for(blocked_range2d<int>(0,$looplen1,0,$looplen2),
-                          [=](const blocked_range2d<int>& r) {
-                             for (int $loopvar1 = r.rows().begin(); $loopvar1 != r.rows().end(); ++$loopvar1) {
-
-                               for (int $loopvar2 = r.cols().begin(); $loopvar2 != r.cols().end(); ++$loopvar2) {
-    $body;
-                        }}}, ap);
-                        """, {'loopvar1': loopvar1, 'looplen1': looplen1,
-                              'loopvar2': loopvar2, 'looplen2': looplen2,
-                              'body': body
-                        })
-                    )
+                    body = stmt.body
+                    new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
+                    if incr > 0:
+                        new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
+                    else:
+                        execute_stmt = self._gen_execute_for_loop(stmt, incr)
                     if hasattr(stmt, 'reduce_vars') and len(stmt.reduce_vars) > 0:
                         for var in stmt.reduce_vars:
                             size = np.prod(self.buffers[var].shape[1:])
-                            new_body.append(
-StringTemplate("""
-parallel_for(blocked_range<int>(0,$size),
-  [=](const blocked_range<int>& r) {
-    #pragma simd
-    for (int x = r.begin(); x != r.end(); ++x) {
-      float sum = _$arr[x];
-      #pragma unroll
-      for (int i = 1; i < $batch_size; ++ i) {
-        sum += _$arr[i * $size + x];
-      }
-      _$arr[x] = sum;
-    }
-  }, 
-  ap
-);
-""", {'size': C.Constant(size),
-      'batch_size': C.Constant(self.batch_size),
-      'arr': C.SymbolRef(var)}))
+                            new_body.append(self._gen_reduce_for_loop(stmt, var, size, incr))
                 else:
                     new_body.append(stmt)
-            c_file.body[1].defn = new_body
-            c_file.body[1].defn = casts + pre_trans + c_file.body[1].defn + post_trans
+            c_file.body[1].defn = new_body + [execute_stmt]
+            c_file.body[1].defn = casts + c_file.body[1].defn
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-            # c_file.body[1].defn.insert(0, StringTemplate("#pragma omp parallel \n {"))
-            c_file.body[1].defn.insert(0, StringTemplate("static affinity_partitioner ap;"))
-            # c_file.body[1].defn.insert(0, StringTemplate("unsigned long long t0 = __rdtsc();"))
-            # c_file.body[1].defn.insert(0, StringTemplate("""
-            #     unsigned long long _t0, _t1;
-            #     _t0 = __rdtsc();
-            #     sleep(1);
-            #     _t1 = __rdtsc();
-            #     double freq = (double)(_t1 - _t0);
-            #     """))
-            # c_file.body[1].defn.append(StringTemplate("}"))
-            # c_file.body[1].defn.append(StringTemplate("t0 = __rdtsc() - t0;"))
-            # c_file.body[1].defn.append(StringTemplate("printf(\"Time: %.5g\\n\", t0 / freq);"))
+            c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
+            c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
             # c_file = transformers.remove_repeated_declarations(c_file)
             module = util.mpi_compile(ctree.nodes.Project([c_file]))
             fn = module.get_callable(direction + _id, type_sig)
             tasks.append(Task(fn, arg_bufs))
+
+        self._collect_value_grad_bufs()
+        print("Done")
+
+    def _collect_value_grad_bufs(self):
         for key, buf in self.buffers.items():
             if "value" in key:
                 self.value_buffers.append(buf)
             if "grad" in key:
                 self.grad_buffers.append(buf)
-        print("Done")
 
     unique_id = -1
     def _uniqueid(self):
         Net.unique_id += 1
         return str(self.unique_id)
 
-    def _gen_untiled_neuron_index_1(self):
-        """
-        Generates the ast for the following expression:
-        _neuron_index_1 = _neuron_index_1_outer * SIMDWIDTH + _neuron_index_1_inner
-
-        This is used as an argument to the mapping function which expects an
-        untiled _neuron_index_1
-        """
-        base_str = "_neuron_index_1_untiled = _neuron_index_1 * {SIMDWIDTH} + _neuron_index_1_inner"
-        return ast.parse(base_str.format(SIMDWIDTH=SIMDWIDTH)).body[0]
-
     def _parallelize_loops(self, func_def, ndim):
         for loop in func_def.defn:
             if ndim > 1:
-                # count = 1
-                # curr_loop = loop
-                # while len(curr_loop.body) == 1 and isinstance(curr_loop.body[0], C.For):
-                #     count += 1
-                #     curr_loop = curr_loop.body[0]
-                # loop.pragma = "omp parallel for collapse({})".format(min(count, 4))
                 loop.pragma = "omp for collapse(2)"
             else:
                 loop.pragma = "omp for collapse(2)"
@@ -432,53 +354,94 @@ parallel_for(blocked_range<int>(0,$size),
             if self.nowait:
                 loop.pragma += " nowait"
 
-    def _unroll(self, func_def, ensemble, unroll_target_loop_var, unroll_factor):
-        transformers.unroll.unroll_loop(func_def,
-            unroll_target_loop_var, unroll_factor)
-        # func_def = transformers.promote_single_use_registers(func_def)
-        # func_def = transformers.interleave_loads(func_def)
-
     def _reshape_buffer(self, args, ensemble, tiled_buffers):
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
             buf_shape = list(buf.shape)
             field = name.replace(ensemble.name, "")
-            if isinstance(ensemble, ActivationEnsemble) and field in ["value", "grad", "inputs", "grad_inputs"]:
+            if isinstance(ensemble, ActivationEnsemble) and \
+                    field in ["value", "grad", "inputs", "grad_inputs"]:
+                # ActivationEnsembles execute in place, if a field is tiled
+                # then the buffer should have already been tiled when handling
+                # the input ensemble
                 continue
-            if name not in self.reshaped_buffers:
-                if field in ensemble.tiling_info and field not in ["inputs", "grad_inputs"]:
+            if field in ensemble.tiling_info and field not in ["inputs", "grad_inputs"]:
+                if name not in self.reshaped_buffers:
                     buf_shape = compute_tiled_shape(buf_shape, field, ensemble)
-                # elif False and (True and "grad_" in name and "grad_inputs" not in name) or \
-                #         name.replace(ensemble.name, "") in ensemble.batch_fields: # or \
-                #         # "inputs" in name:
-                #     buf_shape[1] //= SIMDWIDTH
-                #     buf_shape.append(SIMDWIDTH)
-                #     ensemble.buffer_tiled_dims[name] = [1]
-                # elif False and "inputs" not in name:
-                #     buf_shape[0] //= SIMDWIDTH
-                #     buf_shape.append(SIMDWIDTH)
-                #     ensemble.buffer_tiled_dims[name] = [0]
-                # if False and name in tiled_buffers and not name.endswith("inputs"):
-                #     dim = len(buf_shape) - tiled_buffers[name] - 1
-                #     buf_shape[dim] //= SIMDWIDTH
-                #     buf_shape.append(SIMDWIDTH)
-                #     if name in ensemble.buffer_tiled_dims:
-                #         ensemble.buffer_tiled_dims[name].append(dim)
-                #     else:
-                #         ensemble.buffer_tiled_dims[name] = [dim]
+                    self.reshaped_buffers[name] = buf_shape
+                    self.buffers[name] = buf.reshape(buf_shape)
 
-                self.reshaped_buffers[name] = buf_shape
-                self.buffers[name] = buf.reshape(buf_shape)
-            # elif "inputs" in name and self.connections_map[ensemble][0].reshape is not None:
-            #     buf_shape = list((self.batch_size, ) + self.connections_map[ensemble][0].reshape)
-            #     buf_shape[1] //= SIMDWIDTH
-            #     buf_shape.append(SIMDWIDTH)
-            #     self.buffers[name] = buf.reshape(buf_shape)
-            #     ensemble.buffer_tiled_dims[name] = [1]
-            # else:
-            #     buf_shape = self.reshaped_buffers[name]
-            #     self.buffers[name] = buf.reshape(buf_shape)
+    def _gen_graph_nodes_from_loop(self, loop, id):
+        loopvar1 = C.SymbolRef(loop.init.left.name)
+        looplen1 = loop.test.right
+        body = loop.body
+        return StringTemplate("""
+        std::vector<ContinueNode> $node_list;
+        for (int __z = 0; __z < $looplen1; __z++) {
+          $node_list.push_back(ContinueNode(&graph, [=]() {
+            int $loopvar1 = __z;
+            $body;
+          }));
+        }
+        """, {'loopvar1': loopvar1, 'looplen1': looplen1,
+              'body': body, 
+              'node_list': C.SymbolRef("node_list_" + str(id))
+        })
+
+    def _gen_graph_edges_for_loop(self, loop, source_id, sink_id):
+        loopvar1 = C.SymbolRef(loop.init.left.name)
+        looplen1 = loop.test.right
+        return StringTemplate("""
+          for (int i = 0; i < $looplen1; ++i) {
+            make_edge($prev_node_list[i], $node_list[i]);
+          }
+        """, {
+            'looplen1': C.Constant(looplen1.value), 
+            'node_list': C.SymbolRef("node_list_" + str(sink_id)),
+            'prev_node_list': C.SymbolRef("node_list_" + str(source_id)),
+        })
+
+    def _gen_execute_for_loop(self, loop, id):
+        looplen1 = loop.test.right
+        return StringTemplate("""
+          for (int i = 0; i < $looplen1; ++i) {
+            $node_list[i].execute();
+          }
+        """, {
+            'looplen1': C.Constant(looplen1.value), 
+            'node_list': C.SymbolRef("node_list_" + str(id)),
+        })
+
+    def _gen_reduce_for_loop(self, loop, var, size, id):
+        looplen1 = loop.test.right
+        return StringTemplate("""
+            {
+              ContinueNode $reduce_node(&graph, [=]() {
+              parallel_for(0,$size,
+                [=](int low, int high) {
+                  #pragma simd
+                  for (int x = low; x != high; ++x) {
+                    float sum = _$arr[x];
+                    #pragma unroll
+                    for (int i = 1; i < $batch_size; ++ i) {
+                      sum += _$arr[i * $size + x];
+                    }
+                    _$arr[x] = sum;
+                  }
+                });
+              });
+              for (int i = 0; i < $looplen1; ++i) {
+                make_edge($node_list[i], $reduce_node);
+              }
+            };
+            """, {'size': C.Constant(size),
+                  'batch_size': C.Constant(self.batch_size),
+                  'arr': C.SymbolRef(var),
+                  'node_list': C.SymbolRef("node_list_" + str(id)),
+                  'reduce_node': C.SymbolRef("reduce_node_" + str(id)),
+                  'looplen1': C.Constant(looplen1.value)
+                  })
 
     def _gen_transposes(self, transposed_buffers):
         pre_trans = []
@@ -513,9 +476,8 @@ parallel_for(blocked_range<int>(0,$size),
                 shape_str = ""
                 for d in shape:
                     shape_str += "[{}]".format(d)
-                if False:
-                    pre_trans.append(
-                            StringTemplate("float {}{} __attribute__((aligned(64)));".format(buffer_name + "_transposed", shape_str)))
+                    # pre_trans.append(
+                    #         StringTemplate("float {}{} __attribute__((aligned(64)));".format(buffer_name + "_transposed", shape_str)))
                 curr_body.append(C.FunctionCall(C.SymbolRef("transpose<SIMDWIDTH,SIMDWIDTH>"), 
                     [C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name), idx)), 
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
@@ -523,10 +485,11 @@ parallel_for(blocked_range<int>(0,$size),
         return pre_trans, post_trans
 
     def _synthesize_ast(self, ensemble, neuron, direction):
-        # get_ast returns a ast.Module, grab the first item for the function
+        # get_ast returns an ast.Module, grab the first item for the function
         if direction == "forward":
             fn_def = util.get_ast(neuron.forward).body[0]
         else:
+            # Don't backpropogate to DataEnsemble
             if not isinstance(self.connections_map[ensemble][0].source, DataEnsemble) or \
                     self.force_backward:
                 fn_def = util.get_ast(neuron.backward).body[0]
@@ -536,6 +499,7 @@ parallel_for(blocked_range<int>(0,$size),
             elif hasattr(neuron, 'update_internal'):
                 fn_def = util.get_ast(neuron.update_internal).body[0]
             else:
+                # No-op
                 return [], [], set(), [], []
 
         # transform domain constructs
@@ -544,9 +508,6 @@ parallel_for(blocked_range<int>(0,$size),
         fn_def = transformer.visit(fn_def)
 
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)]
-        # loop_vars[-2] += "_outer"
-        # loop_vars.insert(0, "_neuron_index_1_inner")
-        # pad = ensemble.pad + (0, )
         shape = list(ensemble.shape)
 
         if "value" in ensemble.tiling_info:
@@ -556,29 +517,22 @@ parallel_for(blocked_range<int>(0,$size),
                 shape.append(factor)
                 loop_vars.append(loop_vars[dim + 1] + "_inner")
 
-        # Reverse iteration space for row major indexing
+        # Reverse ([::-1]) iteration space for row major indexing
         loop_vars = loop_vars[::-1]
         loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
 
         body = fn_def.body
-
-        # Each statement in body is put into a separate nest (distributed loops)
-        # This allows statements to be pattern matched independently
-        # Fusion will merge the loops eventually (unless they are pattern matched)
-        nests = [util.gen_loop_nest([s], loop_vars, loop_ranges) for s in body]
-
+        body = [util.gen_loop_nest(body, loop_vars, loop_ranges)]
 
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
 
         # This placeholder function is used to wrap the body of statements for
         # convenience, after transformations have completed, the function body
-        # is returned and the function node discarded
+        # is returned and this function node will be discarded
         func_def = ast.FunctionDef('func',
-                ast.arguments(args, None, [], [], None, []), nests,
+                ast.arguments(args, None, [], [], None, []), body,
                 [], None)
 
-        # func_def = transformers.pattern_match_gemm(func_def)
-        func_def = transformers.simple_fusion(func_def)
         for loop in func_def.body:
             for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
@@ -586,7 +540,6 @@ parallel_for(blocked_range<int>(0,$size),
             mapping = self.connections_map[ensemble][0].mapping
             mapping_func = mapping.ast
 
-            # body = [self._gen_untiled_neuron_index_1()]
             body = []
 
             for dim in range(0, ensemble.ndim):
@@ -598,13 +551,16 @@ parallel_for(blocked_range<int>(0,$size),
                 if not isinstance(offset, ast.Num):
                     body += util.get_dependent_statements(mapping_func.body[:-1], offset.id)
 
-                is_tiled_dim = False
-                if "inputs" in ensemble.tiling_info:
+                is_tiled_dim = "inputs" in ensemble.tiling_info and \
+                    any(tiled_dim == dim 
+                        for tiled_dim, _ in ensemble.tiling_info["inputs"])
+
+                if is_tiled_dim:
                     for tiled_dim, factor in ensemble.tiling_info["inputs"]:
                         if tiled_dim == dim:
-                            is_tiled_dim = True
+                            # factor is now the tiling factor for tiled_dim
                             break
-                if is_tiled_dim:
+
                     outer_offset = ast.BinOp(offset, ast.Div(), ast.Num(factor))
                     body.append(ast.Assign([ast.Name(input_offset, ast.Store())], outer_offset))
                     inner_offset = ast.BinOp(offset, ast.Mod(), ast.Num(factor))
@@ -612,22 +568,6 @@ parallel_for(blocked_range<int>(0,$size),
                 else:
                     # Store the offset value
                     body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
-
-            # Compute the tiled offsets from the result of the mapping function
-            # For a one_to_one connection it is just the current neuron index
-            # else its the remainder and floor division of the mapping result
-            # if mapping.is_one_to_one():
-            #     body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-            #                            ast.Name("_neuron_index_1", ast.Load())))
-            #     # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-            #     #                        ast.Name("_neuron_index_1_inner", ast.Load())))
-            # else:
-            #     offset = mapping.get_offset(0)
-            #     body.append(ast.Assign([ast.Name("_input_offset_1", ast.Store())], 
-            #                            offset))
-            #                            # ast.BinOp(offset, ast.Div(), ast.Num(SIMDWIDTH))))
-            #     # body.append(ast.Assign([ast.Name("_input_offset_1_inner", ast.Store())], 
-            #     #                        ast.BinOp(offset, ast.Mod(), ast.Num(SIMDWIDTH))))
 
             # Prepend to body
             loop.body = body + loop.body
@@ -637,45 +577,33 @@ parallel_for(blocked_range<int>(0,$size),
         # convert semantic (domain) ast nodes introduced by the neuron
         # transformer
         func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
-        # func_def = transformers.convert_sgemm_calls(func_def)
         func_def = PyBasicConversions().visit(func_def)
         func_def = transformers.PatternMatchMath().visit(func_def)
 
-        # convert loopvars from long to int. we do this as PyBasicConversion
-        # defaults to using longs for range based for loops
         for loop in func_def.defn:
+            # convert loopvars from long to int
+            # we do this because PyBasicConversion defaults to using longs for
+            # range based for loops
             loop.init.left.type = ctypes.c_int()
             for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
                 loop.init.left.type = ctypes.c_int()
                 input_shape = self.connections_map[ensemble][0].source.shape
 
-                if dim > 0:
-                    input_offset = "_input_offset_{}".format(dim)
-                    if mapping.clamp:
-                        if dim in ensemble.tiling_info:
-                            def gen_clamp(index):
-                                return C.FunctionCall(C.SymbolRef("MIN"), 
-                                    [C.FunctionCall(C.SymbolRef("MAX"), 
-                                        [index,
-                                         C.Constant(0)]), 
-                                     C.Constant(input_shape[dim - 1] // SIMDWIDTH - 1)])
-                            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
-                            def gen_clamp(index):
-                                return C.FunctionCall(C.SymbolRef("MIN"), 
-                                    [C.FunctionCall(C.SymbolRef("MAX"), 
-                                        [index,
-                                         C.Constant(0)]), 
-                                     C.Constant(SIMDWIDTH - 1)])
-                            loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
-                        else:
-                            def gen_clamp(index):
-                                return C.FunctionCall(C.SymbolRef("MIN"), 
-                                    [C.FunctionCall(C.SymbolRef("MAX"), 
-                                        [index,
-                                         C.Constant(0)]), 
-                                     C.Constant(input_shape[dim - 1] - 1)])
-                            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
+                if dim == 0:
+                    # Do not need to clamp batch dimension
+                    continue
+
+                input_offset = "_input_offset_{}".format(dim)
+                if mapping.clamp:
+                    if dim in ensemble.tiling_info:
+                        gen_clamp = gen_gen_clamp(input_shape[dim - 1] // SIMDWIDTH - 1)
+                        loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
+                        gen_clamp = gen_gen_clamp(SIMDWIDTH - 1)
+                        loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
+                    else:
+                        gen_clamp = gen_gen_clamp(input_shape[dim - 1] - 1)
+                        loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
@@ -683,65 +611,22 @@ parallel_for(blocked_range<int>(0,$size),
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
 
         # Basic type inference and constant propogation
-        # print(func_def)
-        func_def = transformers.BasicTypeInference().visit(func_def)
-        func_def = transformers.SimpleConstantPropogation().visit(func_def)
-        # print(func_def)
-        # exit()
+        func_def = analyzer.type_infer(func_def)
+        func_def = optimizer.propogate_constants(func_def)
 
-        vectorized_buffers = {key: [(value, TILE_SIZE)] for key, value in tiled_buffers.items()}
-        # vectorized_buffers[ensemble.name+"inputs"] = [(2, SIMDWIDTH)]
-        # vectorized_buffers[ensemble.name+"grad_inputs"] = [(2, SIMDWIDTH)]
-
-        candidate = transformers.get_loop_to_vectorize(func_def)
-        candidate = None
-
-        unroll = False
-        if ensemble.ndim > 1:
-            unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
-        else:
-            unroll_target_loop_var = "_neuron_index_0"
-        # if candidate == "_neuron_index_1_inner":
-        #     if ensemble.ndim > 1:
-        #         unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
-        #     else:
-        #         unroll_target_loop_var = "_neuron_index_0"
-        # else:
-        #     # unroll_target_loop_var = "_neuron_index_1_inner"
-        #     unroll_target_loop_var = "_neuron_index_{}".format(ensemble.ndim)
-        #     # unroll = False
-        # func_def = transformers.register_promote_value_refs(func_def, ensemble, direction, self.batch_size, target_loop_var)
         if direction in ensemble.vectorize_info:
-            func_def, transposed_buffers = transformers.vectorize_loop(func_def, ensemble.vectorize_info[direction][0])
+            func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
+                    ensemble.vectorize_info[direction][0])
             func_def = transformers.push_inner_loop_down(func_def)
-            func_def = transformers.register_promote_vector_loads_stores(func_def)
-            func_def = transformers.lift_invariant_load_stores(func_def)
-            func_def = transformers.fma_replace(func_def)
-
-        if candidate is not None:
-            func_def, transposed_buffers = transformers.vectorize_loop(func_def, candidate)
-            func_def = transformers.push_inner_loop_down(func_def)
-            # func_def = transformers.interchange_inner_loop(func_def)
-            # func_def, _ = transformers.tile_outer_loop(func_def, ensemble.ndim)
-            # func_def = transformers.interchange_tiled_loops(func_def)
-            func_def = transformers.register_promote_vector_loads_stores(func_def)
-            func_def = transformers.lift_invariant_load_stores(func_def)
-            # func_def = transformers.lift_loads(func_def)
-            func_def = transformers.fma_replace(func_def)
-            # func_def = transformers.move_inner_index(func_def)
-            # func_def = transformers.unroll_constant_loops(func_def)
+            func_def = vectorizer.register_promote_vector_loads_stores(func_def)
+            func_def = code_motion.lift_invariant_load_stores(func_def)
+            func_def = vectorizer.fuse_multiply_adds(func_def)
 
         self._parallelize_loops(func_def, ensemble.ndim)
 
         if direction in ensemble.unroll_info:
             unroll_var, unroll_factor = ensemble.unroll_info[direction]
-            self._unroll(func_def, ensemble, unroll_var, unroll_factor)
-
-        if candidate is not None and unroll:
-            self._unroll(func_def, ensemble, unroll_target_loop_var, direction)
-        else:
-            pass
-            # func_def = transformers.insert_pragma_simd(func_def)
+            unroller.unroll_loop(func_def, unroll_var, unroll_factor)
 
         type_sig = []
         casts = []
@@ -752,21 +637,18 @@ parallel_for(blocked_range<int>(0,$size),
             buf = self.buffers[name]
             casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
             self._insert_cast(casts, buf.shape[1:], name, buf.dtype)
-            # casts.insert(0, StringTemplate("__assume_aligned(_{}, 64);\n".format(name)))
 
-        # if candidate is not None:
         if direction in ensemble.vectorize_info:
             pre_trans, post_trans = self._gen_transposes(transposed_buffers)
 
-            if True:
-                for buffer_name, trans_dim in transposed_buffers.items():
-                    curr_body = []
-                    shape = self.buffers[buffer_name].shape
-                    shape_str = "".join("[{}]".format(d) for d in shape)
+            for buffer_name, trans_dim in transposed_buffers.items():
+                curr_body = []
+                shape = self.buffers[buffer_name].shape
+                shape_str = "".join("[{}]".format(d) for d in shape)
 
-                    args.append(ast.arg(buffer_name + "_transposed", None))
-                    self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-                    self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
+                args.append(ast.arg(buffer_name + "_transposed", None))
+                self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
+                self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
         else:
             pre_trans = []
             post_trans = []
@@ -778,7 +660,7 @@ parallel_for(blocked_range<int>(0,$size),
         for arg in args:
             if "grad_" in arg.arg and "inputs" not in arg.arg:
                 reduce_vars.append(arg.arg)
-        return casts, func_def.defn, args, pre_trans, post_trans
+        return casts, func_def.defn, args
 
     def _insert_cast(self, body, shape, name, dtype):
         shape_str = "".join("[{}]".format(d) for d in shape)
@@ -795,20 +677,14 @@ parallel_for(blocked_range<int>(0,$size),
     def test(self):
         for task in self.forward_tasks:
             task()
-        for task in self.accuracy_tasks:
-            task()
 
     def forward(self):
         # os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
         for task in self.forward_tasks:
             task()
-        for task in self.forward_loss_tasks:
-            task()
 
     def backward(self):
         # os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
-        for task in self.backward_loss_tasks:
-            task()
         for task in self.backward_tasks:
             task()
 

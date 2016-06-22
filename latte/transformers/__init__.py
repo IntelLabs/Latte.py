@@ -8,10 +8,8 @@ from .register_promote_value_refs import register_promote_value_refs
 from .vectorize_outer_loop import vectorize_outer_loop
 from .neuron import NeuronTransformer
 import latte.transformers.unroll
-from .register_promote import register_promote_vector_loads_stores, lift_invariant_load_stores
-from .vectorize import tile_outer_loop, get_loop_to_vectorize, vectorize_loop, fma_replace
 from .pattern_match_math import PatternMatchMath
-
+from .vectorize import fuse_multiply_adds, vectorize_loop
 
 import ast
 import ctree.c.nodes as C
@@ -117,143 +115,6 @@ class InnerLoopInterchanger(ast.NodeTransformer):
 
 def interchange_inner_loop(ast):
     return InnerLoopInterchanger().visit(ast)
-
-import ctypes
-import ctree
-import copy
-import ctree.np
-class BasicTypeInference(ast.NodeTransformer):
-    def __init__(self):
-        self.seen = {}
-
-    def visit_SymbolRef(self, node):
-        if node.type is not None:
-            self.seen[node.name] = node.type
-        return node
-
-    def visit(self, node):
-        if hasattr(node, 'body'):
-            curr = copy.deepcopy(self.seen)
-        node = super().visit(node)
-        if hasattr(node, 'body'):
-            self.seen = curr
-        return node
-
-    def _get_type(self, node):
-        if isinstance(node, C.SymbolRef):
-            if node.name == "INFINITY":
-                return ctypes.c_float()
-            elif node.name in self.seen:
-                return self.seen[node.name]
-        elif isinstance(node, C.UnaryOp):
-            return self._get_type(node.arg)
-        elif isinstance(node, C.Constant):
-            if isinstance(node.value, int):
-                # promote all longs to int
-                return ctypes.c_int()
-            return ctree.types.get_ctype(node.value)
-        elif isinstance(node, C.BinaryOp):
-            if isinstance(node.op, C.Op.ArrayRef):
-                while not isinstance(node, C.SymbolRef):
-                    node = node.left
-                pointer_type = self._get_type(node)
-                return ctree.types.get_c_type_from_numpy_dtype(pointer_type._dtype_)()
-            else:
-                left = self._get_type(node.left)
-                right = self._get_type(node.right)
-                return ctree.types.get_common_ctype([left, right])
-        elif isinstance(node, C.FunctionCall):
-            if node.func.name in ["MAX", "MIN", "max", "min", "floor"]:
-                return ctree.types.get_common_ctype([self._get_type(a) for a in node.args])
-        raise NotImplementedError(ast.dump(node))
-    
-    def visit_FunctionCall(self, node):
-        if node.func.name in ["max", "min"] and isinstance(self._get_type(node), ctypes.c_float):
-            # convert to fmax/fmin
-            node.func.name = "f" + node.func.name
-        else:
-            node.args = [self.visit(a) for a in node.args]
-        return node
-
-    def visit_BinaryOp(self, node):
-        node.left = self.visit(node.left)
-        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.SymbolRef) and node.left.name not in self.seen:
-            node.left.type = self._get_type(node.right)
-            self.seen[node.left.name] = node.left.type
-        node.right = self.visit(node.right)
-        return node
-
-
-class SimpleConstantPropogation(ast.NodeTransformer):
-    def __init__(self):
-        self.seen = {}
-    
-    def visit(self, node):
-        node = super().visit(node)
-        if hasattr(node, 'body'):
-            node.body = [s for s in node.body if s is not None]
-        return node
-
-    def _get_value(self, node):
-        if isinstance(node, C.Constant):
-            return node.value
-        elif isinstance(node, C.SymbolRef) and node.name in self.seen:
-            return self.seen[node.name]
-        return None
-
-    def visit_For(self, node):
-        # Skip loopvar inits
-        node.body = [self.visit(s) for s in node.body]
-        return node
-
-    def visit_SymbolRef(self, node):
-        if node.name in self.seen:
-            return C.Constant(self.seen[node.name])
-        return node
-
-    def visit_BinaryOp(self, node):
-        node.left = self.visit(node.left)
-        node.right = self.visit(node.right)
-        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.SymbolRef):
-            value = self._get_value(node.right)
-            if value is not None:
-                self.seen[node.left.name] = value
-                return None
-        elif isinstance(node.op, C.Op.Div):
-            left = self._get_value(node.left)
-            right = self._get_value(node.right)
-            if left is not None and right is not None:
-                if isinstance(left, int) and isinstance(right, int):
-                    return C.Constant(left // right)
-                else:
-                    return C.Constant(left / right)
-        elif isinstance(node.op, C.Op.Mul):
-            left = self._get_value(node.left)
-            right = self._get_value(node.right)
-            if left is not None and right is not None:
-                return C.Constant(left * right)
-            elif left == 0 or right == 0:
-                return C.Constant(0)
-        elif isinstance(node.op, C.Op.Mod):
-            left = self._get_value(node.left)
-            right = self._get_value(node.right)
-            if left is not None and right is not None:
-                return C.Constant(left % right)
-        elif isinstance(node.op, C.Op.Add):
-            left = self._get_value(node.left)
-            right = self._get_value(node.right)
-            if left is not None and right is not None:
-                return C.Constant(left + right)
-            elif left == 0:
-                return node.right
-            elif right == 0:
-                return node.left
-        elif isinstance(node.op, C.Op.Sub):
-            left = self._get_value(node.left)
-            right = self._get_value(node.right)
-            if left is not None and right is not None:
-                return C.Constant(left - right)
-        return node
 
 class InnerLoopPusher(ast.NodeTransformer):
     def visit_For(self, node):

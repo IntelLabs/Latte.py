@@ -18,36 +18,6 @@ class UnrollStatements(ast.NodeTransformer):
         node = super().visit(node)
         if hasattr(node, 'body'):
             node.body = util.flatten(node.body)
-        #     new_body = []
-        #     for s in node.body:
-        #         s = self.visit(s)
-        #         if len(new_body) > 1 and isinstance(new_body[-1], list) and isinstance(s, list):
-        #             print("-----------")
-        #             print([str(x) for x in s])
-        #             print(isinstance(new_body[-1][0], C.BinaryOp))
-        #             print([isinstance(x, C.BinaryOp) and \
-        #                      isinstance(x.op, C.Op.Assign) and \
-        #                      x.left.codegen() == new_body[-1][0].left.codegen() 
-        #                      for x in new_body[-1]])
-        #             print(not all([isinstance(x, C.BinaryOp) and \
-        #                          isinstance(x.op, C.Op.Assign) and \
-        #                          x.left.codegen() == s[0].left.codegen() 
-        #                          for x in s]))
-        #             print("-----------")
-        #         if len(new_body) > 1 and isinstance(new_body[-1], list) and \
-        #                 isinstance(s, list) and \
-        #                 isinstance(new_body[-1][0], C.BinaryOp) and \
-        #                 all([isinstance(x, C.BinaryOp) and \
-        #                      isinstance(x.op, C.Op.Assign) and \
-        #                      x.left.codegen() == new_body[-1][0].left.codegen() 
-        #                      for x in new_body[-1]]):
-        #             new_body[-1] = util.interleave_lists(new_body[-1], s)
-        #         else:
-        #             new_body.append(s)
-        #     node.body = util.flatten(new_body)
-        #     # node.body = util.flatten(node.body)
-        # else: 
-        #     node = super().visit(node)
         return node
 
     def visit_BinaryOp(self, node):
@@ -146,19 +116,3 @@ class LoopUnroller(ast.NodeTransformer):
 
 def unroll_loop(ast, target_var, factor):
     return LoopUnroller(target_var, factor).visit(ast)
-
-
-class ConstantLoopUnroller(ast.NodeTransformer):
-    def visit_For(self, node):
-        node.body = util.flatten([self.visit(s) for s in node.body])
-        if node.pragma is not None and node.pragma == "unroll":
-            length = node.test.right.value
-            loop_var = node.init.left.name
-            to_return = []
-            for i in range(length):
-                to_return.append(C.Block([util.replace_symbol(loop_var, C.Constant(i), deepcopy(s)) for s in node.body]))
-            return to_return
-        return node
-
-def unroll_constant_loops(ast):
-    return ConstantLoopUnroller().visit(ast)
