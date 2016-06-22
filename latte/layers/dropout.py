@@ -26,6 +26,17 @@ class DropoutNeuron(Neuron):
         
 def DropoutLayer(net, input_ensemble, ratio=0.5):
     
+    # neurons = np.array(
+    #     [(0.0, 0.0, [], [], ratio, 0.0)],
+    #     dtype=[
+    #         ('value', float),
+    #         ('grad', float),
+    #         ('inputs', list),
+    #         ('grad_inputs', list),
+    #         ('ratio', float),
+    #         ('randval', float)
+    #         ]
+    # )
     neurons = np.array([DropoutNeuron(ratio) for _ in range(np.prod(input_ensemble.shape))])
     neurons = neurons.reshape(input_ensemble.shape)
 
