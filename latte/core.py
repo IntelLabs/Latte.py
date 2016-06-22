@@ -68,7 +68,6 @@ class Net:
         self.buffers = {}
         self.forward_tasks = []
         self.backward_tasks = []
-        self.accuracy_tasks = []
         self.connections_map = {}
         self.buffer_dim_info = {}
         self.reshaped_buffers = {}
@@ -171,21 +170,20 @@ class Net:
         if "grad_" in field:
             self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
         elif field not in neuron.zero_init_fields:
+            if field in neuron.batch_fields:
+                # Skip batch dimension
+                uniform_across_dim = uniform_across_dim[1:]
             for index in np.ndindex(*_iter):
-                _index = []
+                attr = getattr(ensemble.neurons[index], field)
+                _index = ()
+                for i in range(len(uniform_across_dim)):
+                    if not uniform_across_dim[i]:
+                        _index += (index[i], )
                 if field in neuron.batch_fields:
-                    # skip batch dimension
-                    for i in range(len(uniform_across_dim[1:])):
-                        if not uniform_across_dim[i + 1]:
-                            _index.append(index[i])
-                    attr = getattr(ensemble.neurons[index], field)
                     for i in range(self.batch_size):
-                        buff[i][tuple(_index)] = attr
+                        buff[i][_index] = attr
                 else:
-                    for i in range(len(uniform_across_dim)):
-                        if not uniform_across_dim[i]:
-                            _index.append(index[i])
-                    buff[tuple(_index)] = getattr(ensemble.neurons[index], field)
+                    buff[_index] = attr
 
     def _initialize_value_grad_activation(self, ensemble):
         for field, target in [("value", "inputs"), ("grad", "grad_inputs")]:
@@ -253,17 +251,12 @@ class Net:
             if isinstance(ensemble, DataEnsemble):
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
-                value_buffer = self.buffers[ensemble.name + "value"]
-                ensemble.set_buffer("value", value_buffer)
-                if "value" in ensemble.tiling_info:
-                    buf_shape = compute_tiled_shape(list(value_buffer.shape), "value", ensemble)
-                    value_buffer = value_buffer.reshape(buf_shape)
-                    self.buffers[ensemble.name + "value"] = value_buffer
-                if "grad" in ensemble.tiling_info:
-                    grad_buffer = self.buffers[ensemble.name + "grad"]
-                    buf_shape = compute_tiled_shape(list(grad_buffer.shape), "grad", ensemble)
-                    grad_buffer = grad_buffer.reshape(buf_shape)
-                    self.buffers[ensemble.name + "grad"] = grad_buffer
+                for field in ["value", "grad"]:
+                    if field in ensemble.tiling_info:
+                        buffer = self.buffers[ensemble.name + field]
+                        buf_shape = compute_tiled_shape(list(buffer.shape), field, ensemble)
+                        buffer = buffer.reshape(buf_shape)
+                        self.buffers[ensemble.name + field] = buffer
             else:
                 neuron = ensemble.neurons.flat[0]
 
@@ -695,8 +688,6 @@ class Net:
 
     def test(self):
         for task in self.forward_tasks:
-            task()
-        for task in self.accuracy_tasks:
             task()
 
     def forward(self):
