@@ -25,6 +25,7 @@ class Ensemble:
         self._parallel_info = {"forward": [], "backward": []}
         self._private_info = set()
         self.loops_to_swap = {'forward': [], 'backward': []}
+        self.simd_info = {'forward': [], 'backward': []}
 
     @property
     def private_info(self):
@@ -49,6 +50,9 @@ class Ensemble:
     @property
     def parallel_info(self):
         return self._parallel_info
+
+    def simd(self, direction, loop_var):
+        self.simd_info[direction].append(loop_var)
 
     def privatize(self, buffer):
         self.private_info.add(buffer)

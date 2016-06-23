@@ -34,15 +34,11 @@ class Vectorizer(ast.NodeTransformer):
         node.body = [self.visit(s) for s in node.body]
         if node.init.left.name == self.loop_var:
             assert node.test.right.value == latte.core.SIMDWIDTH
-            index = C.Assign(
-                    C.SymbolRef(node.init.left.name, ctypes.c_int()),
-                    C.Constant(0)
-                )
-            return [index] + [RemoveIndexExprs(self.loop_var).visit(s) for s in node.body]
-            if isinstance(node.incr, C.UnaryOp):
-                node.incr = C.AddAssign(node.incr.arg, C.Constant(latte.core.SIMDWIDTH))
-            else:
-                node.incr.value = C.Constant(latte.core.SIMDWIDTH)
+            # index = C.Assign(
+            #         C.SymbolRef(node.init.left.name, ctypes.c_int()),
+            #         C.Constant(0)
+            #     )
+            return [RemoveIndexExprs(self.loop_var).visit(s) for s in node.body]
         return node
 
     def visit_AugAssign(self, node):
@@ -214,7 +210,7 @@ class VectorLoadCollector(ast.NodeVisitor):
         super().visit(node)
 
     def visit_FunctionCall(self, node):
-        if "_mm" in node.func.name and ("_load_" in node.func.name or "_set1" in node.func.name):
+        if "_mm" in node.func.name and ("_load_" in node.func.name or "_set1" in node.func.name or "_broadcast" in node.func.name):
             if node.codegen() not in self.loads:
                 self.loads[node.args[0].codegen()] = [node.args[0], 0, node.func.name]
             self.loads[node.args[0].codegen()][1] += 1

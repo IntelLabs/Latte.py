@@ -150,14 +150,17 @@ def push_inner_loop_down(ast):
 
 
 class PragmaSIMDInserter(ast.NodeTransformer):
+    def __init__(self, loop_var):
+        self.loop_var = loop_var
+
     def visit_For(self, node):
         node.body = [self.visit(s) for s in node.body]
-        if node.init.left.name.endswith("_inner"):
+        if node.init.left.name == self.loop_var:
             node.pragma = "simd"
         return node
 
-def insert_pragma_simd(ast):
-    return PragmaSIMDInserter().visit(ast)
+def insert_pragma_simd(ast, loop_var):
+    return PragmaSIMDInserter(loop_var).visit(ast)
 
 def move_inner_index(tree):
     class Transformer(ast.NodeTransformer):

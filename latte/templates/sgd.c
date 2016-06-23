@@ -9,14 +9,15 @@ void sgd_update(float *__restrict param, float *__restrict grad, float
     __assume_aligned(hist, 64);
     __assume_aligned(param, 64);
     __assume(length%16==0);
-#pragma omp parallel for simd
+    #pragma omp parallel for simd
     for (int i = 0; i < length; i++) {
         float _grad = 0.0;
-        for (long j = 0; j < _num_threads; j++) {
-            _mm_prefetch((char*)(grad + (j + 1) * length + i),_MM_HINT_T0);
-            _grad += grad[j * length + i];
-        }
-        float tmp = (hist[i] * mom) + (_grad * lr);
+        // for (long j = 0; j < _num_threads; j++) {
+        //     _mm_prefetch((char*)(grad + (j + 1) * length + i),_MM_HINT_T0);
+        //     _grad += grad[j * length + i];
+        // }
+        //float tmp = (hist[i] * mom) + (_grad * lr);
+        float tmp = (hist[i] * mom) + (grad[i] * lr);
         param[i] -= tmp;
         hist[i] = tmp;
     }

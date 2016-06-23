@@ -111,8 +111,12 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     conv_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
     bias_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+    conv_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
     conv_ens.vectorize(direction="backward", loop_var="i_inner", factor=SIMDWIDTH)
     bias_ens.vectorize(direction="backward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+    conv_ens.parallelize(direction="backward", loop_var="i")
+    conv_ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "j"))
+    conv_ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "k"))
 
     factor = 8
     while output_width % factor != 0:

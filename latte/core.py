@@ -27,10 +27,10 @@ import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
 import latte.optimizations as optimizer
 
-num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
-os.environ["OMP_NUM_THREADS"] = str(num_threads)
-
-os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
+# num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
+# os.environ["OMP_NUM_THREADS"] = str(num_threads)
+# 
+# os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -365,7 +365,7 @@ class Net:
                       [=](int low, int high) {
                         for (int tmp_$loopvar = low; tmp_$loopvar < high; tmp_$loopvar++) {
                           int $loopvar = tmp_$loopvar * $loopincr;
-                          $body
+                          $body;
                         }
                       });
                     """, {
@@ -469,7 +469,7 @@ class Net:
                   }
                 });
               });
-              for (int i = 0; i < $looplen1 / $loopincr; ++i) {
+              for (int i = 0; i < $looplen1; i+=$loopincr) {
                 make_edge($node_list[i], $reduce_node);
               }
             };
@@ -559,7 +559,11 @@ class Net:
 
         if "value" in ensemble.tiling_info:
             for dim, factor in ensemble.tiling_info["value"]:
-                assert shape[dim] % factor == 0, "Invalid tiling factor"
+                if shape[dim] % factor != 0:
+                    raise Exception(("Invalid tiling factor of {} on dimension "
+                        + "{} for {}'s value buffer (shape={})").format(factor,
+                            dim, ensemble.name, shape))
+                    
                 shape[dim] //= factor
                 shape.append(factor)
                 loop_vars.append(loop_vars[dim + 1] + "_inner")
@@ -660,26 +664,30 @@ class Net:
         # Basic type inference and constant propogation
         func_def = analyzer.type_infer(func_def)
         func_def = optimizer.propogate_constants(func_def)
-
-        if direction in ensemble.vectorize_info:
-            func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
-                    ensemble.vectorize_info[direction][0])
-            func_def = transformers.push_inner_loop_down(func_def)
-            func_def = vectorizer.register_promote_vector_loads_stores(func_def)
-            func_def = code_motion.lift_invariant_load_stores(func_def)
-            func_def = vectorizer.fuse_multiply_adds(func_def)
-
-        if direction in ensemble.unroll_info:
-            unroll_var, unroll_factor = ensemble.unroll_info[direction]
-            unroller.unroll_loop(func_def, unroll_var, unroll_factor)
-
-        self._parallelize_loops(func_def, ensemble.parallel_info[direction])
         for loop_var1, loop_var2 in ensemble.loops_to_swap[direction]:
             loop1 = util.find_loop(func_def, loop_var1)
             loop2 = util.find_loop(func_def, loop_var2)
             loop1.init, loop2.init = loop2.init, loop1.init
             loop1.test, loop2.test = loop2.test, loop1.test
             loop1.incr, loop2.incr = loop2.incr, loop1.incr
+
+        if direction in ensemble.vectorize_info:
+            func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
+                    ensemble.vectorize_info[direction][0])
+            # func_def = transformers.push_inner_loop_down(func_def)
+            func_def = vectorizer.register_promote_vector_loads_stores(func_def)
+            func_def = code_motion.lift_invariant_load_stores(func_def)
+            func_def = vectorizer.fuse_multiply_adds(func_def)
+
+        if direction in ensemble.simd_info:
+            for loopvar in ensemble.simd_info[direction]:
+                func_def = transformers.insert_pragma_simd(func_def, loopvar)
+
+        if direction in ensemble.unroll_info:
+            unroll_var, unroll_factor = ensemble.unroll_info[direction]
+            unroller.unroll_loop(func_def, unroll_var, unroll_factor)
+
+        self._parallelize_loops(func_def, ensemble.parallel_info[direction])
 
         type_sig = []
         casts = []
