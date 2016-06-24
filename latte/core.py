@@ -32,8 +32,16 @@ import latte.optimizations as optimizer
 # 
 # os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
-SIMDWIDTH = 8
-TILE_SIZE = SIMDWIDTH
+latte_vec_config = os.getenv("LATTE_VEC_CONFIG", "AVX-2")
+vec_configs = {
+    "AVX": 8,
+    "AVX-2": 8,
+    "AVX-512": 16
+}
+try:
+    SIMDWIDTH = vec_configs[latte_vec_config]
+except KeyError:
+    raise Exception("ERROR: Invalid LATTE_VEC_CONFIG value = {}.  Supported values are {} ".format(latte_vec_config, vec_configs.keys()))
 
 forward_unroll_factor = 8
 backward_unroll_factor = 4

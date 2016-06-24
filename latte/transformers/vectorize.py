@@ -9,6 +9,39 @@ import ctypes
 from copy import deepcopy
 from ctree.templates.nodes import StringTemplate
 
+def store_ps(target, value):
+    return C.FunctionCall(C.SymbolRef({
+        "AVX": "_mm256_store_ps",
+        "AVX-2": "_mm256_store_ps",
+        "AVX-512": "_mm512_store_ps",
+    }[latte.core.latte_vec_config]), [target, value])
+
+def load_ps(arg):
+    return C.FunctionCall(C.SymbolRef({
+        "AVX": "_mm256_load_ps",
+        "AVX-2": "_mm256_load_ps",
+        "AVX-512": "_mm512_load_ps",
+    }[latte.core.latte_vec_config]), [arg])
+
+def broadcast_ss(arg):
+    if latte.core.latte_vec_config == "AVX-512":
+        # AVX-512 doesn't support broadcast, use set1_ps and remove Ref node
+        assert isinstance(arg, C.Ref)
+        arg = arg.arg
+    return C.FunctionCall(C.SymbolRef({
+        "AVX": "_mm256_broadcast_ss",
+        "AVX-2": "_mm256_broadcast_ss",
+        "AVX-512": "_mm256_set1_ps",
+    }[latte.core.latte_vec_config]), [arg])
+
+def get_simd_type():
+    return {
+        "AVX": simd.types.m256,
+        "AVX-2": simd.types.m256,
+        "AVX-512": simd.types.m512,
+    }[latte.core.latte_vec_config]
+
+
 class RemoveIndexExprs(ast.NodeTransformer):
     def __init__(self, var):
         self.var = var
@@ -60,22 +93,26 @@ class Vectorizer(ast.NodeTransformer):
                 self.transposed_buffers[curr_node.name] = idx
                 curr_node.name += "_transposed"
                 if isinstance(node.target.right, C.Constant) and node.target.value == 0.0:
-                    return simd_macros.mm256_store_ps(
-                            node.target.left,
-                            C.BinaryOp(target, node.op, node.value))
+                    return store_ps(
+                        node.target.left,
+                        C.BinaryOp(target, node.op, node.value)
+                    )
                 else:
-                    return simd_macros.mm256_store_ps(
-                            C.Ref(node.target),
-                            C.BinaryOp(target, node.op, node.value))
+                    return store_ps(
+                        C.Ref(node.target),
+                        C.BinaryOp(target, node.op, node.value)
+                    )
             else:
                 if isinstance(node.target.right, C.Constant) and node.target.value == 0.0:
-                    return simd_macros.mm256_store_ps(
-                            node.target.left,
-                            C.BinaryOp(self.visit(node.target), node.op, node.value))
+                    return store_ps(
+                        node.target.left,
+                        C.BinaryOp(self.visit(node.target), node.op, node.value)
+                    )
                 else:
-                    return simd_macros.mm256_store_ps(
-                            C.Ref(node.target),
-                            C.BinaryOp(self.visit(node.target), node.op, node.value))
+                    return store_ps(
+                        C.Ref(node.target),
+                        C.BinaryOp(self.visit(node.target), node.op, node.value)
+                    )
         elif isinstance(node.op, C.Op.Add) and isinstance(node.value, C.FunctionCall):
             # TODO: Verfiy it's a vector intrinsic
             return C.Assign(node.target, C.FunctionCall(C.SymbolRef("_mm256_add_ps"), [node.value, node.target]))
@@ -102,17 +139,17 @@ class Vectorizer(ast.NodeTransformer):
                     self.transposed_buffers[curr_node.name] = idx
                     curr_node.name += "_transposed"
                 if isinstance(node.right, C.Constant) and node.target.value == 0.0:
-                    return simd_macros.mm256_load_ps(node.left)
+                    return load_ps(node.left)
                 else:
-                    return simd_macros.mm256_load_ps(C.Ref(node))
+                    return load_ps(C.Ref(node))
             else:
-                return C.FunctionCall(C.SymbolRef("_mm256_broadcast_ss"), [C.Ref(node)])
+                return broadcast_ss(C.Ref(node))
         elif isinstance(node.op, C.Op.Assign):
             node.right = self.visit(node.right)
             if isinstance(node.right, C.FunctionCall) and \
                     node.right.func.name in ["_mm256_load_ps", "_mm256_broadcast_ss"] and \
                     isinstance(node.left, C.SymbolRef) and node.left.type is not None:
-                node.left.type = simd.types.m256()
+                node.left.type = get_simd_type()()
                 self.symbol_table[node.left.name] = node.left.type
                 return node
             elif isinstance(node.left, C.BinaryOp) and util.contains_symbol(node.left, self.loop_var):
@@ -130,11 +167,10 @@ class Vectorizer(ast.NodeTransformer):
                         raise NotImplementedError()
                     self.transposed_buffers[curr_node.name] = idx
                     curr_node.name += "_transposed"
-                    # return simd_macros.mm256_store_ps(C.Ref(node.left), node.right)
                 if isinstance(node.left.right, C.Constant) and node.target.value == 0.0:
-                    return simd_macros.mm256_store_ps(node.left.left, node.right)
+                    return store_ps(node.left.left, node.right)
                 else:
-                    return simd_macros.mm256_store_ps(C.Ref(node.left), node.right)
+                    return store_ps(C.Ref(node.left), node.right)
             node.left = self.visit(node.left)
             return node
         elif isinstance(node.left, C.Constant) and self._is_vector_type(node.right):
@@ -144,7 +180,7 @@ class Vectorizer(ast.NodeTransformer):
         return node
 
     def _is_vector_type(self, node):
-        return node.name in self.symbol_table and isinstance(self.symbol_table[node.name], simd.types.m256)
+        return node.name in self.symbol_table and isinstance(self.symbol_table[node.name], get_simd_type())
 
     def visit_FunctionCall(self, node):
         node.args = [self.visit(a) for a in node.args]
@@ -153,7 +189,6 @@ class Vectorizer(ast.NodeTransformer):
             args = []
             for arg in node.args:
                 if isinstance(arg, C.Constant) and arg.value == 0:
-                    # args.append(C.SymbolRef("{" + ",".join(str(arg.value) for _ in range(latte.core.SIMDWIDTH)) + "}"))
                     args.append(C.FunctionCall(C.SymbolRef("_mm256_setzero_ps"), []))
                 else:
                     args.append(arg)
@@ -237,7 +272,7 @@ class VectorLoadStoresRegisterPromoter(ast.NodeTransformer):
                         reg = self._gen_register()
                         load_node, number, func = collector.loads[stmt]
                         seen[stmt] = (reg, load_node, func)
-                        new_body.append(C.Assign(C.SymbolRef(reg, ctree.simd.types.m256()),
+                        new_body.append(C.Assign(C.SymbolRef(reg, get_simd_type()()),
                                                  C.FunctionCall(C.SymbolRef(func), [load_node])))
                 if isinstance(s, C.FunctionCall) and "_mm" in s.func.name and "_store" in s.func.name:
                     if s.args[0].codegen() in seen:
