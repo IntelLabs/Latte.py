@@ -41,6 +41,15 @@ def get_simd_type():
         "AVX-512": simd.types.m512,
     }[latte.core.latte_vec_config]
 
+def simd_fma(*args):
+    assert len(args) == 3
+    fma_func = {
+        "AVX": "_mm256_fmadd_ps",
+        "AVX-2": "_mm256_fmadd_ps",
+        "AVX-512": "_mm512_fmadd_ps",
+    }[latte.core.latte_vec_config]
+    return C.FunctionCall(C.SymbolRef(fma_func), list(args))
+
 
 class RemoveIndexExprs(ast.NodeTransformer):
     def __init__(self, var):
@@ -174,6 +183,7 @@ class Vectorizer(ast.NodeTransformer):
             node.left = self.visit(node.left)
             return node
         elif isinstance(node.left, C.Constant) and self._is_vector_type(node.right):
+            assert False, "Deprecated: Need to update to use broadcast"
             node.left = C.FunctionCall(C.SymbolRef("_mm256_set1_ps"), [C.Cast(ctypes.c_float(), node.left)])
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
@@ -185,7 +195,11 @@ class Vectorizer(ast.NodeTransformer):
     def visit_FunctionCall(self, node):
         node.args = [self.visit(a) for a in node.args]
         if node.func.name in ["fmax", "fmin"]:
-            node.func.name = "_mm256_" + node.func.name[1:] + "_ps"
+            node.func.name = {
+                "AVX": "_mm256_{}_ps".format(node.func.name[1:]),
+                "AVX-2": "_mm256_{}_ps".format(node.func.name[1:]),
+                "AVX-512": "_mm512_{}_ps".format(node.func.name[1:]),
+            }[latte.core.latte_vec_config]
             args = []
             for arg in node.args:
                 if isinstance(arg, C.Constant) and arg.value == 0:
@@ -212,7 +226,7 @@ class FMAReplacer(ast.NodeTransformer):
         if isinstance(node.op, C.Op.Add) and isinstance(node.right, C.BinaryOp) and \
             isinstance(node.right.op, C.Op.Mul):
                 # FIXME: Check all are vector types
-            return C.FunctionCall(C.SymbolRef("_mm256_fmadd_ps"), [node.right.left, node.right.right, node.left])
+            return simd_fma(node.right.left, node.right.right, node.left)
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
         return node
