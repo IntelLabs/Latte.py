@@ -26,7 +26,7 @@ def load_ps(arg):
 def broadcast_ss(arg):
     if latte.core.latte_vec_config == "AVX-512":
         # AVX-512 doesn't support broadcast, use set1_ps and remove Ref node
-        assert isinstance(arg, C.Ref)
+        assert isinstance(arg, C.UnaryOp) and isinstance(arg.op, C.Op.Ref)
         arg = arg.arg
     return C.FunctionCall(C.SymbolRef({
         "AVX": "_mm256_broadcast_ss",
