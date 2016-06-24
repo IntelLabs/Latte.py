@@ -6,7 +6,6 @@ import numpy as np
 from latte import *
 import latte.util as util
 import time
-from tqdm import tqdm 
 import argparse
 
 def main():
