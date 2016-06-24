@@ -166,8 +166,10 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             #     if dim == 0:
             #         node.child_for.body = [ClampInputIndex(loop_var + "_inner", gen_clamp).visit(s) for s in node.child_for.body]
             body += [self.visit(s) for s in node.child_for.body]
-            if "inputs" in self.ensemble.tiling_info and \
-               any(dim == x[0] for x in self.ensemble.tiling_info["inputs"]):
+            if (self.direction == "forward" and "inputs" in self.ensemble.tiling_info and 
+                    any(dim == x[0] for x in self.ensemble.tiling_info["inputs"])) or (
+                    self.direction == "backward" and "grad_inputs" in self.ensemble.tiling_info and 
+                    any(dim == x[0] for x in self.ensemble.tiling_info["grad_inputs"])):
                 # body.insert(0, (
                 #     C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
                 #              C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))

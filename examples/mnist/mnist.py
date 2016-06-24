@@ -32,7 +32,7 @@ pool2 = MaxPoolingLayer(net, relu2, kernel=2, stride=2, pad=0)
 
 fc3   = FullyConnectedLayer(net, pool2, 128)
 relu3 = ReLULayer(net, fc3)
-fc4   = FullyConnectedLayer(net, relu3, 10)
+fc4   = FullyConnectedLayer(net, relu3, 16)
 
 net.compile()
 
@@ -74,7 +74,7 @@ for epoch in range(10):
 
         loss = compute_softmax_loss(output, prob, label_value)
 
-        if i % 100 == 0:
+        if i % 10 == 0:
             print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
 
         # Initialize gradients

@@ -118,7 +118,7 @@ def interchange_inner_loop(ast):
 
 class InnerLoopPusher(ast.NodeTransformer):
     def visit_For(self, node):
-        if node.init.left.name == "_neuron_index_1_inner":
+        if "_inner" in node.init.left.name:
             curr_node = node
             outer_body = node.body[:-1]
             node.body = [node.body[-1]]
@@ -150,14 +150,17 @@ def push_inner_loop_down(ast):
 
 
 class PragmaSIMDInserter(ast.NodeTransformer):
+    def __init__(self, loop_var):
+        self.loop_var = loop_var
+
     def visit_For(self, node):
         node.body = [self.visit(s) for s in node.body]
-        if node.init.left.name.endswith("_inner"):
+        if node.init.left.name == self.loop_var:
             node.pragma = "simd"
         return node
 
-def insert_pragma_simd(ast):
-    return PragmaSIMDInserter().visit(ast)
+def insert_pragma_simd(ast, loop_var):
+    return PragmaSIMDInserter(loop_var).visit(ast)
 
 def move_inner_index(tree):
     class Transformer(ast.NodeTransformer):

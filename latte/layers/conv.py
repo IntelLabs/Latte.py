@@ -103,6 +103,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     conv_ens.tile('grad_weights', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad_weights', dim=1, factor=SIMDWIDTH)
+    conv_ens.privatize('grad_weights')
     conv_ens.transpose('grad_weights', -2, -1)
 
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
@@ -110,14 +111,19 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     conv_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
     bias_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+    conv_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
     conv_ens.vectorize(direction="backward", loop_var="i_inner", factor=SIMDWIDTH)
     bias_ens.vectorize(direction="backward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+    conv_ens.parallelize(direction="backward", loop_var="i")
+    conv_ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "j"))
+    conv_ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "k"))
 
     factor = 8
     while output_width % factor != 0:
         factor -= 1
     conv_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
     bias_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
+    bias_ens.privatize('grad_bias')
 
     factor = 4
     while output_width % factor != 0:

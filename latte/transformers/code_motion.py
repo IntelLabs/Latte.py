@@ -12,7 +12,7 @@ class InvariantLoadStoreLifter(ast.NodeTransformer):
 
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
-        if node.init.left.name == "_neuron_index_1":
+        if node.init.left.name == "_neuron_index_0":
             # Don't lift out of outer most loop
             return node
         pre_stmts = []

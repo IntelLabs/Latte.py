@@ -27,10 +27,10 @@ import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
 import latte.optimizations as optimizer
 
-num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
-os.environ["OMP_NUM_THREADS"] = str(num_threads)
-
-os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
+# num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
+# os.environ["OMP_NUM_THREADS"] = str(num_threads)
+# 
+# os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
 SIMDWIDTH = 8
 TILE_SIZE = SIMDWIDTH
@@ -46,7 +46,8 @@ def compute_tiled_shape(buf_shape, field, ensemble):
     for dim, factor in ensemble.tiling_info[field]:
         if field in ensemble.batch_fields:
             dim += 1
-        elif "grad_" in field and field != "grad_inputs":
+        # elif "grad_" in field and field != "grad_inputs":
+        elif field in ensemble.private_info:
             dim += 1  # offset for omp_get_thread_num()
         assert buf_shape[dim] % factor == 0, "Invalid tiling factor"
         buf_shape[dim] //= factor
@@ -167,20 +168,17 @@ class Net:
                 _iter.append(1)
         shape += value.shape
 
-        if field in neuron.batch_fields:
+        if field in neuron.batch_fields or field in ensemble.private_info:
             shape.insert(0, self.batch_size)
+            # Never uniform across batch dimension
+            uniform_across_dim.insert(0, False)
 
         buff = util.zeros(shape, value.dtype)
         self.buffers[ensemble.name + field] = buff
         self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
-        if field in neuron.batch_fields:
-            # Never uniform across batch dimension
-            self.buffer_dim_info[ensemble.name + field].insert(0, False)
 
-        if "grad_" in field:
-            self.buffers[ensemble.name + field] = util.zeros((self.batch_size, ) + buff.shape, np.float32)
-        elif field not in neuron.zero_init_fields:
-            if field in neuron.batch_fields:
+        if field not in neuron.zero_init_fields:
+            if field in neuron.batch_fields or field in ensemble.private_info:
                 # Skip batch dimension
                 uniform_across_dim = uniform_across_dim[1:]
             for index in np.ndindex(*_iter):
@@ -189,7 +187,7 @@ class Net:
                 for i in range(len(uniform_across_dim)):
                     if not uniform_across_dim[i]:
                         _index += (index[i], )
-                if field in neuron.batch_fields:
+                if field in neuron.batch_fields or field in ensemble.private_info:
                     for i in range(self.batch_size):
                         buff[i][_index] = attr
                 else:
@@ -354,15 +352,39 @@ class Net:
         Net.unique_id += 1
         return str(self.unique_id)
 
-    def _parallelize_loops(self, func_def, ndim):
-        for loop in func_def.defn:
-            if ndim > 1:
-                loop.pragma = "omp for collapse(2)"
-            else:
-                loop.pragma = "omp for collapse(2)"
+    def _parallelize_loops(self, func_def, loopvars):
+        class Parallelizer(ast.NodeTransformer):
+            def __init__(self, loopvars):
+                self.loopvars = loopvars
 
-            if self.nowait:
-                loop.pragma += " nowait"
+            def visit_For(self, node):
+                node.body = [self.visit(s) for s in node.body]
+                if node.init.left.name in self.loopvars:
+                    return StringTemplate("""
+                    parallel_for(0,$looplen / $loopincr,
+                      [=](int low, int high) {
+                        for (int tmp_$loopvar = low; tmp_$loopvar < high; tmp_$loopvar++) {
+                          int $loopvar = tmp_$loopvar * $loopincr;
+                          $body;
+                        }
+                      });
+                    """, {
+                        "looplen": node.test.right,
+                        "loopvar": node.test.left,
+                        "loopincr": node.incr.value,
+                        "body": node.body
+                    })
+
+                return node
+        return Parallelizer(loopvars).visit(func_def)
+        # for loop in func_def.defn:
+        #     if ndim > 1:
+        #         loop.pragma = "omp for collapse(2)"
+        #     else:
+        #         loop.pragma = "omp for collapse(2)"
+
+        #     if self.nowait:
+        #         loop.pragma += " nowait"
 
     def _reshape_buffer(self, args, ensemble, tiled_buffers):
         for arg in args:
@@ -385,16 +407,19 @@ class Net:
     def _gen_graph_nodes_from_loop(self, loop, id):
         loopvar1 = C.SymbolRef(loop.init.left.name)
         looplen1 = loop.test.right
+        loopincr = loop.incr.value
         body = loop.body
         return StringTemplate("""
-        std::vector<ContinueNode> $node_list;
-        for (int __z = 0; __z < $looplen1; __z++) {
-          $node_list.push_back(ContinueNode(&graph, [=]() {
-            int $loopvar1 = __z;
+        std::vector<ContinueNode *> $node_list;
+        for (int __z = 0; __z < $looplen1 / $loopincr; __z++) {
+          ContinueNode *node = new ContinueNode(&graph, [=]() {
+            int $loopvar1 = __z * $loopincr;
             $body;
-          }));
+          });
+          for (int i = 0; i < $loopincr; i++)
+            $node_list.push_back(node);
         }
-        """, {'loopvar1': loopvar1, 'looplen1': looplen1,
+        """, {'loopvar1': loopvar1, 'looplen1': looplen1, 'loopincr': loopincr,
               'body': body, 
               'node_list': C.SymbolRef("node_list_" + str(id))
         })
@@ -402,38 +427,41 @@ class Net:
     def _gen_graph_edges_for_loop(self, loop, source_id, sink_id):
         loopvar1 = C.SymbolRef(loop.init.left.name)
         looplen1 = loop.test.right
+        loopincr = loop.incr.value.value
         return StringTemplate("""
           for (int i = 0; i < $looplen1; ++i) {
             make_edge($prev_node_list[i], $node_list[i]);
           }
         """, {
-            'looplen1': C.Constant(looplen1.value), 
+            'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr),
             'node_list': C.SymbolRef("node_list_" + str(sink_id)),
             'prev_node_list': C.SymbolRef("node_list_" + str(source_id)),
         })
 
     def _gen_execute_for_loop(self, loop, id):
         looplen1 = loop.test.right
+        loopincr = loop.incr.value.value
         return StringTemplate("""
-          for (int i = 0; i < $looplen1; ++i) {
-            $node_list[i].execute();
+          for (int i = 0; i < $looplen1; i+=$loopincr) {
+            $node_list[i]->execute();
           }
         """, {
-            'looplen1': C.Constant(looplen1.value), 
+            'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr), 
             'node_list': C.SymbolRef("node_list_" + str(id)),
         })
 
     def _gen_reduce_for_loop(self, loop, var, size, id):
         looplen1 = loop.test.right
+        loopincr = loop.incr.value.value
         return StringTemplate("""
             {
-              ContinueNode $reduce_node(&graph, [=]() {
+              ContinueNode *$reduce_node = new ContinueNode(&graph, [=]() {
               parallel_for(0,$size,
                 [=](int low, int high) {
                   #pragma simd
-                  for (int x = low; x != high; ++x) {
+                  for (int x = low; x < high; ++x) {
                     float sum = _$arr[x];
-                    #pragma unroll
+                    #pragma unroll($batch_size - 1)
                     for (int i = 1; i < $batch_size; ++ i) {
                       sum += _$arr[i * $size + x];
                     }
@@ -441,7 +469,7 @@ class Net:
                   }
                 });
               });
-              for (int i = 0; i < $looplen1; ++i) {
+              for (int i = 0; i < $looplen1; i+=$loopincr) {
                 make_edge($node_list[i], $reduce_node);
               }
             };
@@ -450,7 +478,7 @@ class Net:
                   'arr': C.SymbolRef(var),
                   'node_list': C.SymbolRef("node_list_" + str(id)),
                   'reduce_node': C.SymbolRef("reduce_node_" + str(id)),
-                  'looplen1': C.Constant(looplen1.value)
+                  'looplen1': C.Constant(looplen1.value),  'loopincr': C.Constant(loopincr)
                   })
 
     def _gen_transposes(self, transposed_buffers):
@@ -460,10 +488,19 @@ class Net:
             curr_body = []
             shape = self.buffers[buffer_name].shape
 
-            node = util.gen_for("x0", 0, shape[0], curr_body)
+            # node = util.gen_for("x0", 0, shape[0], curr_body)
+            node = StringTemplate("""
+            parallel_for(0, $len,
+              [=](int low, int high) {
+                for (int x0 = low; x0 < high; x0++) {
+                  $body
+                } 
+              }
+            );
+            """, {'body': curr_body, 'len': C.Constant(shape[0])})
 
             parfor_len = 2 if len(shape) - trans_dim - 1 > 1 else 1
-            node.pragma = "omp for collapse({})".format(parfor_len)
+            # node.pragma = "omp for collapse({})".format(parfor_len)
 
             idx = [C.SymbolRef("x0")]
             for i, d in enumerate(shape[1:-trans_dim-1]):
@@ -522,7 +559,11 @@ class Net:
 
         if "value" in ensemble.tiling_info:
             for dim, factor in ensemble.tiling_info["value"]:
-                assert shape[dim] % factor == 0, "Invalid tiling factor"
+                if shape[dim] % factor != 0:
+                    raise Exception(("Invalid tiling factor of {} on dimension "
+                        + "{} for {}'s value buffer (shape={})").format(factor,
+                            dim, ensemble.name, shape))
+                    
                 shape[dim] //= factor
                 shape.append(factor)
                 loop_vars.append(loop_vars[dim + 1] + "_inner")
@@ -623,20 +664,30 @@ class Net:
         # Basic type inference and constant propogation
         func_def = analyzer.type_infer(func_def)
         func_def = optimizer.propogate_constants(func_def)
+        for loop_var1, loop_var2 in ensemble.loops_to_swap[direction]:
+            loop1 = util.find_loop(func_def, loop_var1)
+            loop2 = util.find_loop(func_def, loop_var2)
+            loop1.init, loop2.init = loop2.init, loop1.init
+            loop1.test, loop2.test = loop2.test, loop1.test
+            loop1.incr, loop2.incr = loop2.incr, loop1.incr
 
         if direction in ensemble.vectorize_info:
             func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
                     ensemble.vectorize_info[direction][0])
-            func_def = transformers.push_inner_loop_down(func_def)
+            # func_def = transformers.push_inner_loop_down(func_def)
             func_def = vectorizer.register_promote_vector_loads_stores(func_def)
             func_def = code_motion.lift_invariant_load_stores(func_def)
             func_def = vectorizer.fuse_multiply_adds(func_def)
 
-        self._parallelize_loops(func_def, ensemble.ndim)
+        if direction in ensemble.simd_info:
+            for loopvar in ensemble.simd_info[direction]:
+                func_def = transformers.insert_pragma_simd(func_def, loopvar)
 
         if direction in ensemble.unroll_info:
             unroll_var, unroll_factor = ensemble.unroll_info[direction]
             unroller.unroll_loop(func_def, unroll_var, unroll_factor)
+
+        self._parallelize_loops(func_def, ensemble.parallel_info[direction])
 
         type_sig = []
         casts = []
@@ -668,7 +719,8 @@ class Net:
         reduce_vars = []
         func_def.defn[0].reduce_vars = reduce_vars
         for arg in args:
-            if "grad_" in arg.arg and "inputs" not in arg.arg:
+            # if "grad_" in arg.arg and "inputs" not in arg.arg:
+            if arg.arg.replace(ensemble.name, "") in ensemble.private_info:
                 reduce_vars.append(arg.arg)
         return casts, func_def.defn, args
 

@@ -22,6 +22,14 @@ class Ensemble:
         self._transpose_info = {}
         self._vectorize_info = {}
         self._unroll_info = {}
+        self._parallel_info = {"forward": [], "backward": []}
+        self._private_info = set()
+        self.loops_to_swap = {'forward': [], 'backward': []}
+        self.simd_info = {'forward': [], 'backward': []}
+
+    @property
+    def private_info(self):
+        return self._private_info
 
     @property
     def tiling_info(self):
@@ -39,6 +47,16 @@ class Ensemble:
     def unroll_info(self):
         return self._unroll_info
 
+    @property
+    def parallel_info(self):
+        return self._parallel_info
+
+    def simd(self, direction, loop_var):
+        self.simd_info[direction].append(loop_var)
+
+    def privatize(self, buffer):
+        self.private_info.add(buffer)
+
     def tile(self, field, dim, factor):
         if field not in self.tiling_info:
             self.tiling_info[field] = []
@@ -55,6 +73,13 @@ class Ensemble:
 
     def unroll(self, direction, loop_var, factor):
         self._unroll_info[direction] = (loop_var, factor)
+
+    def parallelize(self, direction, loop_var):
+        self._parallel_info[direction].append(loop_var)
+
+    def swap_loops(self, direction, loop_vars):
+        assert isinstance(loop_vars, tuple) and len(loop_vars) == 2
+        self.loops_to_swap[direction].append(loop_vars)
 
     @property
     def batch_fields(self):
@@ -87,9 +112,8 @@ class Ensemble:
         def get():
             if field in self.tiling_info:
                 untiled = buffer
-                if "grad_" in field and field != "grad_inputs":
+                if field in self.private_info:
                     untiled = untiled[0]
-                    # untiled = np.sum(untiled, axis=0)
                 shape = untiled.shape
                 tiled_shape = list(shape)
                 if not isinstance(self, ActivationEnsemble) or field not in ["value", "grad"]:
@@ -268,3 +292,7 @@ class EnsembleGroup:
     @property
     def tiling_info(self):
         return self.ensembles[-1].tiling_info
+
+    @property
+    def paralell_info(self):
+        return self.ensembles[-1].parallel_info

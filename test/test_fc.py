@@ -30,7 +30,7 @@ def test_forward_backward():
     for n in range(8):
         expected[n, :] += bias_value.reshape((24,))
 
-    check_equal(actual, expected, 1e-5)
+    check_equal(actual, expected, 1e-4)
 
     top_grad = fc2.get_grad()
     top_grad = np.random.rand(*top_grad.shape)
@@ -53,7 +53,8 @@ def test_forward_backward():
     check_equal(bias_grad, expected_bias_grad, atol=1e-4)
 
 def test_forward_backward_not_flat():
-    net = Net(8)
+    batch_size = 32
+    net = Net(batch_size)
     data = MemoryDataLayer(net, (8, 24, 24))
     conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=1)
     fc1 = FullyConnectedLayer(net, conv1, 24)
@@ -61,7 +62,7 @@ def test_forward_backward_not_flat():
 
     net.compile()
 
-    data_value = np.random.rand(8, 8, 24, 24)
+    data_value = np.random.rand(batch_size, 8, 24, 24)
     data.set_value(data_value)
 
     bias = fc1.get_bias()
@@ -71,9 +72,9 @@ def test_forward_backward_not_flat():
 
     weights = fc1.get_weights()
     actual  = fc1.get_value()
-    expected = np.dot(conv1.get_value().reshape(8, 16 * 24 * 24), weights.reshape(24, 16 * 24 * 24).transpose())
+    expected = np.dot(conv1.get_value().reshape(batch_size, 16 * 24 * 24), weights.reshape(24, 16 * 24 * 24).transpose())
 
-    for n in range(8):
+    for n in range(batch_size):
         expected[n, :] += bias_value.reshape((24,))
 
     check_equal(actual, expected, 1e-5)

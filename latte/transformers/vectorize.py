@@ -34,21 +34,17 @@ class Vectorizer(ast.NodeTransformer):
         node.body = [self.visit(s) for s in node.body]
         if node.init.left.name == self.loop_var:
             assert node.test.right.value == latte.core.SIMDWIDTH
-            index = C.Assign(
-                    C.SymbolRef(node.init.left.name, ctypes.c_int()),
-                    C.Constant(0)
-                )
-            return [index] + [RemoveIndexExprs(self.loop_var).visit(s) for s in node.body]
-            if isinstance(node.incr, C.UnaryOp):
-                node.incr = C.AddAssign(node.incr.arg, C.Constant(latte.core.SIMDWIDTH))
-            else:
-                node.incr.value = C.Constant(latte.core.SIMDWIDTH)
+            # index = C.Assign(
+            #         C.SymbolRef(node.init.left.name, ctypes.c_int()),
+            #         C.Constant(0)
+            #     )
+            return [RemoveIndexExprs(self.loop_var).visit(s) for s in node.body]
         return node
 
     def visit_AugAssign(self, node):
         node.value = self.visit(node.value)
         if util.contains_symbol(node.target, self.loop_var):
-            if node.target.right.name != self.loop_var:
+            if not util.contains_symbol(node.target.right, self.loop_var):
                 target = self.visit(deepcopy(node.target))
                 curr_node = node.target
                 idx = 1
@@ -56,7 +52,7 @@ class Vectorizer(ast.NodeTransformer):
                     curr_node = curr_node.left
                     idx += 1
                 curr_node.left = curr_node.left.left
-                node = C.ArrayRef(node, C.SymbolRef(self.loop_var))
+                node.target = C.ArrayRef(node.target, C.SymbolRef(self.loop_var))
                 while not isinstance(curr_node, C.SymbolRef):
                     curr_node = curr_node.left
                 if curr_node.name in self.transposed_buffers and self.transposed_buffers[curr_node.name] != idx:
@@ -91,7 +87,7 @@ class Vectorizer(ast.NodeTransformer):
     def visit_BinaryOp(self, node):
         if isinstance(node.op, C.Op.ArrayRef):
             if util.contains_symbol(node, self.loop_var):
-                if node.right.name != self.loop_var:
+                if not util.contains_symbol(node.right, self.loop_var):
                     curr_node = node
                     idx = 1
                     while curr_node.left.right.name != self.loop_var:
@@ -166,7 +162,14 @@ class Vectorizer(ast.NodeTransformer):
 
 def vectorize_loop(ast, loopvar):
     transformer = Vectorizer(loopvar)
-    ast = transformer.visit(ast)
+    try:
+        ast = transformer.visit(ast)
+    except Exception as e:
+        print("ERROR: Failed to vectorize loop with variable {}".format(loopvar))
+        print("---------- BEGIN AST ----------")
+        print(ast)
+        print("---------- END AST   ----------")
+        raise e
     return ast, transformer.transposed_buffers
 
 class FMAReplacer(ast.NodeTransformer):
@@ -207,7 +210,7 @@ class VectorLoadCollector(ast.NodeVisitor):
         super().visit(node)
 
     def visit_FunctionCall(self, node):
-        if "_mm" in node.func.name and ("_load_" in node.func.name or "_set1" in node.func.name):
+        if "_mm" in node.func.name and ("_load_" in node.func.name or "_set1" in node.func.name or "_broadcast" in node.func.name):
             if node.codegen() not in self.loads:
                 self.loads[node.args[0].codegen()] = [node.args[0], 0, node.func.name]
             self.loads[node.args[0].codegen()][1] += 1
