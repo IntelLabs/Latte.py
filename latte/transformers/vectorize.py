@@ -31,7 +31,7 @@ def broadcast_ss(arg):
     return C.FunctionCall(C.SymbolRef({
         "AVX": "_mm256_broadcast_ss",
         "AVX-2": "_mm256_broadcast_ss",
-        "AVX-512": "_mm256_set1_ps",
+        "AVX-512": "_mm512_set1_ps",
     }[latte.core.latte_vec_config]), [arg])
 
 def get_simd_type():
