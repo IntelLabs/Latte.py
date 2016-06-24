@@ -2,8 +2,8 @@ import numpy as np
 from latte import *
 from latte.solvers import sgd_update
 import random
-# from data_loader import load_data, load_images
-from latte.math import compute_softmax_loss, softmax_loss_backprop, compute_seg_accuracy
+from data_loader import load_data, load_images
+from latte.math import compute_seg_softmax_loss, seg_softmax_loss_backprop, compute_seg_accuracy
 
 
 batch_size = 1
@@ -110,8 +110,8 @@ for key, value in net.buffers.items():
     bytes += value.nbytes
     sizes[key] = value.nbytes
 
-for key in sorted(sizes, key=sizes.get, reverse=True):
-    print(key + ": " + str(sizes[key]))
+#for key in sorted(sizes, key=sizes.get, reverse=True):
+#    print(key + ": " + str(sizes[key]))
 
 print("TOTAL MEM: " + str(bytes))
 
@@ -162,10 +162,10 @@ prob = np.zeros_like(output)
 
 output_grad = np.zeros_like(output)
 
-# training_images_list = load_data(dataset="training", path="CityScapes/list/")
-# test_images_list = load_data(dataset="testing", path="CityScapes/list/")
-training_images_list = [np.random.rand(8, 306, 306) for _ in range(100)]
-test_images_list = [np.random.rand(8, 306, 306) for _ in range(100)]
+training_images_list = load_data(dataset="training", path="CityScapes/list/")
+test_images_list = load_data(dataset="testing", path="CityScapes/list/")
+#training_images_list = [np.random.rand(8, 306, 306) for _ in range(100)]
+#test_images_list = [np.random.rand(8, 306, 306) for _ in range(100)]
 
 num_train = len(training_images_list)
 num_test = len(test_images_list)
@@ -176,9 +176,10 @@ for epoch in range(10):
     random.shuffle(train_batches)
     print("Epoch {} - Training...".format(epoch))
     for i, n in enumerate(train_batches):
-        # train_data, train_label = load_images(training_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
-        train_data = np.array(training_images_list[n:n+batch_size])
-        train_label = np.random.rand(batch_size, 8, 306, 306) * 100
+        train_data, train_label = load_images(training_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
+        print(train_data.shape)
+        #train_data = np.array(training_images_list[n:n+batch_size])
+        #train_label = np.random.rand(batch_size, 8, 306, 306) * 100
         data.set_value(train_data)
         label.set_value(train_label)
         net.forward()
@@ -186,14 +187,14 @@ for epoch in range(10):
         # Compute loss
         output = fc8_pascal.get_value()
 
-        loss = compute_softmax_loss(output, prob, shrink_label.get_value())
+        loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value())
 
         if i % 100 == 0:
             print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
 
         # Initialize gradients
-        softmax_loss_backprop(output_grad, prob, shrink_label.get_value())
-        fc4.set_grad(output_grad)
+        seg_softmax_loss_backprop(output_grad, prob, shrink_label.get_value())
+        fc8_pascal.set_grad(output_grad)
 
         net.backward()
         lr = base_lr * (1 + gamma * i)**power
@@ -208,11 +209,11 @@ for epoch in range(10):
     print("Epoch {} - Testing...".format(epoch))
     acc = 0
     for i, n in enumerate(range(0, num_test, batch_size)):
-        #test_data, test_label  = load_images(test_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
-        test_data = np.array(test_images_list[n:n+batch_size])
-        test_label = np.random.rand(batch_size, 8, 306, 306) * 100
-        data.set_value(test_data[n:n+batch_size])
-        label.set_value = test_label[n:n+batch_size]
+        test_data, test_label  = load_images(test_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
+        #test_data = np.array(test_images_list[n:n+batch_size])
+        #test_label = np.random.rand(batch_size, 8, 306, 306) * 100
+        data.set_value(test_data)
+        label.set_value(test_label)
         net.test()
 
         acc += compute_seg_accuracy(fc8_pascal.get_value(), shrink_label.get_value())
