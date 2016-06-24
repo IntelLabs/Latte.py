@@ -156,7 +156,8 @@ class Vectorizer(ast.NodeTransformer):
         elif isinstance(node.op, C.Op.Assign):
             node.right = self.visit(node.right)
             if isinstance(node.right, C.FunctionCall) and \
-                    node.right.func.name in ["_mm256_load_ps", "_mm256_broadcast_ss"] and \
+                    ("load_ps" in node.right.func.name or
+                     "broadcast_ss" in node.right.func.name) and \
                     isinstance(node.left, C.SymbolRef) and node.left.type is not None:
                 node.left.type = get_simd_type()()
                 self.symbol_table[node.left.name] = node.left.type
@@ -203,7 +204,11 @@ class Vectorizer(ast.NodeTransformer):
             args = []
             for arg in node.args:
                 if isinstance(arg, C.Constant) and arg.value == 0:
-                    args.append(C.FunctionCall(C.SymbolRef("_mm256_setzero_ps"), []))
+                    args.append(C.FunctionCall(C.SymbolRef({
+                        "AVX": "_mm256_setzero_ps",
+                        "AVX-2": "_mm256_setzero_ps",
+                        "AVX-512": "_mm512_setzero_ps"
+                    }[latte.core.latte_vec_config]), []))
                 else:
                     args.append(arg)
             node.args = args
@@ -300,7 +305,7 @@ class VectorLoadStoresRegisterPromoter(ast.NodeTransformer):
                     s = replacer.visit(s)
                 new_body.append(s)
             for target, value in stores:
-                new_body.append(C.FunctionCall(C.SymbolRef("_mm256_store_ps"), [target, C.SymbolRef(value)]))
+                new_body.append(store_ps(target, C.SymbolRef(value)))
             node.body = util.flatten(new_body)
         return node
 
