@@ -33,6 +33,7 @@ import latte.optimizations as optimizer
 # os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
 
 latte_vec_config = os.getenv("LATTE_VEC_CONFIG", "AVX-2")
+print("Latte running with vector instruction set {}".format(latte_vec_config))
 vec_configs = {
     "AVX": 8,
     "AVX-2": 8,

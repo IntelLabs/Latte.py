@@ -4,6 +4,7 @@
 import unittest
 import numpy as np
 from latte import *
+import latte.util as util
 import time
 from tqdm import tqdm 
 import argparse
@@ -16,7 +17,6 @@ def main():
     batch_size = 64
     net = Net(batch_size)
     net.force_backward = True
-    print(args.d)
     channels, height, width, kernel, stride, pad = args.d[1:]
     ofm = args.d[0]
     print("Benchmark Config")
@@ -28,7 +28,6 @@ def main():
     data = MemoryDataLayer(net, (channels, height, width))
     conv1 = ConvLayer(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
 
-    print("Compiling...")
     net.compile()
 
     # data.set_value(np.random.rand(batch_size, channels, height, width))
@@ -48,7 +47,7 @@ def main():
     forward_t_total = 0.0
     backward_t_total = 0.0
     num_trials = 5
-    print("Running trials")
+    print("Running {} trials".format(num_trials))
     for _ in range(num_trials):
         t = time.time()
         net.forward_tasks[1]()
@@ -66,11 +65,25 @@ def main():
     flops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3))
     forward_flops = flops + batch_size * ofm * oh * ow
     backward_flops = 2 * flops + batch_size * ofm * oh * ow
-    print("FP    : {} ms, {} GFLOPS/s".format(forward_t_total / num_trials * 1000, 
-                                             (forward_flops * num_trials * 1e-9) / forward_t_total))
+    freq = util.get_cpu_freq()
+    print("cpu_freq = {} GHz".format(freq * 1e-9))
+    print("===== FP =====")
+    print("    {} ms".format(forward_t_total / num_trials * 1000))
+    print("    {} gflops/s".format(
+        (forward_flops * num_trials * 1e-9) / forward_t_total))
+    print("    {} flops/cycle".format(
+        (forward_flops / ((forward_t_total / num_trials) * freq))
+    ))
+    print("==============")
     if run_backward:
-        print("BP+WU : {} ms, {} GFLOPS/s".format(backward_t_total / num_trials * 1000, 
-                                                 (backward_flops * num_trials * 1e-9) / backward_t_total))
+        print("==== BP+WU ===")
+        print("    {} ms".format(backward_t_total / num_trials * 1000))
+        print("    {} gflops/s".format(
+            (backward_flops * num_trials * 1e-9) / backward_t_total))
+        print("    {} flops/cycle".format(
+            (backward_flops / ((backward_t_total / num_trials) * freq))
+        ))
+        print("==============")
 
 if __name__ == '__main__':
     main()

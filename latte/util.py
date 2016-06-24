@@ -8,6 +8,10 @@ import numpy as np
 import latte
 from copy import deepcopy
 import sys
+import ctree
+from ctree.templates.nodes import FileTemplate
+import ctypes
+import os
 
 MPI_ENABLED = True
 try:
@@ -25,13 +29,13 @@ def mpi_compile(project):
         module = MPI.COMM_WORLD.bcast(None, root=0)
     return module
 
-# _file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/aligned_malloc.c")
-# 
-# c_file = C.CFile("aligned_malloc", [_file])
-# module = ctree.nodes.Project([c_file]).codegen()
-# aligned_malloc = module.get_callable("aligned_malloc", 
-#     ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_long))
-# 
+_file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) + "/templates/utils.c")
+ 
+c_file = C.CFile("util", [_file])
+module = ctree.nodes.Project([c_file]).codegen()
+get_cpu_freq = module.get_callable("get_cpu_freq", 
+    ctypes.CFUNCTYPE(ctypes.c_double))
+
 # 
 # def aligned(shape, dtype, alignment=64, init=np.empty):
 #     if isinstance(shape, list):
