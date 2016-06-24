@@ -15,7 +15,7 @@ class Ensemble:
         global ENSEMBLE_COUNTER 
         ENSEMBLE_COUNTER += 1
         self.name = "ensemble{}".format(ENSEMBLE_COUNTER)
-        self.pad = tuple(0 for _ in neurons.shape)
+        self.pad = tuple((0, 0) for _ in neurons.shape)
         self.parent_group = None
         self.buffer_tiled_dims = {}
         self._tiling_info = {}
@@ -132,11 +132,11 @@ class Ensemble:
                 to_return = buffer
                 if "grad_" in field and field != "grad_inputs":
                     to_return = to_return[0]
-            if field in ["value", "grad"] and any(p > 0 for p in self.pad):
+            if field in ["value", "grad"] and any(p != (0, 0) for p in self.pad):
                 _slice = [slice(None)]
                 for p in self.pad:
-                    if p > 0:
-                        _slice.append(slice(p, -p))
+                    if p != (0, 0):
+                        _slice.append(slice(p[0], -p[1]))
                     else:
                         _slice.append(slice(None))
                 to_return = to_return[tuple(_slice)]
@@ -149,30 +149,38 @@ class Ensemble:
 
         def set(value):
             dest = buffer
-            if field in ["value", "grad"] and any(p > 0 for p in self.pad):
+            if field in ["value", "grad"] and any(p != (0, 0) for p in self.pad):
                 _slice = [slice(None)]
-                for p in self.pad:
-                    if p > 0:
-                        _slice.append(slice(p, -p))
+                for i, p in enumerate(self.pad):
+                    if p != (0, 0):
+                        _slice.append(slice(p[0], -p[1]))
                     else:
                         _slice.append(slice(None))
                 # dest = dest[tuple(_slice)]
             else:
-                _slice = tuple(slice(None) for _ in dest.shape)
+                _slice = [slice(None) for _ in dest.shape]
+
             if field in self.tiling_info:
                 tiled = value
+                for dim, _ in self.tiling_info[field]:
+                    if field in self.batch_fields:
+                        dim += 1
+                    if not isinstance(self, ActivationEnsemble):
+                        _slice.append(_slice[dim])
+                        _slice[dim] = slice(None)
+                    tiled = util.tile(tiled, dim)
                 tiled_shape = list(dest.shape)
                 if not isinstance(self, ActivationEnsemble) or field not in ["value", "grad"]:
                     for dim, factor in self.tiling_info[field]:
                         if field in self.batch_fields:
                             dim += 1
+                        if tiled_shape[dim] < factor:
+                            factor = tiled_shape[dim]
+                        elif tiled_shape[dim] % factor != 0:
+                            raise NotImplementedError()
                         tiled_shape[dim] //= factor
                         tiled_shape.append(factor)
                 dest = dest.reshape(tiled_shape)
-                for dim, _ in self.tiling_info[field]:
-                    if field in self.batch_fields:
-                        dim += 1
-                    tiled = util.tile(tiled, dim)
                 dest[_slice] = tiled
             else:
                 dest[_slice] = value
@@ -211,7 +219,7 @@ class DataEnsemble(Ensemble):
 
     def set_padding(self, *padding):
         super().set_padding(*padding)
-        pad = ((0, 0), ) + tuple((p, p) for p in padding)
+        pad = ((0, 0), ) + padding
         self.value = np.lib.pad(self.value, pad, 'constant')
         self.reorder_4d_5d = module.get_callable("reorder_4d_5d", 
             ctypes.CFUNCTYPE(None, np.ctypeslib.ndpointer(np.float32, self.value.ndim, self.value.shape), 

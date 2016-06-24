@@ -58,60 +58,68 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride, dilation=1):
 def check_equal(actual, expected, atol=1e-6, rtol=1e-5):
     assert np.allclose(actual, expected, atol=atol, rtol=rtol)
 
-def test_forward_backward():
-    for dilation in range(1, 2):
-        net = Net(3)
-        channels, height, width = 16, 14, 14
-        pad = 1
-        data = MemoryDataLayer(net, (channels, height, width))
-        conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
-        conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
+def check_forward_backward(dilation=1, input_shape=(16, 14, 14)):
+    net = Net(3)
+    channels, height, width = input_shape
+    pad = 1
+    data = MemoryDataLayer(net, (channels, height, width))
+    conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
+    conv2 = ConvLayer(net, conv1, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
 
-        _input = np.random.rand(3, channels, height, width)
-        net.compile()
-        data.set_value(_input)
+    _input = np.random.rand(3, channels, height, width)
+    net.compile()
+    data.set_value(_input)
 
 
-        weights = conv1.get_weights()
-        bias    = conv1.get_bias()
-        bias    = np.random.rand(*bias.shape)
-        conv1.set_bias(bias)
+    weights = conv1.get_weights()
+    bias    = conv1.get_bias()
+    bias    = np.random.rand(*bias.shape)
+    conv1.set_bias(bias)
 
-        conv1_expected = reference_conv_forward(_input, weights, bias,
-                pad, 1, dilation)
+    conv1_expected = reference_conv_forward(_input, weights, bias,
+            pad, 1, dilation)
 
-        weights = conv2.get_weights()
-        bias    = conv2.get_bias()
-        bias    = np.random.rand(*bias.shape)
-        conv2.set_bias(bias)
+    weights = conv2.get_weights()
+    bias    = conv2.get_bias()
+    bias    = np.random.rand(*bias.shape)
+    conv2.set_bias(bias)
 
-        expected = reference_conv_forward(conv1_expected, weights, bias,
-                pad, 1, dilation)
-        net.forward()
+    expected = reference_conv_forward(conv1_expected, weights, bias,
+            pad, 1, dilation)
+    net.forward()
 
-        check_equal(data.get_value(), _input)
-        check_equal(conv1.get_value(), conv1_expected)
-        actual  = conv2.get_value()
-        check_equal(actual, expected)
+    check_equal(data.get_value(), _input)
+    check_equal(conv1.get_value(), conv1_expected)
+    actual  = conv2.get_value()
+    check_equal(actual, expected)
 
-        top_grad = conv2.get_grad()
-        top_grad = np.random.rand(*top_grad.shape)
-        conv2.set_grad(top_grad)
+    top_grad = conv2.get_grad()
+    top_grad = np.random.rand(*top_grad.shape)
+    conv2.set_grad(top_grad)
 
-        weights = conv2.get_weights()
-        net.backward()
+    weights = conv2.get_weights()
+    net.backward()
 
-        expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-            reference_conv_backward(top_grad, conv1_expected,
-                    weights, pad, 1, dilation)
+    expected_bot_grad, expected_weights_grad, expected_bias_grad = \
+        reference_conv_backward(top_grad, conv1_expected,
+                weights, pad, 1, dilation)
 
-        bot_grad = conv1.get_grad()
-        check_equal(bot_grad, expected_bot_grad, atol=1e-4)
+    bot_grad = conv1.get_grad()
+    check_equal(bot_grad, expected_bot_grad, atol=1e-4)
 
-        # weights_grad = np.sum(conv2.get_grad_weights(), axis=0)
-        weights_grad = conv2.get_grad_weights()
-        check_equal(weights_grad, expected_weights_grad, atol=1e-4)
+    # weights_grad = np.sum(conv2.get_grad_weights(), axis=0)
+    weights_grad = conv2.get_grad_weights()
+    check_equal(weights_grad, expected_weights_grad, atol=1e-4)
 
-        # bias_grad = np.sum(conv2.get_grad_bias(), axis=0)
-        bias_grad = conv2.get_grad_bias()
-        check_equal(bias_grad, expected_bias_grad)
+    # bias_grad = np.sum(conv2.get_grad_bias(), axis=0)
+    bias_grad = conv2.get_grad_bias()
+    check_equal(bias_grad, expected_bias_grad)
+
+def test_padding():
+    check_forward_backward(dilation=1, input_shape=(3, 14, 14))
+
+def test_medium():
+    check_forward_backward(dilation=1, input_shape=(16, 14, 14))
+
+def test_dilation():
+    check_forward_backward(dilation=2, input_shape=(16, 14, 14))

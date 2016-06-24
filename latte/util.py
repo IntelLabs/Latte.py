@@ -358,14 +358,20 @@ def untile(buffer, dim):
 def tile(buffer, dim):
     shape = buffer.shape
     tiled_shape = list(shape)
-    tiled_shape[dim] //= latte.core.SIMDWIDTH
-    tiled_shape.append(latte.core.SIMDWIDTH)
+    factor = latte.core.SIMDWIDTH
+    if tiled_shape[dim] < factor:
+        factor = tiled_shape[dim]
+    elif tiled_shape[dim] % latte.core.SIMDWIDTH != 0:
+        raise NotImplementedError()
+    
+    tiled_shape[dim] //= factor
+    tiled_shape.append(factor)
     tiled = np.zeros(tiled_shape, dtype=buffer.dtype)
     for untiled_index in np.ndindex(shape):
         tiled_index = list(untiled_index)
         dim_index = tiled_index[dim]
-        tiled_index[dim] = dim_index // latte.core.SIMDWIDTH
-        tiled_index.append(dim_index % latte.core.SIMDWIDTH)
+        tiled_index[dim] = dim_index // factor
+        tiled_index.append(dim_index % factor)
         tiled[tuple(tiled_index)] = buffer[untiled_index]
     return tiled
 

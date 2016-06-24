@@ -200,9 +200,9 @@ class Net:
 
     def _initialize_value_grad(self, ensemble):
         for field in ["value", "grad"]:
-            _shape = (self.batch_size, ) + \
-                    tuple(p * 2 + d for p, d in zip(ensemble.pad, ensemble.shape))
-            self.buffers[ensemble.name + field] = util.zeros(_shape, np.float32)
+            shape = (self.batch_size, ) + \
+                   tuple(p[0] + p[1] + d for p, d in zip(ensemble.pad, ensemble.shape))
+            self.buffers[ensemble.name + field] = util.zeros(shape, np.float32)
 
     def _init_buffers(self, ensemble):
         neuron = ensemble.neurons.flat[0]
@@ -260,8 +260,8 @@ class Net:
                 self.forward_tasks.append(
                     Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
                 for field in ["value", "grad"]:
+                    buffer = self.buffers[ensemble.name + field]
                     if field in ensemble.tiling_info:
-                        buffer = self.buffers[ensemble.name + field]
                         buf_shape = compute_tiled_shape(list(buffer.shape), field, ensemble)
                         buffer = buffer.reshape(buf_shape)
                         self.buffers[ensemble.name + field] = buffer

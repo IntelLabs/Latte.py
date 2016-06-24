@@ -54,8 +54,8 @@ def main():
     np.dot(A, B, out=C)
     blas_backward_time = time.time() - t
 
-    forward_flops = 2 * M * N * K
-    backward_flops = 2 * M * N * K * 2
+    forward_flops = 2 * M * N * K + M * N
+    backward_flops = 2 * M * N * K * 2 + M * N
     print("FP      : {0:.3f} ms, {1:.3f} GFLOPS/s".format(forward_t_total / num_trials * 1000, 
                                                           (forward_flops * num_trials * 1e-9) / forward_t_total))
     print("BLAS FP : {0:.3f} ms, {1:.3f} GFLOPS/s".format(blas_forward_time * 1000, (forward_flops * 1e-9) / blas_forward_time))
