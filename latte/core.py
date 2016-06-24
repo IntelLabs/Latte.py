@@ -46,10 +46,18 @@ except KeyError:
 
 forward_unroll_factor = 8
 backward_unroll_factor = 4
-
+transpose_path = {
+    "AVX": "/templates/transpose_256.tmp.c",
+    "AVX-2": "/templates/transpose_256.tmp.c",
+    "AVX-512": "/templates/transpose_512.tmp.c"
+}[latte_vec_config]
 package_path = os.path.dirname(os.path.abspath(__file__))
+
+transpose = FileTemplate(package_path + transpose_path)
+
 include = FileTemplate(package_path + "/templates/includes.tmpl.c",
-        {"LATTE_PACKAGE_PATH": StringTemplate(package_path)})
+        {"LATTE_PACKAGE_PATH": StringTemplate(package_path),
+        "TRANSPOSE": transpose})
 
 def compute_tiled_shape(buf_shape, field, ensemble):
     for dim, factor in ensemble.tiling_info[field]:
