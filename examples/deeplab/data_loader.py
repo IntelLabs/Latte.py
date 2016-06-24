@@ -49,5 +49,4 @@ def load_images(images_list, data_folder=None, is_color=True, crop_size=0, start
         if len(line.split()) == 2:
             labels.append(np.transpose(crop_label))
 
-    return (images, labels)
-
+    return (np.array(images), np.array(labels))
