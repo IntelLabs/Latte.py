@@ -7,8 +7,6 @@ import ctree.simd.macros as simd_macros
 from ctree.transformations import PyBasicConversions
 import latte.util as util
 
-SIMDWIDTH = 8
-
 class RegisterPromoteValueRefs(ast.NodeTransformer):
     def __init__(self, ensemble, direction, batch_size, target_loop_var):
         self.ensemble = ensemble

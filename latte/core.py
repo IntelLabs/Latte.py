@@ -57,7 +57,9 @@ transpose = FileTemplate(package_path + transpose_path)
 
 include = FileTemplate(package_path + "/templates/includes.tmpl.c",
         {"LATTE_PACKAGE_PATH": StringTemplate(package_path),
-        "TRANSPOSE": transpose})
+        "TRANSPOSE": transpose,
+        "SIMDWIDTH": C.Constant(SIMDWIDTH)
+        })
 
 def compute_tiled_shape(buf_shape, field, ensemble):
     for dim, factor in ensemble.tiling_info[field]:
