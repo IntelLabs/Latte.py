@@ -26,7 +26,7 @@ def main():
     print("    width      = {}".format(width))
     print("    ofm        = {}".format(ofm))
     data = MemoryDataLayer(net, (channels, height, width))
-    conv1 = ConvLayer(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
+    conv1 = ConvLayerNoBias(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
 
     net.compile()
 
@@ -63,8 +63,8 @@ def main():
     else:
         raise NotImplementedError()
     flops = (batch_size * channels * ofm * oh * ow * (2 * 3 * 3))
-    forward_flops = flops + batch_size * ofm * oh * ow
-    backward_flops = 2 * flops + batch_size * ofm * oh * ow
+    forward_flops = flops
+    backward_flops = 2 * flops
     freq = util.get_cpu_freq()
     print("cpu_freq = {} GHz".format(freq * 1e-9))
     print("===== FP =====")
