@@ -7,20 +7,21 @@ class Mapping:
     def __init__(self, mapping_func, clamp):
         self.mapping_func = mapping_func
         self.clamp = clamp
-        ast = util.get_ast(mapping_func).body[0]
+        tree = util.get_ast(mapping_func).body[0]
 
         closure_vars = inspect.getclosurevars(mapping_func)
         for var, value in closure_vars.nonlocals.items():
-            ast = util.inline_variable(var, value, ast)
+            value = ast.parse(str(value)).body[0].value
+            tree = util.inline_variable(var, value, tree)
 
-        # Inline _neuron_index into ast
-        for i, arg in enumerate(ast.args.args):
-            i += 1  # offset batch
-            ast = util.inline_variable(arg.arg, "_neuron_index_{}".format(i), ast)
-
-        self.ast = ast
+        self.ast = tree
         self.ndim = len(self.ast.args.args)
         self.shape = mapping_func(*[1 for _ in range(self.ndim)])
+
+    def set_arg(self, dim, value):
+        if self.mapping_func == one_to_one:
+            return
+        self.ast = util.inline_variable(self.ast.args.args[dim].arg, value, self.ast)
 
     def get_offset(self, dim):
         if self.mapping_func == one_to_one:

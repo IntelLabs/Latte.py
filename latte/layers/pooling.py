@@ -75,11 +75,15 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         tiled_dims = input_ensemble.tiling_info["value"]
         for dim, factor in tiled_dims:
             pooling_ens.tile('inputs', dim=dim, factor=factor)
+        pooling_ens.tile('value', dim=0, factor=latte.core.SIMDWIDTH)
+        pooling_ens.tile('mask_j', dim=0, factor=latte.core.SIMDWIDTH)
+        pooling_ens.tile('mask_k', dim=0, factor=latte.core.SIMDWIDTH)
 
     if "grad" in input_ensemble.tiling_info:
-        tiled_dims = input_ensemble.tiling_info["value"]
+        tiled_dims = input_ensemble.tiling_info["grad"]
         for dim, factor in tiled_dims:
             pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
+        pooling_ens.tile('grad', dim=0, factor=latte.core.SIMDWIDTH)
 
     return pooling_ens
 

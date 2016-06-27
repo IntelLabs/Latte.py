@@ -30,7 +30,7 @@ import latte.optimizations as optimizer
 # num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
 # os.environ["OMP_NUM_THREADS"] = str(num_threads)
 # 
-# os.environ["KMP_AFFINITY"] = "compact,granularity=fine,1,0"
+os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
 
 latte_vec_config = os.getenv("LATTE_VEC_CONFIG", "AVX-2")
 print("Latte running with vector instruction set {}".format(latte_vec_config))
@@ -248,6 +248,7 @@ class Net:
             else:
                 value = getattr(neuron, field)
                 if isinstance(value, numbers.Real):
+                    ensemble.scalar_fields.append(field)
                     self._initialize_numeric_field(ensemble, field)
                 elif isinstance(value, np.ndarray):
                     self._initialize_ndarray_field(ensemble, field)
@@ -335,6 +336,7 @@ class Net:
 
             # print(c_file)
             c_file = transformers.simple_fusion(c_file)
+
             new_body = []
             incr = -1
             for stmt in c_file.body[1].defn:
@@ -342,21 +344,23 @@ class Net:
                 if isinstance(stmt, C.For):
                     if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
                         new_body.extend(stmt.pre_trans)
-                    loopvar1 = C.SymbolRef(stmt.init.left.name)
-                    looplen1 = stmt.test.right
-                    body = stmt.body
-                    new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
-                    if incr > 0:
-                        new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
-                    else:
-                        execute_stmt = self._gen_execute_for_loop(stmt, incr)
+                    # loopvar1 = C.SymbolRef(stmt.init.left.name)
+                    # looplen1 = stmt.test.right
+                    # body = stmt.body
+                    # new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
+                    stmt = transformers.convert_parallel_loops(stmt)
+                    new_body.append(stmt)
+                    # if incr > 0:
+                    #     new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
+                    # else:
+                    #     execute_stmt = self._gen_execute_for_loop(stmt, incr)
                     if hasattr(stmt, 'reduce_vars') and len(stmt.reduce_vars) > 0:
                         for var in stmt.reduce_vars:
                             size = np.prod(self.buffers[var].shape[1:])
                             new_body.append(self._gen_reduce_for_loop(stmt, var, size, incr))
                 else:
                     new_body.append(stmt)
-            c_file.body[1].defn = new_body + [execute_stmt]
+            c_file.body[1].defn = new_body # + [execute_stmt]
             c_file.body[1].defn = casts + c_file.body[1].defn
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
@@ -390,20 +394,21 @@ class Net:
             def visit_For(self, node):
                 node.body = [self.visit(s) for s in node.body]
                 if node.init.left.name in self.loopvars:
-                    return StringTemplate("""
-                    parallel_for(0,$looplen / $loopincr,
-                      [=](int low, int high) {
-                        for (int tmp_$loopvar = low; tmp_$loopvar < high; tmp_$loopvar++) {
-                          int $loopvar = tmp_$loopvar * $loopincr;
-                          $body;
-                        }
-                      });
-                    """, {
-                        "looplen": node.test.right,
-                        "loopvar": node.test.left,
-                        "loopincr": node.incr.value,
-                        "body": node.body
-                    })
+                    node.parallel = True
+                    # return StringTemplate("""
+                    # parallel_for(0,$looplen / $loopincr,
+                    #   [=](int low, int high) {
+                    #     for (int tmp_$loopvar = low; tmp_$loopvar < high; tmp_$loopvar++) {
+                    #       int $loopvar = tmp_$loopvar * $loopincr;
+                    #       $body;
+                    #     }
+                    #   });
+                    # """, {
+                    #     "looplen": node.test.right,
+                    #     "loopvar": node.test.left,
+                    #     "loopincr": node.incr.value,
+                    #     "body": node.body
+                    # })
 
                 return node
         return Parallelizer(loopvars).visit(func_def)
@@ -484,8 +489,8 @@ class Net:
         looplen1 = loop.test.right
         loopincr = loop.incr.value.value
         return StringTemplate("""
-            {
-              ContinueNode *$reduce_node = new ContinueNode(&graph, [=]() {
+            //{
+            //  ContinueNode *$reduce_node = new ContinueNode(&graph, [=]() {
               parallel_for(0,$size,
                 [=](int low, int high) {
                   #pragma simd
@@ -498,11 +503,11 @@ class Net:
                     _$arr[x] = sum;
                   }
                 });
-              });
-              for (int i = 0; i < $looplen1; i+=$loopincr) {
-                make_edge($node_list[i], $reduce_node);
-              }
-            };
+            //  });
+            //  for (int i = 0; i < $looplen1; i+=$loopincr) {
+            //    make_edge($node_list[i], $reduce_node);
+            //  }
+            //};
             """, {'size': C.Constant(size),
                   'batch_size': C.Constant(self.batch_size),
                   'arr': C.SymbolRef(var),
@@ -602,6 +607,7 @@ class Net:
                 shape[dim] //= factor
                 shape.append(factor)
                 loop_vars.append(loop_vars[dim + 1] + "_inner")
+                loop_vars[dim + 1] += "_outer"
 
         # Reverse ([::-1]) iteration space for row major indexing
         loop_vars = loop_vars[::-1]
@@ -628,14 +634,6 @@ class Net:
             body = []
 
             for dim in range(0, ensemble.ndim):
-                offset = mapping.get_offset(dim)
-                input_offset = "_input_offset_{}".format(dim + 1)
-
-                # If the offset is not a constant, we need to collect
-                # dependent statements
-                if not isinstance(offset, ast.Num):
-                    body += util.get_dependent_statements(mapping_func.body[:-1], offset.id)
-
                 is_tiled_dim = "inputs" in ensemble.tiling_info and \
                     any(tiled_dim == dim 
                         for tiled_dim, _ in ensemble.tiling_info["inputs"])
@@ -645,9 +643,27 @@ class Net:
                         if tiled_dim == dim:
                             # factor is now the tiling factor for tiled_dim
                             break
+                    mapping.set_arg(dim, ast.BinOp(
+                            ast.BinOp(
+                                ast.Name("_neuron_index_{}_outer".format(dim + 1), ast.Load()), 
+                                ast.Mult(),
+                                ast.Num(factor)),
+                            ast.Add(),
+                            ast.Name("_neuron_index_{}_inner".format(dim + 1), ast.Load())
+                    ))
+                else:
+                    mapping.set_arg(dim, ast.Name("_neuron_index_{}".format(dim + 1), ast.Store()))
+                offset = mapping.get_offset(dim)
+                input_offset = "_input_offset_{}".format(dim + 1)
 
+                # If the offset is not a constant, we need to collect
+                # dependent statements
+                if not isinstance(offset, ast.Num):
+                    body += util.get_dependent_statements(mapping_func.body[:-1], offset)
+
+                if is_tiled_dim:
                     outer_offset = ast.BinOp(offset, ast.Div(), ast.Num(factor))
-                    body.append(ast.Assign([ast.Name(input_offset, ast.Store())], outer_offset))
+                    body.append(ast.Assign([ast.Name(input_offset + "_outer", ast.Store())], outer_offset))
                     inner_offset = ast.BinOp(offset, ast.Mod(), ast.Num(factor))
                     body.append(ast.Assign([ast.Name(input_offset + "_inner", ast.Store())], inner_offset))
                 else:
@@ -769,7 +785,8 @@ class Net:
         shape_str = "".join("[{}]".format(d) for d in shape)
 
         body.insert(0, StringTemplate(
-            "$type (* __restrict $arg_name)$shape = ($type (*)$cast) _$arg_name;",
+            # "$type (* __restrict $arg_name)$shape = ($type (*)$cast) _$arg_name;",
+            "$type (* $arg_name)$shape = ($type (*)$cast) _$arg_name;",
             {
                 "arg_name": C.SymbolRef(name), 
                 "shape": C.SymbolRef(shape_str),

@@ -1,6 +1,7 @@
 import numpy as np
 from ..neuron import Neuron
 from ..ensemble import Ensemble
+import latte
 import itertools
 
 class ReLUNeuron(Neuron):
@@ -27,5 +28,10 @@ def ReLULayer(net, input_ensemble):
         relu_neurons[i] = ReLUNeuron()
 
     relu_ens = net.init_activation_ensemble(relu_neurons, input_ensemble)
+    # if "value" in input_ensemble.tiling_info:
+    #     relu_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.core.SIMDWIDTH)
+
+    # if "grad" in input_ensemble.tiling_info:
+    #     relu_ens.vectorize(direction="backward", loop_var="_neuron_index_1_inner", factor=latte.core.SIMDWIDTH)
 
     return relu_ens

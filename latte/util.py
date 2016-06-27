@@ -66,8 +66,8 @@ def empty(shape, dtype):
 def zeros(shape, dtype):
     return aligned(shape, dtype, init=np.zeros)
 
-def get_dependent_statements(statements, target):
-    deps = set([target])
+def get_dependent_statements(statements, stmt):
+    deps = collect_loads(stmt)
     dep_statements = []
     for statement in statements:
         for dep in deps:
@@ -149,7 +149,7 @@ class InlineVariable(ast.NodeTransformer):
 
     def visit_Name(self, node):
         if node.id == self.variable:
-            return ast.parse(str(self.value)).body[0].value
+            return self.value
         return node
 
 def inline_variable(variable, value, ast):

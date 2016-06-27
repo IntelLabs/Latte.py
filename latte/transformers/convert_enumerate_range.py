@@ -37,7 +37,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
 
     def visit_For(self, node):
         if isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
-            (self.direction == "forward" and node.target.id == "_neuron_index_1") or \
+            (self.direction == "forward" and node.target.id == "_neuron_index_1_outer") or \
             (self.direction == "backward" and node.target.id == "_neuron_index_0"):
             new_body = []
             for statement in node.body:
@@ -174,9 +174,9 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                 #     C.Assign(C.SymbolRef(input_offset + "_inner_index", ctypes.c_int()),
                 #              C.Add(C.SymbolRef(loop_var + "_inner"), C.SymbolRef(input_offset + "_inner")))))
                 outer_loop = C.For(
-                    C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
-                    C.Lt(C.SymbolRef(loop_var), C.Constant(length // latte.core.SIMDWIDTH)),
-                    C.AddAssign(C.SymbolRef(loop_var), C.Constant(1)),
+                    C.Assign(C.SymbolRef(loop_var + "_outer", ctypes.c_int()), C.Constant(0)),
+                    C.Lt(C.SymbolRef(loop_var + "_outer"), C.Constant(length // latte.core.SIMDWIDTH)),
+                    C.AddAssign(C.SymbolRef(loop_var + "_outer"), C.Constant(1)),
                     []
                 )
                 self.tiled_loops.append(outer_loop)

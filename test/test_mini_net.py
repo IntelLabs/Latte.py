@@ -40,7 +40,7 @@ def test_forward_backward():
 
     expected = (expected > 0.0) * expected
 
-    check_equal(actual, expected, 1e-5)
+    check_equal(actual, expected, 1e-4)
 
     expected_pooling_output, expected_mask = reference_pooling_forward(expected, 2, 0, 2)
 

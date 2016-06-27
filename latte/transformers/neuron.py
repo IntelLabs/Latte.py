@@ -56,11 +56,8 @@ class NeuronTransformer(ast.NodeTransformer):
                 if field in self.ensemble.tiling_info:
                     for dim, _ in self.ensemble.tiling_info[field]:
                         dim += 1  # offset for batch dimension
+                        args[dim].id += "_outer" 
                         args.append(ast.Name("_neuron_index_{}_inner".format(dim), ast.Load()))
-                # Tile 1st (non-batch) dimension
-                if False:
-                    args[1].id += "_outer"
-                    args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
                 for i, p in enumerate(self.ensemble.pad):
                     if p[0] > 0:
                         args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
@@ -101,13 +98,16 @@ class NeuronTransformer(ast.NodeTransformer):
                     #     args[-1].id += "_outer"
 
             if node.attr in ["value", "grad"]:
-                if node.attr in self.ensemble.tiling_info:
-                    for dim, _ in self.ensemble.tiling_info[node.attr]:
-                        dim += 1  # offset for batch dimension
-                        args.append(ast.Name("_neuron_index_{}_inner".format(dim), ast.Load()))
                 for i, p in enumerate(self.ensemble.pad):
                     if p[0] > 0:
                         args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
+
+            if node.attr in self.ensemble.scalar_fields and \
+                    node.attr in self.ensemble.tiling_info:
+                for dim, _ in self.ensemble.tiling_info[node.attr]:
+                    dim += 1  # offset for batch dimension
+                    args[dim].id += "_outer" 
+                    args.append(ast.Name("_neuron_index_{}_inner".format(dim), ast.Load()))
 
             # return updated indedxing expression
             return ast.Subscript(ast.Name(name, ast.Load()), 
@@ -142,11 +142,11 @@ class NeuronTransformer(ast.NodeTransformer):
                     index = value.slice.value.elts[dim]
                     if isinstance(index, ast.Name):
                         orig_var = index.id
+                        value.slice.value.elts[dim] = ast.Name(orig_var + "_outer", ast.Load())
                         value.slice.value.elts.append(ast.Name(orig_var + "_inner", ast.Load()))
                     elif isinstance(value.slice.value.elts[dim], ast.Num) and \
                             index.n == 0:
-                        value.slice.value.elts.append(
-                            ast.Name("_input_offset_{}_inner".format(dim), ast.Load()))
+                        value.slice.value.elts.append(ast.Num(0))
                     else:
                         raise NotImplementedError(type(value.slice.value.elts[dim]))
             if "inputs" in value.value.id or "grad_inputs" in value.value.id:
@@ -156,11 +156,21 @@ class NeuronTransformer(ast.NodeTransformer):
                 # if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
                 #     value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
             
-                value.slice.value.elts[1:ndim + 1] = [
-                    ast.BinOp(value, ast.Add(), 
-                        ast.Name("_input_offset_{}".format(i + 1), ast.Load())) 
-                    for i, value in enumerate(value.slice.value.elts[1:ndim + 1])
-                ]
+                for i in range(1, ndim + 1):
+                    elem = value.slice.value.elts[i]
+                    tile = False
+                    if field in self.ensemble.tiling_info:
+                        for dim, _ in self.ensemble.tiling_info[field]:
+                            if dim + 1 == i:
+                                tile = True
+                    if tile:
+                        value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(), 
+                                ast.Name("_input_offset_{}_outer".format(i), ast.Load())) 
+                        value.slice.value.elts[i + ndim] = ast.BinOp(value.slice.value.elts[i + ndim], ast.Add(), 
+                                ast.Name("_input_offset_{}_inner".format(i), ast.Load())) 
+                    else:
+                        value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(), 
+                                ast.Name("_input_offset_{}".format(i), ast.Load())) 
             # return child node
             return value
         else:

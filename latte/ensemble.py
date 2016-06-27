@@ -27,6 +27,8 @@ class Ensemble:
         self.loops_to_swap = {'forward': [], 'backward': []}
         self.simd_info = {'forward': [], 'backward': []}
 
+        self.scalar_fields = ["value", "grad"]
+
     @property
     def private_info(self):
         return self._private_info
@@ -302,5 +304,5 @@ class EnsembleGroup:
         return self.ensembles[-1].tiling_info
 
     @property
-    def paralell_info(self):
+    def parallel_info(self):
         return self.ensembles[-1].parallel_info

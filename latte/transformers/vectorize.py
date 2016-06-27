@@ -9,6 +9,13 @@ import ctypes
 from copy import deepcopy
 from ctree.templates.nodes import StringTemplate
 
+def set_zero_ps():
+    return C.FunctionCall(C.SymbolRef({
+        "AVX": "_mm256_setzero_ps",
+        "AVX-2": "_mm256_setzero_ps",
+        "AVX-512": "_mm512_setzero_ps"
+    }[latte.core.latte_vec_config]), [])
+
 def store_ps(target, value):
     return C.FunctionCall(C.SymbolRef({
         "AVX": "_mm256_store_ps",
@@ -191,9 +198,6 @@ class Vectorizer(ast.NodeTransformer):
                     return store_ps(C.Ref(node.left), node.right)
             node.left = self.visit(node.left)
             return node
-        elif isinstance(node.left, C.Constant) and self._is_vector_type(node.right):
-            assert False, "Deprecated: Need to update to use broadcast"
-            node.left = C.FunctionCall(C.SymbolRef("_mm256_set1_ps"), [C.Cast(ctypes.c_float(), node.left)])
         node.left = self.visit(node.left)
         node.right = self.visit(node.right)
         return node
@@ -212,11 +216,7 @@ class Vectorizer(ast.NodeTransformer):
             args = []
             for arg in node.args:
                 if isinstance(arg, C.Constant) and arg.value == 0:
-                    args.append(C.FunctionCall(C.SymbolRef({
-                        "AVX": "_mm256_setzero_ps",
-                        "AVX-2": "_mm256_setzero_ps",
-                        "AVX-512": "_mm512_setzero_ps"
-                    }[latte.core.latte_vec_config]), []))
+                    args.append(set_zero_ps())
                 else:
                     args.append(arg)
             node.args = args
