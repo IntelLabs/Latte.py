@@ -52,16 +52,14 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     else:
         pad_h, pad_w = pad, pad
 
+    # BEGIN OPTIMIZATION
     if input_ensemble.shape[0] < latte.core.SIMDWIDTH:
         input_channel_pad = latte.core.SIMDWIDTH - input_ensemble.shape[0]
     elif input_ensemble.shape[0] % latte.core.SIMDWIDTH != 0:
         input_channel_pad = latte.core.SIMDWIDTH - (input_ensemble.shape[0] % latte.core.SIMDWIDTH)
     else:
         input_channel_pad = 0
-
-
-    # remainder = num_filters % SIMDWIDTH
-    # num_filters += remainder
+    # END OPTIMIZATION
 
     input_channels, input_height, input_width = input_ensemble.shape
     output_width = ((input_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
@@ -101,6 +99,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     bias_ens = net.init_activation_ensemble(bias_neurons, conv_ens)
 
     # Begin Optimizations
+    # reorder_storage
     input_ensemble.tile('value', dim=0, factor=SIMDWIDTH)
     input_ensemble.tile('grad', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('inputs', dim=0, factor=SIMDWIDTH)

@@ -86,10 +86,14 @@ class Net:
         self.ensembles = []
         self.connections = []
         self.buffers = {}
+
         self.forward_tasks = []
         self.backward_tasks = []
+
         self.connections_map = {}
+
         self.buffer_dim_info = {}
+
         self.reshaped_buffers = {}
         self.nowait = False
         self.force_backward = False
@@ -134,6 +138,9 @@ class Net:
             arr.fill(0.0)
 
     def _get_uniformity(self, ensemble, field):
+        """
+        Could be done symbolically?
+        """
         _shape = ensemble.shape
         uniform_across_dim = [True for _ in range(len(_shape))]
         first = getattr(ensemble.neurons.flat[0], field)
@@ -150,6 +157,7 @@ class Net:
         source_name = conn.source.name
         buff = self.buffers[source_name + source_target]
         if conn.reshape is not None:
+            assert False, "Deprecated"
             buff = buff.reshape((self.batch_size, ) + conn.reshape)
         self.buffers[buffer_name] = buff
 
@@ -219,6 +227,8 @@ class Net:
 
     def _initialize_value_grad(self, ensemble):
         for field in ["value", "grad"]:
+            # p = (bottom_pad, top_pad)
+            # d = size of a dimension
             shape = (self.batch_size, ) + \
                    tuple(p[0] + p[1] + d for p, d in zip(ensemble.pad, ensemble.shape))
             self.buffers[ensemble.name + field] = util.zeros(shape, np.float32)
@@ -353,6 +363,7 @@ class Net:
             c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
             # c_file = transformers.remove_repeated_declarations(c_file)
             module = util.mpi_compile(ctree.nodes.Project([c_file]))
+            # get_callable(functions_handle, type_signature)
             fn = module.get_callable(direction + _id, type_sig)
             tasks.append(Task(fn, arg_bufs))
 
@@ -573,9 +584,14 @@ class Net:
                 self.connections_map[ensemble], self.buffer_dim_info)
         fn_def = transformer.visit(fn_def)
 
+        # Grab seen variables
+        args = [ast.arg(arg, None) for arg in transformer.seen_vars]
+
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)]
         shape = list(ensemble.shape)
 
+        # rename to reorder storage
+        # TODO: ASSUMING VALUE AND GRAD ARE TILED THE SAME
         if "value" in ensemble.tiling_info:
             for dim, factor in ensemble.tiling_info["value"]:
                 if shape[dim] % factor != 0:
@@ -594,8 +610,6 @@ class Net:
         body = fn_def.body
         body = [util.gen_loop_nest(body, loop_vars, loop_ranges)]
 
-        args = [ast.arg(arg, None) for arg in transformer.seen_vars]
-
         # This placeholder function is used to wrap the body of statements for
         # convenience, after transformations have completed, the function body
         # is returned and this function node will be discarded
@@ -603,6 +617,7 @@ class Net:
                 ast.arguments(args, None, [], [], None, []), body,
                 [], None)
 
+        # TODO: MAKE THIS A FUNCTION
         for loop in func_def.body:
             for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
@@ -646,6 +661,7 @@ class Net:
         func_def = transformers.convert_tuple_subscripts(func_def)
         # convert semantic (domain) ast nodes introduced by the neuron
         # transformer
+        # FIXME: Deprecate tiled_buffers
         func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
         func_def = PyBasicConversions().visit(func_def)
         func_def = transformers.PatternMatchMath().visit(func_def)
@@ -683,14 +699,19 @@ class Net:
         # Basic type inference and constant propogation
         func_def = analyzer.type_infer(func_def)
         func_def = optimizer.propogate_constants(func_def)
+
         for loop_var1, loop_var2 in ensemble.loops_to_swap[direction]:
             loop1 = util.find_loop(func_def, loop_var1)
             loop2 = util.find_loop(func_def, loop_var2)
+            # loop.init = (int x = 0)
+            # loop.test = (x < 5)
+            # loop.incr = (x += 1)
             loop1.init, loop2.init = loop2.init, loop1.init
             loop1.test, loop2.test = loop2.test, loop1.test
             loop1.incr, loop2.incr = loop2.incr, loop1.incr
 
         if direction in ensemble.vectorize_info:
+            # RAJ hack here
             func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
                     ensemble.vectorize_info[direction][0])
             # func_def = transformers.push_inner_loop_down(func_def)
@@ -710,6 +731,7 @@ class Net:
 
         type_sig = []
         casts = []
+        # FIXME: Check if still needed
         self._reshape_buffer(args, ensemble, tiled_buffers)
 
         for arg in args:
