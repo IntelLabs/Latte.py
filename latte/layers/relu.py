@@ -11,7 +11,7 @@ class ReLUNeuron(Neuron):
         self.grad_inputs = []
 
     def forward(self):
-        self.value = max(self.input, 0.0)
+        self.value = max(self.input, float(0.0))
 
     def backward(self):
         # self.grad_input = ifelse(self.input > 0.0, self.grad, 0.0)
@@ -28,6 +28,14 @@ def ReLULayer(net, input_ensemble):
         relu_neurons[i] = ReLUNeuron()
 
     relu_ens = net.init_activation_ensemble(relu_neurons, input_ensemble)
+    relu_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
+    relu_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
+    if "value" in input_ensemble.tiling_info:
+        relu_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
+        relu_ens.parallelize(direction="backward", loop_var="_neuron_index_1_outer")
+    else:
+        relu_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
+        relu_ens.parallelize(direction="backward", loop_var="_neuron_index_1")
     # if "value" in input_ensemble.tiling_info:
     #     relu_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.core.SIMDWIDTH)
 
