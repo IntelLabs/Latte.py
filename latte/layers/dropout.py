@@ -44,6 +44,8 @@ def DropoutLayer(net, input_ensemble, ratio=0.5):
     # neurons = neurons.reshape(input_ensemble.shape)
 
     dropout_ens = net.init_activation_ensemble(neurons, input_ensemble)
+    dropout_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
+    dropout_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
         for dim, factor in tiled_dims:
@@ -53,5 +55,10 @@ def DropoutLayer(net, input_ensemble, ratio=0.5):
         dropout_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
         dropout_ens.tile('randval', dim=0, factor=latte.config.SIMDWIDTH)
         dropout_ens.tile('ratio', dim=0, factor=latte.config.SIMDWIDTH)
+        dropout_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
+        dropout_ens.parallelize(direction="backward", loop_var="_neuron_index_1_outer")
+    else:
+        dropout_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
+        dropout_ens.parallelize(direction="backward", loop_var="_neuron_index_1")
 
     return dropout_ens

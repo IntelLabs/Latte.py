@@ -62,11 +62,12 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
     ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
     ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
 
-    ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
-    factor = 8
-    while net.batch_size % factor != 0:
-        factor -= 1
-    ens.unroll(direction="forward", loop_var="_neuron_index_0", factor=factor)
+    if "OPENCL" not in latte.config.parallel_strategy:
+        ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
+        factor = 8
+        while net.batch_size % factor != 0:
+            factor -= 1
+        ens.unroll(direction="forward", loop_var="_neuron_index_0", factor=factor)
     ens.parallelize(direction="forward", loop_var="_neuron_index_0")
     ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
     ens.parallelize(direction="backward", loop_var="_neuron_index_0")
@@ -78,13 +79,14 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
     # ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "_neuron_index_1"))
     for i in range(1, input_ensemble.ndim):
         ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "__unique_loopvar{}".format(i)))
+
     if "value" in input_ensemble.tiling_info:
-        ens.vectorize(direction="backward", loop_var="__unique_loopvar0_inner", factor=latte.config.SIMDWIDTH)
-    ens.parallelize(direction="backward", loop_var="__unique_loopvar0")
-    factor = 8
-    while net.batch_size % factor != 0:
-        factor -= 1
-    ens.unroll(direction="backward", loop_var="_neuron_index_0", factor=factor)
+        if "OPENCL" not in latte.config.parallel_strategy:
+            ens.vectorize(direction="backward", loop_var="__unique_loopvar0_inner", factor=latte.config.SIMDWIDTH)
+            factor = 8
+            while net.batch_size % factor != 0:
+                factor -= 1
+            ens.unroll(direction="backward", loop_var="_neuron_index_0", factor=factor)
     # bias_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
     # bias_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
     # bias_ens.unroll(direction="forward", loop_var="_neuron_index_0", factor=8)
@@ -102,6 +104,6 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
     bias_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
     bias_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
     bias_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
-    bias_ens.parallelize(direction="backward", loop_var="__unique_loopvar0_outer")
+    bias_ens.parallelize(direction="backward", loop_var="_neuron_index_1_outer")
 
     return EnsembleGroup(ens, bias_ens)

@@ -48,6 +48,8 @@ class BasicTypeInference(ast.NodeTransformer):
         elif isinstance(node, C.FunctionCall):
             if node.func.name in ["MAX", "MIN", "max", "min", "floor"]:
                 return ctree.types.get_common_ctype([self._get_type(a) for a in node.args])
+        elif isinstance(node, C.Cast):
+            return node.type
         raise NotImplementedError(ast.dump(node))
     
     def visit_FunctionCall(self, node):

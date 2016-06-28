@@ -66,5 +66,13 @@ def InterpolationLayer(net, input_ensemble, pad=0, resize_factor=1.0):
         return range(c, c+1), range(in_y, in_y+1), range(in_x, in_x+1)
 
     net.add_connections(input_ensemble, interpolation_ens, mapping, clamp=True)
+    interpolation_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
+    interpolation_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
+    if "value" in input_ensemble.tiling_info:
+        interpolation_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
+        # interpolation_ens.parallelize(direction="backward", loop_var="_neuron_index_1_outer")
+    else:
+        interpolation_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
+        # interpolation_ens.parallelize(direction="backward", loop_var="_neuron_index_1")
 
     return interpolation_ens

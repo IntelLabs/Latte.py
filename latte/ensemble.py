@@ -115,11 +115,11 @@ class Ensemble:
 
     def set_buffer(self, field, buffer, cl_buffer=None):
         def get():
+            if cl_buffer is not None:
+                _, evt = cl.buffer_to_ndarray(latte.config.cl_queue, cl_buffer, out=buffer)
+                evt.wait()
             if field in self.tiling_info:
                 untiled = buffer
-                if cl_buffer is not None:
-                    _, evt = cl.buffer_to_ndarray(latte.config.cl_queue, cl_buffer, out=untiled)
-                    evt.wait()
                 if field in self.private_info:
                     untiled = untiled[0]
                 shape = untiled.shape

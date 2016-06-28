@@ -488,15 +488,23 @@ class Net:
             shape = self.buffers[buffer_name].shape
 
             # node = util.gen_for("x0", 0, shape[0], curr_body)
-            node = StringTemplate("""
-            parallel_for(0, $len,
-              [=](int low, int high) {
-                for (int x0 = low; x0 < high; x0++) {
+            if latte.config.parallel_strategy == "OPENMP":
+                node = StringTemplate("""
+                #pragma omp parallel for
+                for (int x0 = 0; x0 < $len; x0++) {
                   $body
                 } 
-              }
-            );
-            """, {'body': curr_body, 'len': C.Constant(shape[0])})
+                """, {'body': curr_body, 'len': C.Constant(shape[0])})
+            else:
+                node = StringTemplate("""
+                parallel_for(0, $len,
+                  [=](int low, int high) {
+                    for (int x0 = low; x0 < high; x0++) {
+                      $body
+                    } 
+                  }
+                );
+                """, {'body': curr_body, 'len': C.Constant(shape[0])})
 
             parfor_len = 2 if len(shape) - trans_dim - 1 > 1 else 1
             # node.pragma = "omp for collapse({})".format(parfor_len)
