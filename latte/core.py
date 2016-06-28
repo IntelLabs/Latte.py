@@ -19,6 +19,7 @@ from latte.mapping import Mapping, one_to_one
 from latte.connection import Connection
 from latte.task import Task
 import latte.transformers.vectorize as vectorizer
+import latte.transformers.parallelize as parallelizer
 import latte.transformers.code_motion as code_motion
 import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
@@ -328,7 +329,7 @@ class Net:
                     # looplen1 = stmt.test.right
                     # body = stmt.body
                     # new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
-                    stmt = transformers.convert_parallel_loops(stmt)
+                    stmt = parallelizer.parallelize(stmt)
                     new_body.append(stmt)
                     # if incr > 0:
                     #     new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
