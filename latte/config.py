@@ -5,7 +5,7 @@ logger = logging.getLogger("latte")
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("ctree").setLevel(logging.WARN)
-os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
+#os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
 
 vec_config = os.getenv("LATTE_VEC_CONFIG", "AVX-2")
 try:
