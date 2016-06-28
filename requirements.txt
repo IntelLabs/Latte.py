@@ -1,4 +1,4 @@
 -e git://github.com/ucb-sejits/ctree.git#egg=ctree
+-e git://github.com/berkerpeksag/astor.git#egg=astor
 numpy
-astor
 pytest
