@@ -1,9 +1,14 @@
 import os
+import logging
 
+logger = logging.getLogger("latte")
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("ctree").setLevel(logging.WARN)
 os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
 
 vec_config = os.getenv("LATTE_VEC_CONFIG", "AVX-2")
-print("Latte running with vector instruction set {}".format(vec_config))
+logger.info("Running with vector instruction set [%s]", vec_config)
 try:
     SIMDWIDTH = {
         "AVX": 8,

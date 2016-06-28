@@ -24,6 +24,9 @@ import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
 import latte.optimizations as optimizer
 
+import logging
+logger = logging.getLogger("latte")
+
 transpose_path = {
     "AVX": "/templates/transpose_256.tmp.c",
     "AVX-2": "/templates/transpose_256.tmp.c",
@@ -154,7 +157,7 @@ class Net:
                 for index, neuron in ensemble:
                     buff[index] = getattr(neuron, field)
         except Exception as e:
-            print("error initializing numeric field for " + str(type(ensemble.neurons.flat[0])) + ", field: " + str(field))
+            logger.error("error initializing numeric field for " + str(type(ensemble.neurons.flat[0])) + ", field: " + str(field))
             raise e
 
     def _initialize_ndarray_field(self, ensemble, field):
@@ -258,9 +261,9 @@ class Net:
 
         in_place_buffer_map = {}
 
-        print("Initializing ensembles and synthesizing functions...")
+        logger.info("Initializing ensembles and synthesizing functions...")
         for ensemble in self.ensembles:
-            print("    {} [shape={}]".format(ensemble.name, ensemble.shape))
+            logger.info("    {} [shape={}]".format(ensemble.name, ensemble.shape))
             if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
                 raise NotImplementedError("Ensemble type {} no longer supported".format(type(ensemble)))
             self._init_buffers(ensemble)
@@ -290,7 +293,7 @@ class Net:
                 source = self.connections_map[ensemble][0].source
                 in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
 
-        print("Compiling functions...")
+        logger.info("Compiling functions...")
         for args, direction, body, casts, tasks, in zip([forward_args, backward_args], 
                                                         ["forward", "backward"],
                                                         [forward_body, backward_body],
@@ -312,7 +315,6 @@ class Net:
 
             c_file._ext = "cpp"
 
-            # print(c_file)
             c_file = transformers.simple_fusion(c_file)
 
             new_body = []
@@ -350,7 +352,7 @@ class Net:
             tasks.append(Task(fn, arg_bufs))
 
         self._collect_value_grad_bufs()
-        print("Done")
+        logger.info("Finished compiling Net")
 
     def _collect_value_grad_bufs(self):
         for key, buf in self.buffers.items():
