@@ -14,24 +14,24 @@ def set_zero_ps():
         "AVX": "_mm256_setzero_ps",
         "AVX-2": "_mm256_setzero_ps",
         "AVX-512": "_mm512_setzero_ps"
-    }[latte.core.latte_vec_config]), [])
+    }[latte.config.vec_config]), [])
 
 def store_ps(target, value):
     return C.FunctionCall(C.SymbolRef({
         "AVX": "_mm256_store_ps",
         "AVX-2": "_mm256_store_ps",
         "AVX-512": "_mm512_store_ps",
-    }[latte.core.latte_vec_config]), [target, value])
+    }[latte.config.vec_config]), [target, value])
 
 def load_ps(arg):
     return C.FunctionCall(C.SymbolRef({
         "AVX": "_mm256_load_ps",
         "AVX-2": "_mm256_load_ps",
         "AVX-512": "_mm512_load_ps",
-    }[latte.core.latte_vec_config]), [arg])
+    }[latte.config.vec_config]), [arg])
 
 def broadcast_ss(arg):
-    if latte.core.latte_vec_config == "AVX-512":
+    if latte.config.vec_config == "AVX-512":
         # AVX-512 doesn't support broadcast, use set1_ps and remove Ref node
         assert isinstance(arg, C.UnaryOp) and isinstance(arg.op, C.Op.Ref)
         arg = arg.arg
@@ -39,14 +39,14 @@ def broadcast_ss(arg):
         "AVX": "_mm256_broadcast_ss",
         "AVX-2": "_mm256_broadcast_ss",
         "AVX-512": "_mm512_set1_ps",
-    }[latte.core.latte_vec_config]), [arg])
+    }[latte.config.vec_config]), [arg])
 
 def get_simd_type():
     return {
         "AVX": simd.types.m256,
         "AVX-2": simd.types.m256,
         "AVX-512": simd.types.m512,
-    }[latte.core.latte_vec_config]
+    }[latte.config.vec_config]
 
 def simd_fma(*args):
     assert len(args) == 3
@@ -54,7 +54,7 @@ def simd_fma(*args):
         "AVX": "_mm256_fmadd_ps",
         "AVX-2": "_mm256_fmadd_ps",
         "AVX-512": "_mm512_fmadd_ps",
-    }[latte.core.latte_vec_config]
+    }[latte.config.vec_config]
     return C.FunctionCall(C.SymbolRef(fma_func), list(args))
 
 def simd_add(left, right):
@@ -62,7 +62,7 @@ def simd_add(left, right):
         "AVX": "_mm256_add_ps",
         "AVX-2": "_mm256_add_ps",
         "AVX-512": "_mm512_add_ps",
-    }[latte.core.latte_vec_config]
+    }[latte.config.vec_config]
     return C.FunctionCall(C.SymbolRef(func), [left, right])
 
 
@@ -90,7 +90,7 @@ class Vectorizer(ast.NodeTransformer):
     def visit_For(self, node):
         node.body = [self.visit(s) for s in node.body]
         if node.init.left.name == self.loop_var:
-            assert node.test.right.value == latte.core.SIMDWIDTH
+            assert node.test.right.value == latte.config.SIMDWIDTH
             # index = C.Assign(
             #         C.SymbolRef(node.init.left.name, ctypes.c_int()),
             #         C.Constant(0)
@@ -212,7 +212,7 @@ class Vectorizer(ast.NodeTransformer):
                 "AVX": "_mm256_{}_ps".format(node.func.name[1:]),
                 "AVX-2": "_mm256_{}_ps".format(node.func.name[1:]),
                 "AVX-512": "_mm512_{}_ps".format(node.func.name[1:]),
-            }[latte.core.latte_vec_config]
+            }[latte.config.vec_config]
             args = []
             for arg in node.args:
                 if isinstance(arg, C.Constant) and arg.value == 0:

@@ -6,7 +6,6 @@ from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, 
 import latte.util as util
 import astor
 from itertools import product
-# from .util import sgemm
 import ctree
 from ctree.transformations import PyBasicConversions
 import ctree.c.nodes as C
@@ -14,10 +13,8 @@ from ctree.templates.nodes import StringTemplate, FileTemplate
 import ctypes
 import latte.transformers as transformers
 import os
-# import logging
-# logging.basicConfig(level=20)
-import multiprocessing
 import inspect
+import latte.config
 from latte.mapping import Mapping, one_to_one
 from latte.connection import Connection
 from latte.task import Task
@@ -27,39 +24,20 @@ import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
 import latte.optimizations as optimizer
 
-# num_threads = int(os.getenv("OMP_NUM_THREADS", multiprocessing.cpu_count()))
-# os.environ["OMP_NUM_THREADS"] = str(num_threads)
-# 
-os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
-
-latte_vec_config = os.getenv("LATTE_VEC_CONFIG", "AVX-2")
-print("Latte running with vector instruction set {}".format(latte_vec_config))
-vec_configs = {
-    "AVX": 8,
-    "AVX-2": 8,
-    "AVX-512": 16
-}
-try:
-    SIMDWIDTH = vec_configs[latte_vec_config]
-except KeyError:
-    raise Exception("ERROR: Invalid LATTE_VEC_CONFIG value = {}.  Supported values are {} ".format(latte_vec_config, vec_configs.keys()))
-
-forward_unroll_factor = 8
-backward_unroll_factor = 4
 transpose_path = {
     "AVX": "/templates/transpose_256.tmp.c",
     "AVX-2": "/templates/transpose_256.tmp.c",
     "AVX-512": "/templates/transpose_512.tmp.c"
-}[latte_vec_config]
+}[latte.config.vec_config]
 package_path = os.path.dirname(os.path.abspath(__file__))
 
 transpose = FileTemplate(package_path + transpose_path)
 
-include = FileTemplate(package_path + "/templates/includes.tmpl.c",
-        {"LATTE_PACKAGE_PATH": StringTemplate(package_path),
-        "TRANSPOSE": transpose,
-        "SIMDWIDTH": C.Constant(SIMDWIDTH)
-        })
+include = FileTemplate(package_path + "/templates/includes.tmpl.c", {
+    "LATTE_PACKAGE_PATH": StringTemplate(package_path),
+    "TRANSPOSE": transpose,
+    "SIMDWIDTH": C.Constant(latte.config.SIMDWIDTH)
+})
 
 def compute_tiled_shape(buf_shape, field, ensemble):
     for dim, factor in ensemble.tiling_info[field]:
@@ -421,7 +399,7 @@ class Net:
         #     if self.nowait:
         #         loop.pragma += " nowait"
 
-    def _reshape_buffer(self, args, ensemble, tiled_buffers):
+    def _reshape_buffer(self, args, ensemble):
         for arg in args:
             name = arg.arg
             buf = self.buffers[name]
@@ -675,11 +653,12 @@ class Net:
 
         # convert [x, y, z] exprs into [x][y][z]
         func_def = transformers.convert_tuple_subscripts(func_def)
-        # convert semantic (domain) ast nodes introduced by the neuron
-        # transformer
-        # FIXME: Deprecate tiled_buffers
-        func_def, tiled_buffers = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
+        # convert domain ast nodes introduced by the neuron transformer
+        func_def = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
+
+        # basic python -> C conversion
         func_def = PyBasicConversions().visit(func_def)
+        # handle math functions that are different in C than python
         func_def = transformers.PatternMatchMath().visit(func_def)
 
         for loop in func_def.defn:
@@ -699,9 +678,9 @@ class Net:
                 input_offset = "_input_offset_{}".format(dim)
                 if mapping.clamp:
                     if dim in ensemble.tiling_info:
-                        gen_clamp = gen_gen_clamp(input_shape[dim - 1] // SIMDWIDTH - 1)
+                        gen_clamp = gen_gen_clamp(input_shape[dim - 1] // latte.config.SIMDWIDTH - 1)
                         loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
-                        gen_clamp = gen_gen_clamp(SIMDWIDTH - 1)
+                        gen_clamp = gen_gen_clamp(latte.config.SIMDWIDTH - 1)
                         loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
                     else:
                         gen_clamp = gen_gen_clamp(input_shape[dim - 1] - 1)
@@ -747,8 +726,7 @@ class Net:
 
         type_sig = []
         casts = []
-        # FIXME: Check if still needed
-        self._reshape_buffer(args, ensemble, tiled_buffers)
+        self._reshape_buffer(args, ensemble)
 
         for arg in args:
             name = arg.arg
@@ -776,7 +754,6 @@ class Net:
         reduce_vars = []
         func_def.defn[0].reduce_vars = reduce_vars
         for arg in args:
-            # if "grad_" in arg.arg and "inputs" not in arg.arg:
             if arg.arg.replace(ensemble.name, "") in ensemble.private_info:
                 reduce_vars.append(arg.arg)
         return casts, func_def.defn, args
@@ -785,7 +762,6 @@ class Net:
         shape_str = "".join("[{}]".format(d) for d in shape)
 
         body.insert(0, StringTemplate(
-            # "$type (* __restrict $arg_name)$shape = ($type (*)$cast) _$arg_name;",
             "$type (* $arg_name)$shape = ($type (*)$cast) _$arg_name;",
             {
                 "arg_name": C.SymbolRef(name), 
@@ -799,12 +775,10 @@ class Net:
             task()
 
     def forward(self):
-        # os.environ["KMP_AFFINITY"] = "compact,granularity=fine,0,0"
         for task in self.forward_tasks:
             task()
 
     def backward(self):
-        # os.environ["KMP_AFFINITY"] = "scatter,granularity=fine,0,0"
         for task in self.backward_tasks:
             task()
 

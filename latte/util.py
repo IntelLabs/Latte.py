@@ -362,10 +362,10 @@ def untile(buffer, dim):
 def tile(buffer, dim):
     shape = buffer.shape
     tiled_shape = list(shape)
-    factor = latte.core.SIMDWIDTH
+    factor = latte.config.SIMDWIDTH
     if tiled_shape[dim] < factor:
         factor = tiled_shape[dim]
-    elif tiled_shape[dim] % latte.core.SIMDWIDTH != 0:
+    elif tiled_shape[dim] % latte.config.SIMDWIDTH != 0:
         raise NotImplementedError()
     
     tiled_shape[dim] //= factor

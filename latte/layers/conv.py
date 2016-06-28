@@ -4,7 +4,7 @@ from ..ensemble import Ensemble, EnsembleGroup
 import itertools
 import latte.core
 
-SIMDWIDTH = latte.core.SIMDWIDTH
+SIMDWIDTH = latte.config.SIMDWIDTH
 
 class ConvNeuron(WeightedNeuron):
     def forward(self):
@@ -89,10 +89,10 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     else:
         pad_h, pad_w = pad, pad
 
-    if input_ensemble.shape[0] < latte.core.SIMDWIDTH:
-        input_channel_pad = latte.core.SIMDWIDTH - input_ensemble.shape[0]
-    elif input_ensemble.shape[0] % latte.core.SIMDWIDTH != 0:
-        input_channel_pad = latte.core.SIMDWIDTH - (input_ensemble.shape[0] % latte.core.SIMDWIDTH)
+    if input_ensemble.shape[0] < latte.config.SIMDWIDTH:
+        input_channel_pad = latte.config.SIMDWIDTH - input_ensemble.shape[0]
+    elif input_ensemble.shape[0] % latte.config.SIMDWIDTH != 0:
+        input_channel_pad = latte.config.SIMDWIDTH - (input_ensemble.shape[0] % latte.config.SIMDWIDTH)
     else:
         input_channel_pad = 0
 
