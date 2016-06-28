@@ -2,6 +2,7 @@ import numpy as np
 from ..neuron import Neuron
 from ..ensemble import Ensemble
 import itertools
+import latte.config
 
 class DropoutNeuron(Neuron):
     batch_fields = Neuron.batch_fields + ["randval"]
@@ -43,5 +44,14 @@ def DropoutLayer(net, input_ensemble, ratio=0.5):
     # neurons = neurons.reshape(input_ensemble.shape)
 
     dropout_ens = net.init_activation_ensemble(neurons, input_ensemble)
+    if "value" in input_ensemble.tiling_info:
+        tiled_dims = input_ensemble.tiling_info["value"]
+        for dim, factor in tiled_dims:
+            dropout_ens.tile('inputs', dim=dim, factor=factor)
+            dropout_ens.tile('grad_inputs', dim=dim, factor=factor)
+        dropout_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
+        dropout_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
+        dropout_ens.tile('randval', dim=0, factor=latte.config.SIMDWIDTH)
+        dropout_ens.tile('ratio', dim=0, factor=latte.config.SIMDWIDTH)
 
     return dropout_ens

@@ -8,6 +8,9 @@ import os
 import latte.util as util
 import latte.core
 
+if "OPENCL" in latte.config.parallel_strategy:
+    import pycl as cl
+
 ENSEMBLE_COUNTER = 0
 class Ensemble:
     def __init__(self, neurons):
@@ -110,10 +113,13 @@ class Ensemble:
     def get_tiled_dims(self, field):
         return self.buffer_tiled_dims[self.name + field]
 
-    def set_buffer(self, field, buffer):
+    def set_buffer(self, field, buffer, cl_buffer=None):
         def get():
             if field in self.tiling_info:
                 untiled = buffer
+                if cl_buffer is not None:
+                    _, evt = cl.buffer_to_ndarray(latte.config.cl_queue, cl_buffer, out=untiled)
+                    evt.wait()
                 if field in self.private_info:
                     untiled = untiled[0]
                 shape = untiled.shape
@@ -186,6 +192,9 @@ class Ensemble:
                 dest[_slice] = tiled
             else:
                 dest[_slice] = value
+            if cl_buffer is not None:
+                _, evt = cl.buffer_from_ndarray(latte.config.cl_queue, dest, buf=cl_buffer)
+                evt.wait()
         setattr(self, "set_" + field, set)
         if self.parent_group is not None:
             setattr(self.parent_group, "get_" + field, get)

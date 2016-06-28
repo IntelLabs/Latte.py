@@ -63,6 +63,10 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     bias_ens.tile('bias', dim=0, factor=SIMDWIDTH)
     bias_ens.tile('grad_bias', dim=0, factor=SIMDWIDTH)
+    bias_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
+    bias_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
+    bias_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
+    bias_ens.parallelize(direction="backward", loop_var="_neuron_index_1_outer")
     # End Optimizations
 
     return EnsembleGroup(conv_ens, bias_ens)
@@ -146,24 +150,27 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad', dim=0, factor=SIMDWIDTH)
 
-    conv_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+    if "OPENCL" not in latte.config.parallel_strategy:
+        conv_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
     conv_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
     conv_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
-    conv_ens.vectorize(direction="backward", loop_var="i_inner", factor=SIMDWIDTH)
+    if "OPENCL" not in latte.config.parallel_strategy:
+        conv_ens.vectorize(direction="backward", loop_var="i_inner", factor=SIMDWIDTH)
     conv_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
     conv_ens.parallelize(direction="backward", loop_var="i_outer")
     conv_ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "j"))
     conv_ens.swap_loops(direction="backward", loop_vars=("_neuron_index_1_inner", "k"))
 
-    factor = 8
-    while output_width % factor != 0:
-        factor -= 1
-    conv_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
+    if "OPENCL" not in latte.config.parallel_strategy:
+        factor = 8
+        while output_width % factor != 0:
+            factor -= 1
+        conv_ens.unroll(direction="forward", loop_var="_neuron_index_3", factor=factor)
 
-    factor = 4
-    while output_width % factor != 0:
-        factor -= 1
-    conv_ens.unroll(direction="backward", loop_var="_neuron_index_3", factor=factor)
+        factor = 4
+        while output_width % factor != 0:
+            factor -= 1
+        conv_ens.unroll(direction="backward", loop_var="_neuron_index_3", factor=factor)
 
     # End Optimizations
 

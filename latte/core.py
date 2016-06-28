@@ -2,7 +2,6 @@ import numpy as np
 import numbers
 import itertools
 import ast
-from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, AccuracyEnsemble, EnsembleGroup
 import latte.util as util
 import astor
 from itertools import product
@@ -15,6 +14,7 @@ import latte.transformers as transformers
 import os
 import inspect
 import latte.config
+from .ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, AccuracyEnsemble, EnsembleGroup
 from latte.mapping import Mapping, one_to_one
 from latte.connection import Connection
 from latte.task import Task
@@ -24,6 +24,9 @@ import latte.transformers.code_motion as code_motion
 import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
 import latte.optimizations as optimizer
+
+if "OPENCL" in latte.config.parallel_strategy:
+    import pycl as cl
 
 import logging
 logger = logging.getLogger("latte")
@@ -40,7 +43,8 @@ transpose = FileTemplate(package_path + transpose_path)
 include = FileTemplate(package_path + "/templates/includes.tmpl.c", {
     "LATTE_PACKAGE_PATH": StringTemplate(package_path),
     "TRANSPOSE": transpose,
-    "SIMDWIDTH": C.Constant(latte.config.SIMDWIDTH)
+    "SIMDWIDTH": C.Constant(latte.config.SIMDWIDTH),
+    "INCLUDE_OPENCL": C.SymbolRef("1" if "OPENCL" in latte.config.parallel_strategy else "0")
 })
 
 def compute_tiled_shape(buf_shape, field, ensemble):
@@ -68,6 +72,7 @@ class Net:
         self.ensembles = []
         self.connections = []
         self.buffers = {}
+        self.cl_buffers = {}
 
         self.forward_tasks = []
         self.backward_tasks = []
@@ -142,6 +147,8 @@ class Net:
             assert False, "Deprecated"
             buff = buff.reshape((self.batch_size, ) + conn.reshape)
         self.buffers[buffer_name] = buff
+        if "OPENCL" in latte.config.parallel_strategy:
+            self.cl_buffers[buffer_name] = self.cl_buffers[source_name + source_target]
 
     def _initialize_numeric_field(self, ensemble, field):
         try:
@@ -152,11 +159,19 @@ class Net:
                 self.buffers[ensemble.name + field] = buff
                 for index, neuron in ensemble:
                     buff[(slice(None),) + index] = getattr(neuron, field)   
+                if "OPENCL" in latte.config.parallel_strategy:
+                    buf, evt = cl.buffer_from_ndarray(latte.config.cl_queue, buff)
+                    evt.wait()
+                    self.cl_buffers[ensemble.name + field] = buf
             else:
                 buff = util.empty(ensemble.shape, type(value))
                 self.buffers[ensemble.name + field] = buff
                 for index, neuron in ensemble:
                     buff[index] = getattr(neuron, field)
+                if "OPENCL" in latte.config.parallel_strategy:
+                    buf, evt = cl.buffer_from_ndarray(latte.config.cl_queue, buff)
+                    evt.wait()
+                    self.cl_buffers[ensemble.name + field] = buf
         except Exception as e:
             logger.error("error initializing numeric field for " + str(type(ensemble.neurons.flat[0])) + ", field: " + str(field))
             raise e
@@ -201,11 +216,18 @@ class Net:
                         buff[i][_index] = attr
                 else:
                     buff[_index] = attr
+        if "OPENCL" in latte.config.parallel_strategy:
+            buf, evt = cl.buffer_from_ndarray(latte.config.cl_queue, buff)
+            evt.wait()
+            self.cl_buffers[ensemble.name + field] = buf
 
     def _initialize_value_grad_activation(self, ensemble):
         for field, target in [("value", "inputs"), ("grad", "grad_inputs")]:
             target_buf = self.buffers[ensemble.name + target]
             self.buffers[ensemble.name + field] = target_buf
+            if "OPENCL" in latte.config.parallel_strategy:
+                target_buf = self.cl_buffers[ensemble.name + target]
+                self.cl_buffers[ensemble.name + field] = target_buf
 
     def _initialize_value_grad(self, ensemble):
         for field in ["value", "grad"]:
@@ -214,6 +236,10 @@ class Net:
             shape = (self.batch_size, ) + \
                    tuple(p[0] + p[1] + d for p, d in zip(ensemble.pad, ensemble.shape))
             self.buffers[ensemble.name + field] = util.zeros(shape, np.float32)
+            if "OPENCL" in latte.config.parallel_strategy:
+                buf, evt = cl.buffer_from_ndarray(latte.config.cl_queue, self.buffers[ensemble.name + field])
+                evt.wait()
+                self.cl_buffers[ensemble.name + field] = buf
 
     def _init_buffers(self, ensemble):
         neuron = ensemble.neurons.flat[0]
@@ -244,7 +270,10 @@ class Net:
 
         for field in vars(neuron):
             buffer_name = ensemble.name + field
-            ensemble.set_buffer(field, self.buffers[buffer_name])
+            if "OPENCL" in latte.config.parallel_strategy:
+                ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
+            else:
+                ensemble.set_buffer(field, self.buffers[buffer_name])
 
     def compile(self):
         task_groups = {}
@@ -306,8 +335,6 @@ class Net:
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
             params   = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
 
-            type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-
             _id = self._uniqueid()
             c_file = C.CFile(direction + _id, [
                 include, 
@@ -320,6 +347,7 @@ class Net:
 
             new_body = []
             incr = -1
+            kernels = {}
             for stmt in c_file.body[1].defn:
                 incr += 1
                 if isinstance(stmt, C.For):
@@ -329,26 +357,33 @@ class Net:
                     # looplen1 = stmt.test.right
                     # body = stmt.body
                     # new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
-                    stmt = parallelizer.parallelize(stmt)
+                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
                     new_body.append(stmt)
                     # if incr > 0:
                     #     new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
                     # else:
                     #     execute_stmt = self._gen_execute_for_loop(stmt, incr)
-                    if hasattr(stmt, 'reduce_vars') and len(stmt.reduce_vars) > 0:
-                        for var in stmt.reduce_vars:
-                            size = np.prod(self.buffers[var].shape[1:])
-                            new_body.append(self._gen_reduce_for_loop(stmt, var, size, incr))
                 else:
                     new_body.append(stmt)
             c_file.body[1].defn = new_body # + [execute_stmt]
             c_file.body[1].defn = casts + c_file.body[1].defn
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-            c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
-            c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
+            if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
+                c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
+                c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
+            elif "OPENCL" in latte.config.parallel_strategy:
+                arg_bufs.append(latte.config.cl_queue)
+                type_sig.append(cl.cl_command_queue)
+                params.append(C.SymbolRef("queue", cl.cl_command_queue()))
+                for name, kernel in kernels.items():
+                    arg_bufs.append(kernel)
+                    type_sig.append(cl.cl_kernel)
+                    params.append(C.SymbolRef(name, cl.cl_kernel()))
             # c_file = transformers.remove_repeated_declarations(c_file)
             module = util.mpi_compile(ctree.nodes.Project([c_file]))
             # get_callable(functions_handle, type_signature)
+
+            type_sig = ctypes.CFUNCTYPE(None, *type_sig)
             fn = module.get_callable(direction + _id, type_sig)
             tasks.append(Task(fn, arg_bufs))
 
@@ -367,8 +402,8 @@ class Net:
         Net.unique_id += 1
         return str(self.unique_id)
 
-    def _parallelize_loops(self, func_def, loopvars):
-        class Parallelizer(ast.NodeTransformer):
+    def _mark_parallel_loops(self, func_def, loopvars):
+        class Marker(ast.NodeTransformer):
             def __init__(self, loopvars):
                 self.loopvars = loopvars
 
@@ -376,31 +411,9 @@ class Net:
                 node.body = [self.visit(s) for s in node.body]
                 if node.init.left.name in self.loopvars:
                     node.parallel = True
-                    # return StringTemplate("""
-                    # parallel_for(0,$looplen / $loopincr,
-                    #   [=](int low, int high) {
-                    #     for (int tmp_$loopvar = low; tmp_$loopvar < high; tmp_$loopvar++) {
-                    #       int $loopvar = tmp_$loopvar * $loopincr;
-                    #       $body;
-                    #     }
-                    #   });
-                    # """, {
-                    #     "looplen": node.test.right,
-                    #     "loopvar": node.test.left,
-                    #     "loopincr": node.incr.value,
-                    #     "body": node.body
-                    # })
-
                 return node
-        return Parallelizer(loopvars).visit(func_def)
-        # for loop in func_def.defn:
-        #     if ndim > 1:
-        #         loop.pragma = "omp for collapse(2)"
-        #     else:
-        #         loop.pragma = "omp for collapse(2)"
 
-        #     if self.nowait:
-        #         loop.pragma += " nowait"
+        return Marker(loopvars).visit(func_def)
 
     def _reshape_buffer(self, args, ensemble):
         for arg in args:
@@ -466,36 +479,6 @@ class Net:
             'node_list': C.SymbolRef("node_list_" + str(id)),
         })
 
-    def _gen_reduce_for_loop(self, loop, var, size, id):
-        looplen1 = loop.test.right
-        loopincr = loop.incr.value.value
-        return StringTemplate("""
-            //{
-            //  ContinueNode *$reduce_node = new ContinueNode(&graph, [=]() {
-              parallel_for(0,$size,
-                [=](int low, int high) {
-                  #pragma simd
-                  for (int x = low; x < high; ++x) {
-                    float sum = _$arr[x];
-                    #pragma unroll($batch_size - 1)
-                    for (int i = 1; i < $batch_size; ++ i) {
-                      sum += _$arr[i * $size + x];
-                    }
-                    _$arr[x] = sum;
-                  }
-                });
-            //  });
-            //  for (int i = 0; i < $looplen1; i+=$loopincr) {
-            //    make_edge($node_list[i], $reduce_node);
-            //  }
-            //};
-            """, {'size': C.Constant(size),
-                  'batch_size': C.Constant(self.batch_size),
-                  'arr': C.SymbolRef(var),
-                  'node_list': C.SymbolRef("node_list_" + str(id)),
-                  'reduce_node': C.SymbolRef("reduce_node_" + str(id)),
-                  'looplen1': C.Constant(looplen1.value),  'loopincr': C.Constant(loopincr)
-                  })
 
     def _gen_transposes(self, transposed_buffers):
         pre_trans = []
@@ -725,7 +708,7 @@ class Net:
             unroll_var, unroll_factor = ensemble.unroll_info[direction]
             unroller.unroll_loop(func_def, unroll_var, unroll_factor)
 
-        self._parallelize_loops(func_def, ensemble.parallel_info[direction])
+        self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
         type_sig = []
         casts = []
@@ -735,7 +718,7 @@ class Net:
             name = arg.arg
             buf = self.buffers[name]
             casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-            self._insert_cast(casts, buf.shape[1:], name, buf.dtype)
+            util.insert_cast(casts, buf.shape[1:], name, buf.dtype)
 
         if direction in ensemble.vectorize_info:
             pre_trans, post_trans = self._gen_transposes(transposed_buffers)
@@ -747,7 +730,7 @@ class Net:
 
                 args.append(ast.arg(buffer_name + "_transposed", None))
                 self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-                self._insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
+                util.insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
         else:
             pre_trans = []
             post_trans = []
@@ -760,18 +743,6 @@ class Net:
             if arg.arg.replace(ensemble.name, "") in ensemble.private_info:
                 reduce_vars.append(arg.arg)
         return casts, func_def.defn, args
-
-    def _insert_cast(self, body, shape, name, dtype):
-        shape_str = "".join("[{}]".format(d) for d in shape)
-
-        body.insert(0, StringTemplate(
-            "$type (* $arg_name)$shape = ($type (*)$cast) _$arg_name;",
-            {
-                "arg_name": C.SymbolRef(name), 
-                "shape": C.SymbolRef(shape_str),
-                "cast": C.SymbolRef(shape_str),
-                "type": C.SymbolRef(ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(dtype)()))
-            }))
 
     def test(self):
         for task in self.forward_tasks:

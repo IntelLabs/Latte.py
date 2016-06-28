@@ -32,7 +32,8 @@ pool2 = MaxPoolingLayer(net, relu2, kernel=2, stride=2, pad=0)
 
 fc3   = FullyConnectedLayer(net, pool2, 128)
 relu3 = ReLULayer(net, fc3)
-fc4   = FullyConnectedLayer(net, relu3, 16)
+drop3 = DropoutLayer(net, relu3, .5)
+fc4   = FullyConnectedLayer(net, drop3, 16)
 
 net.compile()
 

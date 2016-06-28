@@ -17,16 +17,25 @@ try:
 except KeyError:
     raise Exception("ERROR: Invalid LATTE_VEC_CONFIG value = {}.  Supported values are {} ".format(vec_config, vec_configs.keys()))
 
-# Parallel Strategies Overview
-# ============================
-# SIMPLE_LOOP - nested parallel_for (like basic TBB)
-# FLOWGRAPH_LOOP - FlowGraph model for first level parallelism,
-#     parallel_for for depth 1 nested parallelism
-# OPENMP - pragma omp parallel for (currently supports collapse for depth 2)
+parallel_strategies = [
+    "SIMPLE_LOOP",       # nested parallel_for (like basic TBB)
+    "FLOWGRAPH_LOOP",    # FLOWGRAPH_LOOP - FlowGraph model for first level
+                         # parallelism, parallel_for for nested
+    "OPENMP",            # pragma omp parallel for (support collapse(2))
+    "OPENCL_SIMPLE_LOOP" # converts parallel loops to NDRange kernel
+]
+
 parallel_strategy = os.getenv("LATTE_PARALLEL_STRATEGY", "SIMPLE_LOOP")
-if parallel_strategy not in ["SIMPLE_LOOP", "FLOWGRAPH_LOOP", "OPENMP"]:
+
+if parallel_strategy not in parallel_strategies:
     logger.warn("Invalid parallel strategy [%s], defaulting to SIMPLE_LOOP", parallel_strategy)
     parallel_strategy = "SIMPLE_LOOP"
+
+if parallel_strategy == "OPENCL_SIMPLE_LOOP":
+    import pycl as cl
+    cl_ctx = cl.clCreateContext()
+    cl_queue = cl.clCreateCommandQueue(cl_ctx)
+
 logger.info("========== Configuration ==========")
 logger.info("    march             = %s", vec_config)
 logger.info("    parallel_strategy = %s", parallel_strategy)

@@ -10,6 +10,14 @@
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
+#if $INCLUDE_OPENCL
+#ifdef APPLE
+#include <OpenCL/opencl.h>
+#else
+#include <CL/cl.h>
+#endif
+#endif
+
 $TRANSPOSE
 
 extern "C"

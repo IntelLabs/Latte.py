@@ -9,7 +9,7 @@ import latte
 from copy import deepcopy
 import sys
 import ctree
-from ctree.templates.nodes import FileTemplate
+from ctree.templates.nodes import FileTemplate, StringTemplate
 import ctypes
 import os
 
@@ -50,6 +50,19 @@ get_cpu_freq = module.get_callable("get_cpu_freq",
 #         return arr
 #     else:
 #         raise NotImplementedError()
+
+def insert_cast(body, shape, name, dtype, _global=False):
+    shape_str = "".join("[{}]".format(d) for d in shape)
+
+    body.insert(0, StringTemplate(
+        "$global$type (* $arg_name)$shape = ($global$type (*)$cast) _$arg_name;",
+        {
+            "arg_name": C.SymbolRef(name), 
+            "shape": C.SymbolRef(shape_str),
+            "cast": C.SymbolRef(shape_str),
+            "type": C.SymbolRef(ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(dtype)())),
+            "global": C.SymbolRef("__global " if _global else "")
+        }))
 
 def aligned(shape, dtype, alignment=64, init=np.empty):
     size = np.prod(shape)

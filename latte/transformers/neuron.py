@@ -105,9 +105,11 @@ class NeuronTransformer(ast.NodeTransformer):
             if node.attr in self.ensemble.scalar_fields and \
                     node.attr in self.ensemble.tiling_info:
                 for dim, _ in self.ensemble.tiling_info[node.attr]:
-                    dim += 1  # offset for batch dimension
-                    args[dim].id += "_outer" 
-                    args.append(ast.Name("_neuron_index_{}_inner".format(dim), ast.Load()))
+                    if node.attr in self.ensemble.batch_fields or node.attr in self.ensemble.private_info:
+                        dim += 1  # offset for batch dimension
+                    idx = args[dim].id
+                    args[dim].id = idx + "_outer" 
+                    args.append(ast.Name(idx + "_inner", ast.Load()))
 
             # return updated indedxing expression
             return ast.Subscript(ast.Name(name, ast.Load()), 
