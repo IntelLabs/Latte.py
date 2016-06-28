@@ -1,6 +1,7 @@
 import ast
 import ctree.c.nodes as C
 from ctree.templates.nodes import StringTemplate
+import latte.config
 
 class LatteRuntimeLoopParallel(ast.NodeTransformer):
     def visit_For(self, node):
@@ -31,17 +32,18 @@ class LatteOpenMPParallel(ast.NodeTransformer):
             if len(node.body) == 1 and hasattr(node.body[0], 'parallel') and \
                     node.body[0].parallel:
                 node.pragma += " collapse(2)"
+            elif all(isinstance(s, C.For) and hasattr(s, 'parallel') and s.parallel for s in node.body):
+                # FIXME: Distribute the loops and use collapse
+                raise NotImplementedError()
         return node
 
 
-LATTE_PARALLEL_MODE = "SIMPLE_LOOP"
-
 def parallelize(tree):
-    if LATTE_PARALLEL_MODE == "SIMPLE_LOOP":
+    if latte.config.parallel_strategy == "SIMPLE_LOOP":
         return LatteRuntimeLoopParallel().visit(tree)
-    elif LATTE_PARALLEL_MODE == "FLOWGRAPH_LOOP":
+    elif latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
         raise NotImplementedError()
-    elif LATTE_PARALLEL_MODE == "OPENMP":
+    elif latte.config.parallel_strategy == "OPENMP":
         return LatteOpenMPParallel().visit(tree)
     else:
         raise NotImplementedError()
