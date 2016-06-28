@@ -9,8 +9,8 @@ from latte.math import compute_seg_softmax_loss, seg_softmax_loss_backprop, comp
 batch_size = 1
 net = Net(batch_size)
 
-data     = MemoryDataLayer(net, (8, 306, 306))
-label     = MemoryDataLayer(net, (8, 306, 306))
+data     = MemoryDataLayer(net, (3, 306, 306))
+label     = MemoryDataLayer(net, (3, 306, 306))
 conv1_1 = ConvLayer(      net, data, num_filters=64, kernel=3, stride=1, pad=1)
 relu1_1 = ReLULayer(      net, conv1_1)
 conv1_2 = ConvLayer(      net, relu1_1, num_filters=64, kernel=3, stride=1, pad=1)
@@ -54,7 +54,7 @@ fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
 drop7 = DropoutLayer(net, relu7, ratio=0.5)
 fc8_pascal = ConvLayer(net, drop7, num_filters=24, kernel=1, stride=1, pad=0)
-shrink_label = InterpolationLayer(net, label, resize_factor=8)
+shrink_label = InterpolationLayer(net, label, pad=1, resize_factor=8)
 print("Compiling...")
 
 
@@ -177,7 +177,6 @@ for epoch in range(10):
     print("Epoch {} - Training...".format(epoch))
     for i, n in enumerate(train_batches):
         train_data, train_label = load_images(training_images_list, data_folder="./data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
-        print(train_data.shape)
         #train_data = np.array(training_images_list[n:n+batch_size])
         #train_label = np.random.rand(batch_size, 8, 306, 306) * 100
         data.set_value(train_data)
@@ -186,14 +185,13 @@ for epoch in range(10):
 
         # Compute loss
         output = fc8_pascal.get_value()
+        loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value(), 255)
 
-        loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value())
-
-        if i % 100 == 0:
-            print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
+        #if i % 100 == 0:
+        print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
 
         # Initialize gradients
-        seg_softmax_loss_backprop(output_grad, prob, shrink_label.get_value())
+        seg_softmax_loss_backprop(output_grad, prob, shrink_label.get_value(), 255)
         fc8_pascal.set_grad(output_grad)
 
         net.backward()
@@ -216,7 +214,7 @@ for epoch in range(10):
         label.set_value(test_label)
         net.test()
 
-        acc += compute_seg_accuracy(fc8_pascal.get_value(), shrink_label.get_value())
+        acc += compute_seg_accuracy(fc8_pascal.get_value(), shrink_label.get_value(), ignore_label)
         net.clear_values()
     acc /= (num_test / batch_size)
     acc *= 100
