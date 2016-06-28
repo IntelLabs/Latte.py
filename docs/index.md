@@ -39,11 +39,12 @@ LDFLAGS = -tbb
 
 # Parallelization Strategies
 Latte's parallelization strategy is configured with the environment variable
-`LATTE_PARALLEL_STRATEGY`.  Supported values are:
-* "SIMPLE_LOOP"        - nested parallel_for (like basic TBB)
-* "FLOWGRAPH_LOOP"     - FlowGraph model for first level parallelism, parallel_for for nested
-* "OPENMP"             - pragma omp parallel for (supports collapse(2))
-* "OPENCL_SIMPLE_LOOP" - converts parallel loops to NDRange kernel
+`LATTE_PARALLEL_STRATEGY`.  Supported values are:  
+
+* `SIMPLE_LOOP`        - nested parallel_for (like basic TBB)
+* `FLOWGRAPH_LOOP`     - FlowGraph model for first level parallelism, parallel_for for nested
+* `OPENMP`             - pragma omp parallel for (supports collapse(2))
+* `OPENCL_SIMPLE_LOOP` - converts parallel loops to NDRange kernel
 
 **Note: ** When using the OpenCL or OpenMP based parallelization strategies, be
 sure to update your `~/.ctree.cfg` to contain the correct flags so the latte
