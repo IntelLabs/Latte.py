@@ -108,7 +108,8 @@ class LatteOpenMPParallel(ast.NodeTransformer):
                     )
                     to_return[-1].pragma = "omp parallel for collapse(2)"
             else:
-                raise NotImplementedError(node)
+                node.pragma = "omp parallel for"
+                to_return = [node]
             if hasattr(node, 'reduce_vars') and len(node.reduce_vars) > 0:
                 for var in node.reduce_vars:
                     size = np.prod(self.buffers[var].shape[1:])
