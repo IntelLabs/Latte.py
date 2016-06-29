@@ -565,6 +565,8 @@ class Net:
             else:
                 # No-op
                 return [], set()
+        if isinstance(fn_def.body[0], ast.Pass):
+            return [], set()
 
         # transform domain constructs
         transformer = transformers.NeuronTransformer(ensemble,
