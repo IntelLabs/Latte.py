@@ -1,6 +1,7 @@
 #include <tbb/tbb.h>
 
-static tbb::affinity_partitioner ap;
+tbb::affinity_partitioner *ap;
+tbb::task_scheduler_init *scheduler_init;
 
 class FlowGraph {
     public:
@@ -31,5 +32,6 @@ void parallel_for(int range_start, int range_end, std::function<void(int, int)> 
             [=](const tbb::blocked_range<int>& r) {
                 kernel(r.begin(), r.end());
             }
-    , ap);
+    );
+    //, *ap);
 }

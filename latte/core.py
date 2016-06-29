@@ -230,7 +230,6 @@ class Net:
                 self.cl_buffers[ensemble.name + field] = target_buf
 
     def _initialize_value_grad(self, ensemble):
-        print(ensemble.name, ensemble.pad)
         for field in ["value", "grad"]:
             # p = (bottom_pad, top_pad)
             # d = size of a dimension
