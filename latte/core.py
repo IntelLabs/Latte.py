@@ -282,12 +282,11 @@ class Net:
             self.connections_map[connection.sink].append(connection)
 
         forward_body = []
-        forward_casts = []
         forward_args = set()
 
         backward_body = []
-        backward_casts = []
         backward_args = set()
+
 
         in_place_buffer_map = {}
 
@@ -309,14 +308,16 @@ class Net:
             else:
                 neuron = ensemble.neurons.flat[0]
 
-                casts, body, args = self._synthesize_ast(ensemble, neuron, "forward")
+                body, args = self._synthesize_ast(ensemble, neuron, "forward")
                 forward_args = forward_args.union(args)
-                forward_casts += casts
                 forward_body += body
 
-                casts, body, args = self._synthesize_ast(ensemble, neuron, "backward")
+                body, args = self._synthesize_ast(ensemble, neuron, "backward")
                 backward_args = backward_args.union(args)
-                backward_casts += casts
+                backward_body = body + backward_body
+
+                body, args = self._synthesize_ast(ensemble, neuron, "update_internal")
+                backward_args = backward_args.union(args)
                 backward_body = body + backward_body
 
             if isinstance(ensemble, ActivationEnsemble):
@@ -324,16 +325,15 @@ class Net:
                 in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
 
         logger.info("Compiling functions...")
-        for args, direction, body, casts, tasks, in zip([forward_args, backward_args], 
-                                                        ["forward", "backward"],
-                                                        [forward_body, backward_body],
-                                                        [forward_casts, backward_casts],
-                                                        [self.forward_tasks, self.backward_tasks],
-                                                        ):
+        for args, direction, body, tasks, in zip([forward_args, backward_args], 
+                                                 ["forward", "backward"],
+                                                 [forward_body, backward_body],
+                                                 [self.forward_tasks, self.backward_tasks],
+                                                 ):
             args = list(args)
-            arg_bufs = [self.buffers[arg.arg] for arg in args]
+            arg_bufs = [self.buffers[arg] for arg in args]
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
-            params   = [C.SymbolRef("_" + arg.arg, typ()) for arg, typ in zip(args, type_sig)]
+            params   = [C.SymbolRef("_" + arg, typ()) for arg, typ in zip(args, type_sig)]
 
             _id = self._uniqueid()
             c_file = C.CFile(direction + _id, [
@@ -343,7 +343,7 @@ class Net:
 
             c_file._ext = "cpp"
 
-            c_file = transformers.simple_fusion(c_file)
+            # c_file = transformers.simple_fusion(c_file)
 
             new_body = []
             incr = -1
@@ -365,8 +365,15 @@ class Net:
                     #     execute_stmt = self._gen_execute_for_loop(stmt, incr)
                 else:
                     new_body.append(stmt)
+
+            for arg in args:
+                name = arg
+                buf = self.buffers[name]
+                new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+                util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
+
             c_file.body[1].defn = new_body # + [execute_stmt]
-            c_file.body[1].defn = casts + c_file.body[1].defn
+
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
                 c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
@@ -542,19 +549,21 @@ class Net:
         # get_ast returns an ast.Module, grab the first item for the function
         if direction == "forward":
             fn_def = util.get_ast(neuron.forward).body[0]
+        elif direction == "update_internal":
+            fn_def = util.get_ast(neuron.update_internal).body[0]
         else:
             # Don't backpropogate to DataEnsemble
             if not isinstance(self.connections_map[ensemble][0].source, DataEnsemble) or \
                     self.force_backward:
                 fn_def = util.get_ast(neuron.backward).body[0]
-                if hasattr(neuron, 'update_internal'):
-                    fn_def.body += util.get_ast(neuron.update_internal).body[0].body
-                    fn_def = transformers.simple_fusion(fn_def)
-            elif hasattr(neuron, 'update_internal'):
-                fn_def = util.get_ast(neuron.update_internal).body[0]
+                # if hasattr(neuron, 'update_internal'):
+                #     fn_def.body += util.get_ast(neuron.update_internal).body[0].body
+                #     fn_def = transformers.simple_fusion(fn_def)
+            # elif hasattr(neuron, 'update_internal'):
+            #     fn_def = util.get_ast(neuron.update_internal).body[0]
             else:
                 # No-op
-                return [], [], set()
+                return [], set()
 
         # transform domain constructs
         transformer = transformers.NeuronTransformer(ensemble,
@@ -719,14 +728,7 @@ class Net:
         self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
         type_sig = []
-        casts = []
         self._reshape_buffer(args, ensemble)
-
-        for arg in args:
-            name = arg.arg
-            buf = self.buffers[name]
-            casts.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-            util.insert_cast(casts, buf.shape[1:], name, buf.dtype)
 
         if direction in ensemble.vectorize_info:
             pre_trans, post_trans = self._gen_transposes(transposed_buffers)
@@ -738,7 +740,6 @@ class Net:
 
                 args.append(ast.arg(buffer_name + "_transposed", None))
                 self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-                util.insert_cast(casts, shape[1:], buffer_name + "_transposed", self.buffers[buffer_name + "_transposed"].dtype)
         else:
             pre_trans = []
             post_trans = []
@@ -750,7 +751,7 @@ class Net:
         for arg in args:
             if arg.arg.replace(ensemble.name, "") in ensemble.private_info:
                 reduce_vars.append(arg.arg)
-        return casts, func_def.defn, args
+        return func_def.defn, [arg.arg for arg in args]
 
     def test(self):
         for task in self.forward_tasks:

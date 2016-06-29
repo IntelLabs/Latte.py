@@ -31,6 +31,9 @@ class MaxNeuron(Neuron):
         k = self.mask_k
         self.grad_inputs[0,j,k] += self.grad
 
+    def update_internal(self):
+        pass
+
 def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     assert input_ensemble.ndim == 3, "PoolingLayer only supports 3-d input"
 
@@ -71,21 +74,21 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
 
     net.add_connections(input_ensemble, pooling_ens, mapping)
 
-    pooling_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
-    pooling_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
+    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
 
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
         for dim, factor in tiled_dims:
             pooling_ens.tile('inputs', dim=dim, factor=factor)
-        pooling_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
-        pooling_ens.parallelize(direction="backward", loop_var="_neuron_index_1_outer")
+        pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+        pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
         pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
     else:
-        pooling_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
-        pooling_ens.parallelize(direction="backward", loop_var="_neuron_index_1")
+        pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
+        pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
 
     if "grad" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["grad"]

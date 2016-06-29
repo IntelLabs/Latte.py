@@ -35,9 +35,11 @@ class ConvertEnumerateRange(ast.NodeTransformer):
         return node
 
     def visit_For(self, node):
+        # FIXME: This should no longer happen implicitly, instead the user
+        # should use swap loops to lift tiled loops
         if isinstance(node.iter, ast.Call) and node.iter.func.id == "range" and \
             (self.direction == "forward" and node.target.id == "_neuron_index_1_outer") or \
-            (self.direction == "backward" and node.target.id == "_neuron_index_0"):
+            (self.direction in ["backward", "update_internal"] and node.target.id == "_neuron_index_0"):
             new_body = []
             for statement in node.body:
                 result = self.visit(statement)
@@ -74,9 +76,10 @@ class ConvertEnumerateRange(ast.NodeTransformer):
 
             body = []
             body += [self.visit(s) for s in node.child_for.body]
+            # FIXME: This check does not cover general cases
             if (self.direction == "forward" and "inputs" in self.ensemble.tiling_info and 
                     any(dim == x[0] for x in self.ensemble.tiling_info["inputs"])) or (
-                    self.direction == "backward" and "grad_inputs" in self.ensemble.tiling_info and 
+                    self.direction in ["backward", "update_internal"] and "grad_inputs" in self.ensemble.tiling_info and 
                     any(dim == x[0] for x in self.ensemble.tiling_info["grad_inputs"])):
                 outer_loop = C.For(
                     C.Assign(C.SymbolRef(loop_var + "_outer", ctypes.c_int()), C.Constant(0)),

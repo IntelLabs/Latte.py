@@ -20,6 +20,9 @@ class ReLUNeuron(Neuron):
         else:
             self.grad_input = 0.0
 
+    def update_internal(self):
+        pass
+
 def ReLULayer(net, input_ensemble):
     
     relu_neurons = np.empty(input_ensemble.shape, dtype='object')
@@ -28,18 +31,13 @@ def ReLULayer(net, input_ensemble):
         relu_neurons[i] = ReLUNeuron()
 
     relu_ens = net.init_activation_ensemble(relu_neurons, input_ensemble)
-    relu_ens.parallelize(direction="forward", loop_var="_neuron_index_0")
-    relu_ens.parallelize(direction="backward", loop_var="_neuron_index_0")
+    relu_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    relu_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
     if "value" in input_ensemble.tiling_info:
-        relu_ens.parallelize(direction="forward", loop_var="_neuron_index_1_outer")
-        relu_ens.parallelize(direction="backward", loop_var="_neuron_index_1_outer")
+        relu_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+        relu_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
     else:
-        relu_ens.parallelize(direction="forward", loop_var="_neuron_index_1")
-        relu_ens.parallelize(direction="backward", loop_var="_neuron_index_1")
-    # if "value" in input_ensemble.tiling_info:
-    #     relu_ens.vectorize(direction="forward", loop_var="_neuron_index_1_inner", factor=latte.core.SIMDWIDTH)
-
-    # if "grad" in input_ensemble.tiling_info:
-    #     relu_ens.vectorize(direction="backward", loop_var="_neuron_index_1_inner", factor=latte.core.SIMDWIDTH)
+        relu_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
+        relu_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
 
     return relu_ens

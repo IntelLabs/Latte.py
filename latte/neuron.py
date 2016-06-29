@@ -20,6 +20,9 @@ class Neuron:
     def backward(self):
         raise NotImplementedError
 
+    def update_internal(self):
+        raise NotImplementedError
+
 class DataNeuron(Neuron):
     def forward(self):
         pass
@@ -61,4 +64,8 @@ class BiasNeuron(Neuron):
         self.value = self.input + self.bias[0]
 
     def backward(self):
+        pass
+
+    def update_internal(self):
         self.grad_bias[0] += self.grad
+

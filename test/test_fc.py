@@ -57,7 +57,7 @@ def test_forward_backward_not_flat():
     net = Net(batch_size)
     data = MemoryDataLayer(net, (8, 24, 24))
     conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=1)
-    fc1 = FullyConnectedLayer(net, conv1, 24)
+    fc1 = FullyConnectedLayer(net, conv1, 128)
     fc2 = FullyConnectedLayer(net, fc1, 16)
 
     net.compile()
@@ -72,10 +72,10 @@ def test_forward_backward_not_flat():
 
     weights = fc1.get_weights()
     actual  = fc1.get_value()
-    expected = np.dot(conv1.get_value().reshape(batch_size, 16 * 24 * 24), weights.reshape(24, 16 * 24 * 24).transpose())
+    expected = np.dot(conv1.get_value().reshape(batch_size, 16 * 24 * 24), weights.reshape(128, 16 * 24 * 24).transpose())
 
     for n in range(batch_size):
-        expected[n, :] += bias_value.reshape((24,))
+        expected[n, :] += bias_value.reshape((128,))
 
     check_equal(actual, expected, 1e-5)
 

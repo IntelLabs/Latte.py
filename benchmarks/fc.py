@@ -10,7 +10,7 @@ def main():
     net.force_backward = True
     channels, height, width = 512, 7, 7
     data = MemoryDataLayer(net, (channels, height, width))
-    fc1 = FullyConnectedLayer(net, data, 1024)
+    fc1 = FullyConnectedLayerNoBias(net, data, 1024)
 
     net.compile()
 
@@ -54,45 +54,28 @@ def main():
     np.dot(A, B, out=C)
     blas_backward_time = time.time() - t
 
-    forward_flops = 2 * M * N * K + M * N
-    backward_flops = 2 * M * N * K * 2 + M * N
-    print("FP      : {0:.3f} ms, {1:.3f} GFLOPS/s".format(forward_t_total / num_trials * 1000, 
-                                                          (forward_flops * num_trials * 1e-9) / forward_t_total))
+    forward_flops = 2 * M * N * K
+    backward_flops = 2 * M * N * K * 2
+    freq = util.get_cpu_freq()
+    print("cpu_freq = {} GHz".format(freq * 1e-9))
+    print("===== FP =====")
+    print("    {} ms".format(forward_t_total / num_trials * 1000))
+    print("    {} gflops/s".format(
+        (forward_flops * num_trials * 1e-9) / forward_t_total))
+    print("    {} flops/cycle".format(
+        (forward_flops / ((forward_t_total / num_trials) * freq))
+    ))
+    print("==============")
+    print("==== BP+WU ===")
+    print("    {} ms".format(backward_t_total / num_trials * 1000))
+    print("    {} gflops/s".format(
+        (backward_flops * num_trials * 1e-9) / backward_t_total))
+    print("    {} flops/cycle".format(
+        (backward_flops / ((backward_t_total / num_trials) * freq))
+    ))
+    print("==============")
     print("BLAS FP : {0:.3f} ms, {1:.3f} GFLOPS/s".format(blas_forward_time * 1000, (forward_flops * 1e-9) / blas_forward_time))
-    print("BP      : {0:.3f} ms, {1:.3f} GFLOPS/s".format(backward_t_total / num_trials * 1000, 
-                                                          (backward_flops * num_trials * 1e-9) / backward_t_total))
     print("BLAS BP : {0:.3f} ms, {1:.3f} GFLOPS/s".format(blas_backward_time * 1000, (backward_flops * 1e-9) / blas_backward_time))
-
-    # expected = reference_conv_forward(data_value, weights_converted, bias, pad, 1)
-
-    # expected_converted = np.zeros_like(expected)
-    # shape = expected.shape
-    # for n in range(shape[0]):
-    #     for ifm in range(shape[1] // 8):
-    #         for y in range(shape[2]):
-    #             for x in range(shape[3]):
-    #                 for v in range(8):
-    #                     expected_converted.flat[(((n * (shape[1] // 8) + ifm) * shape[2] + y) * shape[3] + x) * 8 + v] = expected[n, ifm * 8 + v, y, x]
-    # actual  = net.buffers[conv1.name + "value"]
-    # self._check_equal(actual, expected_converted)
-
-    # top_grad = net.buffers[conv2.name + "grad"]
-    # np.copyto(top_grad, np.random.rand(*top_grad.shape))
-
-    # net.backward()
-    # weights = net.buffers[conv2.name + "weights"]
-
-    # expected_bot_grad, expected_weights_grad, expected_bias_grad = \
-    #         reference_conv_backward(top_grad, actual, weights, 1, 1)
-
-    # bot_grad = net.buffers[conv1.name + "grad"]
-    # self._check_equal(bot_grad, expected_bot_grad)
-
-    # weights_grad = net.buffers[conv2.name + "grad_weights"]
-    # self._check_equal(weights_grad, expected_weights_grad)
-
-    # bias_grad = net.buffers[conv2.name + "grad_bias"]
-    # self._check_equal(bias_grad, expected_bias_grad)
 
 if __name__ == '__main__':
     main()

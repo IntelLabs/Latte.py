@@ -25,10 +25,10 @@ class Ensemble:
         self._transpose_info = {}
         self._vectorize_info = {}
         self._unroll_info = {}
-        self._parallel_info = {"forward": [], "backward": []}
         self._private_info = set()
-        self.loops_to_swap = {'forward': [], 'backward': []}
-        self.simd_info = {'forward': [], 'backward': []}
+        self._parallel_info = {"forward": [], "backward": [], "update_internal": []}
+        self.loops_to_swap = {'forward': [], 'backward': [], "update_internal": []}
+        self.simd_info = {'forward': [], 'backward': [], "update_internal": []}
 
         self.scalar_fields = ["value", "grad"]
 
@@ -56,8 +56,8 @@ class Ensemble:
     def parallel_info(self):
         return self._parallel_info
 
-    def simd(self, direction, loop_var):
-        self.simd_info[direction].append(loop_var)
+    def simd(self, phase, loop_var):
+        self.simd_info[phase].append(loop_var)
 
     def privatize(self, buffer):
         self.private_info.add(buffer)
@@ -73,18 +73,18 @@ class Ensemble:
             self.transpose_info[field] = []
         self.transpose_info[field].append((dim1, dim2))
 
-    def vectorize(self, direction, loop_var, factor):
-        self._vectorize_info[direction] = (loop_var, factor)
+    def vectorize(self, phase, loop_var, factor):
+        self._vectorize_info[phase] = (loop_var, factor)
 
-    def unroll(self, direction, loop_var, factor):
-        self._unroll_info[direction] = (loop_var, factor)
+    def unroll(self, phase, loop_var, factor):
+        self._unroll_info[phase] = (loop_var, factor)
 
-    def parallelize(self, direction, loop_var):
-        self._parallel_info[direction].append(loop_var)
+    def parallelize(self, phase, loop_var):
+        self._parallel_info[phase].append(loop_var)
 
-    def swap_loops(self, direction, loop_vars):
+    def swap_loops(self, phase, loop_vars):
         assert isinstance(loop_vars, tuple) and len(loop_vars) == 2
-        self.loops_to_swap[direction].append(loop_vars)
+        self.loops_to_swap[phase].append(loop_vars)
 
     @property
     def batch_fields(self):

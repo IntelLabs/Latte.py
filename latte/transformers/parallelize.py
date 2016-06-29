@@ -22,9 +22,10 @@ class LatteRuntimeLoopParallel(ast.NodeTransformer):
             //  ContinueNode *$reduce_node = new ContinueNode(&graph, [=]() {
               parallel_for(0,$size,
                 [=](int low, int high) {
+                  #pragma simd
                   for (int x = low; x < high; ++x) {
                     float sum = _$arr[x];
-                    #pragma unroll($batch_size - 1)
+                    #pragma unroll
                     for (int i = 1; i < $batch_size; ++ i) {
                       sum += _$arr[i * $size + x];
                     }
@@ -82,7 +83,7 @@ class LatteOpenMPParallel(ast.NodeTransformer):
               #pragma omp parallel for simd
               for (int x = 0; x < $size; ++x) {
                 float sum = _$arr[x];
-                #pragma unroll($batch_size - 1)
+                #pragma unroll
                 for (int i = 1; i < $batch_size; ++ i) {
                   sum += _$arr[i * $size + x];
                 }
@@ -154,7 +155,7 @@ class LatteOpenCLSimpleLoopParallel(ast.NodeTransformer):
           __kernel void $kernel_name(__global float * $arr) {
             int x = get_global_id(0);
             float sum = $arr[x];
-            #pragma unroll($batch_size - 1)
+            #pragma unroll
             for (int i = 1; i < $batch_size; ++ i) {
               sum += $arr[i * $size + x];
             }
