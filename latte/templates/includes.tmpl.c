@@ -4,8 +4,9 @@
 #include <cmath>
 #include <omp.h>
 #include <unistd.h>
-#include <tbb/tbb.h>
+#if $INCLUDE_RUNTIME
 #include "$LATTE_PACKAGE_PATH/runtime/runtime.h"
+#endif
 #define SIMDWIDTH $SIMDWIDTH
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))

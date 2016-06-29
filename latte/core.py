@@ -42,6 +42,7 @@ transpose = FileTemplate(package_path + transpose_path)
 
 include = FileTemplate(package_path + "/templates/includes.tmpl.c", {
     "LATTE_PACKAGE_PATH": StringTemplate(package_path),
+    "INCLUDE_RUNTIME": C.SymbolRef("1" if latte.config.parallel_strategy in ["SIMPLE_LOOP"] else "0"),
     "TRANSPOSE": transpose,
     "SIMDWIDTH": C.Constant(latte.config.SIMDWIDTH),
     "INCLUDE_OPENCL": C.SymbolRef("1" if "OPENCL" in latte.config.parallel_strategy else "0")
