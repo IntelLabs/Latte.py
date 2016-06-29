@@ -37,9 +37,16 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     output_width = ((input_width - kernel * dilation + 2 * pad) // stride) + 1
     output_height = ((input_height - kernel * dilation + 2 * pad) // stride) + 1
 
+
+    if num_filters % latte.config.SIMDWIDTH != 0:
+        num_filters_pad = latte.config.SIMDWIDTH - (num_filters % latte.config.SIMDWIDTH)
+    else:
+        num_filters_pad = 0
     bias = np.zeros((num_filters, 1), dtype=np.float32)
+    bias = np.lib.pad(bias, ((0, num_filters_pad), (0, 0)), 'constant')
     grad_bias = np.zeros_like(bias)
 
+    num_filters += num_filters_pad
     bias_neurons = np.empty((num_filters, output_height, output_width), dtype='object')
     for o in range(num_filters):
         bias_neurons[o, :, :] = BiasNeuron(bias[o], grad_bias[o])
@@ -89,6 +96,11 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     else:
         input_channel_pad = 0
 
+    if num_filters % latte.config.SIMDWIDTH != 0:
+        num_filters_pad = latte.config.SIMDWIDTH - (num_filters % latte.config.SIMDWIDTH)
+    else:
+        num_filters_pad = 0
+
 
     # remainder = num_filters % SIMDWIDTH
     # num_filters += remainder
@@ -100,9 +112,10 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     scale = np.sqrt(3.0 / (input_channels * kernel_h * kernel_w))
     weights = np.random.rand(num_filters, input_channels, kernel_h,
             kernel_w).astype(np.float32) * (2 * scale) - scale
-    if input_channel_pad > 0:
-        weights = np.lib.pad(weights, ((0, 0), (0, input_channel_pad), (0, 0), (0, 0)), 'constant')
-        input_channels += input_channel_pad
+
+    weights = np.lib.pad(weights, ((0, num_filters_pad), (0, input_channel_pad), (0, 0), (0, 0)), 'constant')
+    input_channels += input_channel_pad
+    num_filters += num_filters_pad
     grad_weights = np.zeros_like(weights)
 
     neurons = np.empty((num_filters, output_height, output_width), dtype='object')
@@ -119,6 +132,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
                 range(in_x,in_x+kernel_w*dilation,dilation))
 
     input_ensemble.set_padding((0, input_channel_pad), (pad, pad), (pad, pad))
+
     net.add_connections(input_ensemble, conv_ens, mapping)
 
     # Begin Optimizations

@@ -58,12 +58,12 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride, dilation=1):
 def check_equal(actual, expected, atol=1e-6, rtol=1e-5):
     assert np.allclose(actual, expected, atol=atol, rtol=rtol)
 
-def check_forward_backward(dilation=1, input_shape=(16, 14, 14)):
+def check_forward_backward(dilation=1, input_shape=(16, 14, 14), ofm1=16):
     net = Net(3)
     channels, height, width = input_shape
     pad = 1
     data = MemoryDataLayer(net, (channels, height, width))
-    conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=pad, dilation=dilation)
+    conv1 = ConvLayer(net, data, num_filters=ofm1, kernel=3, stride=1, pad=pad, dilation=dilation)
     conv2 = ConvLayer(net, conv1, num_filters=32, kernel=3, stride=1, pad=pad, dilation=dilation)
 
     _input = np.random.rand(3, channels, height, width)
@@ -123,3 +123,6 @@ def test_medium():
 
 def test_dilation():
     check_forward_backward(dilation=2, input_shape=(16, 14, 14))
+
+def test_pad_ofm():
+    check_forward_backward(dilation=2, input_shape=(16, 14, 14), ofm1=19)

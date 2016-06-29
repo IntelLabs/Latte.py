@@ -305,6 +305,10 @@ class EnsembleGroup:
     def set_padding(self, *args):
         self.ensembles[-1].set_padding(*args)
 
+    @property
+    def pad(self):
+        return self.ensembles[-1].pad
+
     def tile(self, field, dim, factor):
         self.ensembles[-1].tile(field, dim, factor)
 
