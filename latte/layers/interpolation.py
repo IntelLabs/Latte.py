@@ -30,6 +30,9 @@ class InterpolatedNeuron(Neuron):
         self.grad_inputs[0,0,1] += (1-self.delta_r) * self.delta_c     * self.grad
         self.grad_inputs[0,1,1] += self.delta_r     * self.delta_c     * self.grad
 
+    def update_internal(self):
+        pass
+
 def InterpolationLayer(net, input_ensemble, pad=0, resize_factor=1.0):
     assert input_ensemble.ndim == 3, "InterpolationLayer only supports 3-d input"
     
