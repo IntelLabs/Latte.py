@@ -6,7 +6,7 @@ import latte
 
 
 class LRNNeuron(Neuron):
-    batch_fields     = Neuron.batch_fields + ["sum_value", "n", "alpha", "beta"]
+    batch_fields     = Neuron.batch_fields + ["sum_value","n", "alpha", "beta"]
     #zero_init_fields = Neuron.zero_init_fields + ["mask_j", "mask_k"]
 
     def __init__(self, k,n, alpha,beta):
