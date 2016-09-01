@@ -33,10 +33,15 @@ for layer in range(len(net.layer)):
         s += str(net.layer[layer].name) + ' = SoftmaxLossLayer(net, ' + str(net.layer[layer].bottom[0]) +', ' + str(net.layer[layer].bottom[1]) + ')\n'
 
     if net.layer[layer].type == "LRN": #Local Response Normalization
-        s += str(net.layer[layer].name) + ' = LRNLayer(net, ' + str(net.layer[layer].bottom[0]) +', ' + \
-            str(net.layer[layer].lrn_param.local_size) + ', ' + str(net.layer[layer].lrn_param.beta) + ', ' + \
-            str(net.layer[layer].lrn_param.alpha)+ ')\n'  
-    
+        s += str(net.layer[layer].name) + ' = LRNLayer(net, ' + str(net.layer[layer].bottom[0]) +', n=' + \
+            str(net.layer[layer].lrn_param.local_size) + ', beta=' + str(net.layer[layer].lrn_param.beta) + ', alpha=' + \
+            str(net.layer[layer].lrn_param.alpha) 
+        if net.layer[layer].lrn_param.k != None:
+            s+= ', k=' + str(net.layer[layer].lrn_param.k)
+        else:
+            s+= ', k=1'
+        s += ')\n'
+ 
     if net.layer[layer].type == "Pooling" and net.layer[layer].pooling_param.pool == caffe_pb2.PoolingParameter.MAX: # max pool
         s += str(net.layer[layer].name) + ' = MaxPoolingLayer(net, ' + str(net.layer[layer].bottom[0])
         if net.layer[layer].pooling_param.kernel_size != None:
