@@ -1,7 +1,11 @@
+import ast
 import pytest
 import numpy as np
 from latte import *
 import latte.util as util
+from latte.ensemble import Ensemble, DataEnsemble, ActivationEnsemble, LossEnsemble, AccuracyEnsemble, EnsembleGroup
+import ctree
+from ctree.transformations import PyBasicConversions
 import sys
 
 def reference_pooling_forward(_input, kernel, pad, stride):
@@ -63,7 +67,7 @@ def test_forward_backward():
     pool1 = MaxPoolingLayer(net, data, kernel=2, stride=2, pad=pad)
 
     net.compile()
-    
+ 
     data_value = np.random.rand(8, channels, height, width)
     data.set_value(data_value)
 
@@ -72,6 +76,8 @@ def test_forward_backward():
     expected, expected_mask = reference_pooling_forward(data_value, 2, pad, 2)
 
     actual  = pool1.get_value()
+    print(actual)
+    #print(expected)    
     actual_mask_j  = pool1.get_mask_j()
     actual_mask_k  = pool1.get_mask_k()
     check_equal(actual, expected)
@@ -89,3 +95,11 @@ def test_forward_backward():
 
     bot_grad = pool1.get_grad_inputs()
     check_equal(bot_grad, expected_bot_grad)
+
+def main():
+    test_forward_backward()
+ 
+if __name__ == "__main__":
+    main()
+ 
+

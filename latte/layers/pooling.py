@@ -99,38 +99,41 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     return pooling_ens
 
 class MeanNeuron(Neuron):
-    #batch_fields     = Neuron.batch_fields + ["mask_j", "mask_k"]
-    #zero_init_fields = Neuron.zero_init_fields + ["mask_j", "mask_k"]
+    batch_fields     = Neuron.batch_fields + ["sum_value", "kernel"]
+    #zero_init_fields = Neuron.zero_init_fields + ["sum_value"]
  
-    def __init__(self):
+    def __init__(self, height, width):
         super().__init__()
         self.inputs = []
         self.grad_inputs = []
- 
+        #self.sum_value = 0 
+        #self.kernel_w = width
+        #self.kernel_h = height        
         #self.mask_j = 0`
         #self.mask_k = 0
+        self.value = 0  
+        self.kernel = width*height    
+
+    def forward(self):
+        #sum_value = 0
+        for j in range_dim(self.inputs, 1):
+            for k in range_dim(self.inputs, 2):
+                self.value +=  self.inputs[0,j,k]
  
-        def forward(self):
-            sum_value = 0.0
-            for j in range_dim(self.inputs, 1):
-                for k in range_dim(self.inputs, 2):
-                    #if self.inputs[0,j,k] > max_value:
-                    sum_value += self.inputs[0,j,k]
-                    #self.mask_j = j
-                    #self.mask_k = k
+        self.value = self.value/self.kernel#self.sum_value
+    
+
+    def backward(self):
+        #j = self.mask_j
+        #k = self.mask_k
+        val = self.grad/self.kernel
+
+        for j in range_dim(self.grad_inputs, 1):
+            for k in range_dim(self.grad_inputs, 2):
+                self.grad_inputs[0,j,k] += val
  
-            self.value = sum_value/self.inputs.size
-        def backward(self):
-            #j = self.mask_j
-            #k = self.mask_k
-            val = self.grad/self.inputs.size
- 
-            for j in range_dim(self.grad_inputs, 1):
-                for k in range_dim(self.grad_inputs, 2):
-                    self.grad_inputs[0,j,k] += val
- 
-        def update_internal(self):
-            pass
+    def update_internal(self):
+        pass
  
  
 
@@ -163,7 +166,7 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
  
     shape = (input_channels, output_height, output_width)
     neurons = np.empty(shape, dtype='object')
-    neurons[:] = MeanNeuron()
+    neurons[:] = MeanNeuron(kernel_h, kernel_w)
  
     pooling_ens = net.init_ensemble(neurons)
  
@@ -186,8 +189,8 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
         pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
-        # pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
-        # pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
     else:
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
