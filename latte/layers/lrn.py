@@ -95,12 +95,13 @@ def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
 
     net.add_connections(input_ensemble, pooling_ens, mapping)
 
-    #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
-    #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
+    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
 
-    #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1") 
-    #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1") 
-
+    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_2") 
+    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_2") 
+    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_3")  
+    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_3") 
 
     #if "value" in input_ensemble.tiling_info:
     #tiled_dims = input_ensemble.tiling_info["value"]
