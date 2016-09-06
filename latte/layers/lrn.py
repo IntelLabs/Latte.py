@@ -13,8 +13,8 @@ class LRNNeuron(Neuron):
         super().__init__()
         self.inputs = []
         self.grad_inputs = []
-        self.sum_value = k
-        #self.k = k
+        self.sum_value = 0.0
+        self.k = k
         self.n = n
         self.alpha = alpha
         self.beta = beta
@@ -34,11 +34,12 @@ class LRNNeuron(Neuron):
             #for j in range_dim(self.inputs, 1):
             #for k in range_dim(self.inputs, 2):
             #computing square might be more optimal to use pow(self.inputs, 2)
-            self.sum_value  += self.inputs[i,0,0]*self.inputs[i,0,0]
+            self.sum_value  = self.sum_value + (self.inputs[i,0,0]*self.inputs[i,0,0])
 
-        self.sum_value *= self.alpha/n
-            #sum_value =  sum_value^(-beta)
-        self.value = self.inputs[0,0,0]*self.sum_value^(-self.beta)
+        self.sum_value = self.sum_value*(self.alpha/self.n)
+        self.sum_value += self.k    
+        #sum_value =  sum_value^(-beta)
+        self.value = self.inputs[0,0,0]/pow(self.sum_value,self.beta)
 
 
             #update sum on channels 1 to n
@@ -52,27 +53,27 @@ class LRNNeuron(Neuron):
 
 
     def backward(self):
-        value = 0.0
+        #value = 0.0
 
         #for i in range_dim(self.inputs, 0):
-        self.grad_inputs[0,0,0] += self.grad/self.sum_value^(beta)
-
+        self.grad_inputs[0,0,0] += (self.grad/pow(self.sum_value,self.beta))
+        #self.grad_inputs[0,0,0] =0 
         for i in range_dim(self.inputs, 0):
-            self.grad_inputs[i,0,0] -= (2/self.n)*self.alpha*self.beta*self.grad*self.value/self.sum_value
+            self.grad_inputs[i,0,0] = self.grad_inputs[i,0,0] -  (((((2/self.n)*self.alpha)*(self.beta*self.grad))*self.inputs[0,0,0])/self.sum_value)
         #j = self.mask_j
         #k = self.mask_k
         #val = self.grad/self.inputs.size
         #for j in range_dim(self.grad_inputs, 1):
         #for k in range_dim(self.grad_inputs, 2):
         #self.grad_inputs[0,j,k] += val
-
+        pass
     def update_internal(self):
         pass
 
 
 
 def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
-    assert input_ensemble.ndim == 3, "PoolingLayer only supports 3-d input"
+    assert input_ensemble.ndim == 3, "LRNLayer only supports 3-d input"
     input_channels, input_height, input_width = input_ensemble.shape
 
 
@@ -88,11 +89,18 @@ def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
         in_y = y
         in_x = x
         return range(c, c+n), range(in_y, in_y+1), range(in_x, in_x + 1)
+    
+
+    input_ensemble.set_padding((0,n-1),(0,0), (0,0))
 
     net.add_connections(input_ensemble, pooling_ens, mapping)
 
     #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
     #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
+
+    #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1") 
+    #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1") 
+
 
     #if "value" in input_ensemble.tiling_info:
     #tiled_dims = input_ensemble.tiling_info["value"]
