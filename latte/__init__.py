@@ -10,3 +10,4 @@ from .layers.seg_accuracy import SegAccuracyLayer
 from .layers.interpolation import InterpolationLayer
 from .layers.dropout import DropoutLayer
 from .layers.lrn import LRNLayer
+from .layers.concat import ConcatLayer
