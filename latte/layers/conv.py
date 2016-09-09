@@ -111,8 +111,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
 
     input_channels, input_height, input_width = input_ensemble.shape
 
-    kernel_h_eff = kernel_h + (kernel_h - 1) * (dilation - 1)
-    kernel_w_eff = kernel_w + (kernel_w - 1) * (dilation - 1)
+    kernel_h_eff = kernel_h + (kernel_h-1) * (dilation - 1)
+    kernel_w_eff = kernel_w + (kernel_w-1) * (dilation - 1)
 
     output_width = ((input_width + 2 * pad_w - kernel_w_eff) // stride_w) + 1
     output_height = ((input_height + 2 * pad_h - kernel_h_eff) // stride_h) + 1
@@ -142,8 +142,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         in_y = y*stride_h
         in_x = x*stride_w
         return (range(input_channels),
-                range(in_y,in_y+(kernel_h-1)*(dilation-1),dilation),
-                range(in_x,in_x+(kernel_w-1)*(dilation-1),dilation))
+                range(in_y,in_y+(kernel_h)*(dilation),dilation),
+                range(in_x,in_x+(kernel_w)*(dilation),dilation))
 
     input_ensemble.set_padding((0, input_channel_pad), (pad, pad), (pad, pad))
 

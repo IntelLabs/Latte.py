@@ -14,6 +14,7 @@ def reference_conv_forward(_input, weights, bias, pad, stride, dilation=1):
 
     output_width = ((in_width + 2 * pad_w - kernel_w_eff) // stride_w) + 1
     output_height = ((in_height + 2 * pad_h - kernel_h_eff) // stride_h) + 1
+
     #output_width = ((in_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
     #output_height = ((in_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
     output = np.zeros((batch_size, output_channels, output_height, output_width), dtype=np.float32)
@@ -23,8 +24,8 @@ def reference_conv_forward(_input, weights, bias, pad, stride, dilation=1):
                 for x in range(output_width):
                     in_y = y*stride_h - pad
                     in_x = x*stride_w - pad
-                    out_y = in_y + (kernel_h-1) * (dilation-1)
-                    out_x = in_x + (kernel_w-1) * (dilation-1)
+                    out_y = in_y + kernel_h * dilation
+                    out_x = in_x + kernel_w * dilation
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y, dilation)):
                             if p >= 0 and p < in_height:
@@ -50,8 +51,8 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride, dilation=1):
                     bias_grad[o] += top_grad[n, o, y, x]
                     in_y = y*stride_h - pad
                     in_x = x*stride_w - pad
-                    out_y = in_y + (kernel_h-1) * (dilation-1)
-                    out_x = in_x + (kernel_w-1) * (dilation-1)
+                    out_y = in_y + kernel_h * dilation
+                    out_x = in_x + kernel_w * dilation
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y, dilation)):
                             if p >= 0 and p < in_height:
