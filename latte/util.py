@@ -373,14 +373,17 @@ def untile(buffer, dim):
     return untiled
 
 def tile(buffer, dim):
-    shape = buffer.shape
-    tiled_shape = list(shape)
+    tiled_shape = list(buffer.shape)
     factor = latte.config.SIMDWIDTH
     if tiled_shape[dim] < factor:
         factor = tiled_shape[dim]
     elif tiled_shape[dim] % latte.config.SIMDWIDTH != 0:
-        raise NotImplementedError()
-    
+        filters_pad = factor - (tiled_shape[dim] % factor)
+        buffer = np.lib.pad(buffer, ((0,0), (0, filters_pad), (0,0), (0,0)), 'constant')
+   
+    shape = buffer.shape
+    tiled_shape = list(buffer.shape)
+ 
     tiled_shape[dim] //= factor
     tiled_shape.append(factor)
     tiled = np.zeros(tiled_shape, dtype=buffer.dtype)

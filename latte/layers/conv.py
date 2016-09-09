@@ -30,19 +30,27 @@ def compute_output_shape(input_shape, kernel, pad, stride):
     width, height, channels = input_shape
     return width_out, height_out
 
-def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1):
-    conv_ens = ConvLayerNoBias(net, input_ensemble, num_filters, kernel, stride, pad, dilation)
+def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1, weights=None, bias=None):
+    conv_ens = ConvLayerNoBias(net, input_ensemble, num_filters, kernel, stride, pad, dilation, weights)
 
     input_channels, input_height, input_width = input_ensemble.shape
-    output_width = ((input_width - kernel * dilation + 2 * pad) // stride) + 1
-    output_height = ((input_height - kernel * dilation + 2 * pad) // stride) + 1
 
+    kernel_eff = kernel + (kernel-1) * (dilation-1)
+
+    output_width = ((input_width + 2 * pad - kernel_eff) // stride) + 1
+    output_height = ((input_height + 2 * pad - kernel_eff) // stride) + 1
+
+    #output_width = ((input_width - kernel * dilation + 2 * pad) // stride) + 1
+    #output_height = ((input_height - kernel * dilation + 2 * pad) // stride) + 1
 
     if num_filters % latte.config.SIMDWIDTH != 0:
         num_filters_pad = latte.config.SIMDWIDTH - (num_filters % latte.config.SIMDWIDTH)
     else:
         num_filters_pad = 0
-    bias = np.zeros((num_filters, 1), dtype=np.float32)
+
+    if not isinstance(bias, np.ndarray):
+        bias = np.zeros((num_filters, 1), dtype=np.float32)
+    
     bias = np.lib.pad(bias, ((0, num_filters_pad), (0, 0)), 'constant')
     grad_bias = np.zeros_like(bias)
 
@@ -67,7 +75,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     return EnsembleGroup(conv_ens, bias_ens)
 
-def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1):
+def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1, weights=None):
     assert num_filters > 0, "num_filters must be specified and greater than 0"
     assert input_ensemble.ndim == 3, "ConvLayer only supports 3-d input"
 
@@ -101,17 +109,23 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     else:
         num_filters_pad = 0
 
-
-    # remainder = num_filters % SIMDWIDTH
-    # num_filters += remainder
-
     input_channels, input_height, input_width = input_ensemble.shape
-    output_width = ((input_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
-    output_height = ((input_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
+
+    kernel_h_eff = kernel_h + (kernel_h - 1) * (dilation - 1)
+    kernel_w_eff = kernel_w + (kernel_w - 1) * (dilation - 1)
+
+    output_width = ((input_width + 2 * pad_w - kernel_w_eff) // stride_w) + 1
+    output_height = ((input_height + 2 * pad_h - kernel_h_eff) // stride_h) + 1
+    
+    #output_width = ((input_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
+    #output_height = ((input_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
 
     scale = np.sqrt(3.0 / (input_channels * kernel_h * kernel_w))
-    weights = np.random.rand(num_filters, input_channels, kernel_h,
-            kernel_w).astype(np.float32) * (2 * scale) - scale
+    if not isinstance(weights, np.ndarray):
+        #weights = np.random.rand(num_filters, input_channels, kernel_h,
+        #        kernel_w).astype(np.float32) * (2 * scale) - scale
+        weights = np.random.uniform(-scale, scale, (num_filters, input_channels, kernel_h,
+                kernel_w)).astype(np.float32)
 
     weights = np.lib.pad(weights, ((0, num_filters_pad), (0, input_channel_pad), (0, 0), (0, 0)), 'constant')
     input_channels += input_channel_pad
@@ -128,8 +142,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         in_y = y*stride_h
         in_x = x*stride_w
         return (range(input_channels),
-                range(in_y,in_y+kernel_h*dilation,dilation),
-                range(in_x,in_x+kernel_w*dilation,dilation))
+                range(in_y,in_y+(kernel_h-1)*(dilation-1),dilation),
+                range(in_x,in_x+(kernel_w-1)*(dilation-1),dilation))
 
     input_ensemble.set_padding((0, input_channel_pad), (pad, pad), (pad, pad))
 
