@@ -16,6 +16,7 @@ class BasicTypeInference(ast.NodeTransformer):
 
     def visit(self, node):
         if hasattr(node, 'body'):
+            #raise NotImplementedError(ast.dump(node))
             curr = copy.deepcopy(self.seen)
         node = super().visit(node)
         if hasattr(node, 'body'):
@@ -70,6 +71,7 @@ class BasicTypeInference(ast.NodeTransformer):
 
 def type_infer(ast):
     try:
+        
         return BasicTypeInference().visit(ast)
     except NotImplementedError as e:
         print("AST that caused exception during type inference")

@@ -20,6 +20,7 @@ class NeuronTransformer(ast.NodeTransformer):
         super().__init__()
         self.ensemble = ensemble
         self.seen_vars = set()
+        self.seen_vars2 = set()
         self.connections = connections
         self.buffer_dim_info = buffer_dim_info
 
@@ -78,7 +79,13 @@ class NeuronTransformer(ast.NodeTransformer):
                 # fields that don't have a batch dimension start at an offset 1
                 # as 0 is the batch dimension
                 offset = 1
-
+            if isinstance(self.ensemble, latte.ensemble.ConcatEnsemble):
+                if "inputs" in node.attr or "grad_inputs" in node.attr:
+                    ndim = 1
+                    offset = 0
+                else:
+                   ndim = self.ensemble.ndim + 1
+                   offset = 0       
             args = []
 
             # if "grad_" in node.attr and not node.attr.endswith("inputs"):
@@ -91,13 +98,29 @@ class NeuronTransformer(ast.NodeTransformer):
 
             # only append dimensions if it is not fixed in self.buffer_dim_info
             # (used for values shared across a dimension)
+            #if not isinstance(self.ensemble, latte.ensemble.ConcatEnsemble):
+
+
+
+            #if node.attr not in ["value", "grad"]:
             for i in range(ndim):
                 if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
-                    args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
-                    # if i + offset == 1:
-                    #     args[-1].id += "_outer"
+                    if isinstance(self.ensemble, latte.ensemble.ConcatEnsemble) and node.attr in ["value", "grad"] and i==1:
+                        name2 =  "_output_offset_{}".format(i)
+                        while name2 in self.seen_vars2:
+                            name2 += str(i) 
+                        args.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
+                        self.seen_vars2.add(name2)     
+                    #else:
+                    #    args.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name("_output_offset_{}".format(i), ast.Load())))
+    
+                    else:
+                        args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
+                        # if i + offset == 1:
+                        #     args[-1].id += "_outer"
 
             if node.attr in ["value", "grad"]:
+                #raise Exception("value")   
                 for i, p in enumerate(self.ensemble.pad):
                     if p[0] > 0:
                         args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
@@ -157,7 +180,7 @@ class NeuronTransformer(ast.NodeTransformer):
                 ndim = self.ensemble.ndim
                 # if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
                 #     value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
-            
+                #if not isinstance(self.ensemble, latte.ensemble.ConcatEnsemble):  
                 for i in range(1, ndim + 1):
                     elem = value.slice.value.elts[i]
                     tile = False
@@ -173,6 +196,33 @@ class NeuronTransformer(ast.NodeTransformer):
                     else:
                         value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(), 
                                 ast.Name("_input_offset_{}".format(i), ast.Load())) 
+                #        if "inputs" in value.value.id or "grad_inputs" in value.value.id:
+                # Add the input offsets defined by user's mapping for the
+                # connection
+            #if "value" in value.value.id: #isinstance(self.ensemble, latte.ensemble.ConcatEnsemble):       
+            #    ndim = self.ensemble.ndim
+            #    # if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
+            #    #     value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
+            #    raise NotImplementedError("Something wrong\n")
+ 
+            #for i in range(1, ndim + 1):
+            #        elem = value.slice.value.elts[i]
+            #         tile = False
+            #        if field in self.ensemble.tiling_info:
+            #            for dim, _ in self.ensemble.tiling_info[field]:
+            #                if dim + 1 == i:
+            #                    raise NotImplementedError("tiling not implemented for ConcatEnsemble")#tile = True
+            #        #if tile:
+            #        #    value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(),
+            #        #            ast.Name("_input_offset_{}_outer".format(i), ast.Load()))
+            #        #    value.slice.value.elts[i + ndim] = ast.BinOp(value.slice.value.elts[i + ndim], ast.Add(),
+            #        #            ast.Name("_input_offset_{}_inner".format(i), ast.Load()))
+            #        #else:
+            #        value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(),
+            #                    ast.Name("_output_offset_{}".format(i), ast.Store()))
+
+
+
             # return child node
             return value
         else:
@@ -186,7 +236,7 @@ class NeuronTransformer(ast.NodeTransformer):
 
     def visit_For(self, node):
         """
-        Converts iteration expressions into RangeDim semantic nodes
+        Converts iteration expressionsinto RangeDim semantic nodes
         """
         _range = node.iter
         if isinstance(_range, ast.Call) and _range.func.id == "eachindex":

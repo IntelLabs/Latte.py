@@ -166,6 +166,7 @@ class InlineVariable(ast.NodeTransformer):
         return node
 
 def inline_variable(variable, value, ast):
+    
     return InlineVariable(variable, value).visit(ast)
 
 

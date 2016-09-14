@@ -285,6 +285,12 @@ class LossEnsemble(Ensemble):
 class AccuracyEnsemble(Ensemble):
     pass
 
+class ConcatEnsemble(Ensemble):
+    def __init__(self, neurons):
+        super().__init__(neurons)
+
+
+   
 class EnsembleGroup:
     def __init__(self, *ensembles):
         self.ensembles = ensembles
