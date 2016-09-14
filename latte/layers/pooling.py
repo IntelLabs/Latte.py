@@ -68,11 +68,11 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     input_shape = input_ensemble.shape
 
     def mapping(c, y, x):
-        in_y = y*stride_h - pad
+        in_y = y*stride_h - pad 
         in_x = x*stride_w - pad
         return range(c, c+1), range(in_y, in_y+kernel_h), range(in_x, in_x+kernel_w)
 
-    net.add_connections(input_ensemble, pooling_ens, mapping)
+    net.add_connections(input_ensemble, pooling_ens, mapping, clamp=True)
 
     pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
     pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")

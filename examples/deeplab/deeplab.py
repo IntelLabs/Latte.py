@@ -6,7 +6,7 @@ import time
 from data_loader import load_data, load_images, load_preprocessed_images
 from latte.math import compute_seg_softmax_loss, seg_softmax_loss_backprop, compute_seg_accuracy
 
-np.set_printoptions(threshold=np.inf)
+#np.set_printoptions(threshold=np.inf)
 
 batch_size = 1
 net = Net(batch_size)
@@ -151,12 +151,23 @@ for epoch in range(epoch_size):
         net.forward()
         forward_time += time.time() - t
 
+        '''
+        np.save('conv1_1_out.npy', conv1_1.get_value())
+        np.save('conv1_2_out.npy', conv1_2.get_value())
+        np.save('pool1_out.npy', pool1.get_value())
+        np.save('conv2_1_out.npy', conv2_1.get_value())
+        np.save('conv2_2_out.npy', conv2_2.get_value())
+        np.save('pool2_out.npy', pool2.get_value())
+        '''
+        print("conv1_1 max: {}".format(np.max(conv1_1.get_value())))
+        print("conv1_2 max: {}".format(np.max(conv1_2.get_value())))
+        print("pool1 max: {}".format(np.max(pool1.get_value())))
+        print("pool2 max: {}".format(np.max(pool2.get_value())))
+
         # Compute loss
         output = fc8_pascal.get_value()
         loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value(), ignore_label)
-
-        print(output)
-        
+ 
         #if i % 100 == 0:
         print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
         
@@ -184,26 +195,6 @@ for epoch in range(epoch_size):
     
     total_forward_time += forward_time
     total_backward_time += backward_time
-
-    '''
-    print("Epoch {} - Testing...".format(epoch))
-    
-    acc = 0
-    for i, n in enumerate(range(0, num_test, batch_size)):
-        test_data, test_label  = load_preprocessed_images(test_images_list, data_folder="./testing_data/", is_color=True, crop_size=306, start=n, batch_size=batch_size)
-        test_data = np.pad(test_data, [(0, 0), (5, 0), (0, 0), (0, 0)], mode='constant')
-        test_label = np.pad(test_label, [(0, 0), (7, 0), (0, 0), (0, 0)], mode='constant')
-        data.set_value(test_data)
-        label.set_value(test_label)
-        net.test()
-
-        acc += compute_seg_accuracy(fc8_pascal.get_value(), shrink_label.get_value(), ignore_label)
-        
-        net.clear_values()
-    acc /= (num_test / batch_size)
-    acc *= 100
-    print("Epoch {} - Validation accuracy = {:.3f}%".format(epoch, acc))
-    '''
     
 print("Total FP                   : {0:.3f} ms".format(total_forward_time * 1000))
 print("Total BP+WU                : {0:.3f} ms".format(total_backward_time * 1000))

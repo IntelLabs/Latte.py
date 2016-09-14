@@ -677,8 +677,8 @@ class Net:
                 loop.init.left.type = ctypes.c_int()
                 input_shape = self.connections_map[ensemble][0].source.shape
 
-                if dim == 0:
-                    # Do not need to clamp batch dimension
+                if dim == 0 or dim==1:
+                    # Do not need to clamp batch dimension or channels dimension
                     continue
 
                 input_offset = "_input_offset_{}".format(dim)
@@ -691,6 +691,9 @@ class Net:
                     else:
                         gen_clamp = gen_gen_clamp(input_shape[dim - 1] - 1)
                         loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
+                        if dim+1 == (len(loop_vars) - 1):
+                            loop.body = [util.ClampInputIndex("_input_offset_{}".format(dim+1), gen_clamp).visit(s) for s in loop.body]
+                    
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
