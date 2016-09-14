@@ -150,7 +150,8 @@ class Net:
         #if isinstance(ensemble, ConcatEnsemble):
         #    self.buffers[buffer_name + str(0)] = buff
         #else: 
-            self.buffers[buffer_name] = buff
+        self.buffers[buffer_name] = buff
+
         if isinstance(ensemble, ConcatEnsemble):
             #for src in range(1, len( self.connections_map[ensemble])): 
             source_name2 = self.connections_map[ensemble][connection].source.name
@@ -293,19 +294,23 @@ class Net:
 
         for field in vars(neuron):
             buffer_name = ensemble.name + field
-            if isinstance(ensemble, ConcatEnsemble) and field in ["inputs", "grad_inputs"]:
-                buffer_name2  = buffer_name
-                #if "OPENCL" in latte.config.parallel_strategy:
-                #    raise NotImplementedError(field)#ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
-                #else:
-                ensemble.set_buffer(field, self.buffers[buffer_name2])
+            if isinstance(ensemble, ConcatEnsemble): 
+                if field in ["inputs", "grad_inputs"]:
+                    buffer_name2  = buffer_name
+                    #if "OPENCL" in latte.config.parallel_strategy:
+                    #    raise NotImplementedError(field)#ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
+                    #else:
+                    ensemble.set_buffer(field, self.buffers[buffer_name2])
 
-                for i in range(1,len(self.connections_map[ensemble])):
-                    buffer_name2  = buffer_name + str(i)
-                    if "OPENCL" in latte.config.parallel_strategy: 
-                        raise NotImplementedError(field)#ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
-                    else:
-                        ensemble.set_buffer(field, self.buffers[buffer_name2])
+                    for i in range(1,len(self.connections_map[ensemble])):
+                        buffer_name2  = buffer_name + str(i)
+                        if "OPENCL" in latte.config.parallel_strategy: 
+                            raise NotImplementedError(field)#ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
+                        else:
+                            ensemble.set_buffer(field, self.buffers[buffer_name2])
+                else:
+                    ensemble.set_buffer(field, self.buffers[buffer_name])
+
             else:
                 if "OPENCL" in latte.config.parallel_strategy:
                     ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
@@ -604,15 +609,15 @@ class Net:
         if isinstance(fn_def.body[0], ast.Pass):
             return [], set()
         
-        util.print_ast(fn_def)
+        #util.print_ast(fn_def)
         # transform domain constructs
         transformer = transformers.NeuronTransformer(ensemble,
                 self.connections_map[ensemble], self.buffer_dim_info)
         fn_def = transformer.visit(fn_def)
-        util.print_ast(fn_def)
+        #util.print_ast(fn_def)
         # Grab seen variables
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
-        print(args)
+        #print(args)
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)]
         if not isinstance(ensemble, ConcatEnsemble):
             shape = list(ensemble.shape)
@@ -658,7 +663,7 @@ class Net:
         func_def = ast.FunctionDef('func',
                 ast.arguments(args, None, [], [], None, []), body,
                 [], None)
-        util.print_ast(func_def)
+        #util.print_ast(func_def)
         #body = []
         # TODO: MAKE THIS A FUNCTION
        
@@ -858,7 +863,7 @@ class Net:
         #util.print_ast(func_def)
         # basic python -> C conversion
         func_def = PyBasicConversions().visit(func_def)
-        print(func_def)
+        #print(func_def)
         # handle math functions that are different in C than python
         func_def = transformers.PatternMatchMath().visit(func_def)
 
