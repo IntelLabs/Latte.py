@@ -65,6 +65,17 @@ for layer in range(len(net.layer)):
         if net.layer[layer].pooling_param.pad != None:
             s+= ', pad=' + str(net.layer[layer].pooling_param.pad)
         s += ')\n'
-    
+    if net.layer[layer].type == "Concat":  
+        s2 = '['
+        for i in range(len(net.layer[layer].bottom)):
+            s2 += str(net.layer[layer].bottom[i])
+           
+            if i < len(net.layer[layer].bottom) - 1:
+                s2+=', '
+            else:
+               s2+=']'     
+        s += str(net.layer[layer].name) + ' = ConcatLayer(net, ' + s2 
+        s += ')\n'
+            
 
 print(s)
