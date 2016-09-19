@@ -52,7 +52,7 @@ def ConcatLayer(net, input_ensemble):
 
     for i in range(1, len(input_ensemble)):
         channels, width1,height1  = input_ensemble[i].shape
-        print(input_ensemble[i].shape)
+        #print(input_ensemble[i].shape)
         assert input_ensemble[i].ndim == 3 and \
                 width == width1 and \
                 height == height1

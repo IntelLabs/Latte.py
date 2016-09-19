@@ -79,7 +79,7 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
 
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
-        print("tiling on\n")
+        #print("tiling on\n")
         for dim, factor in tiled_dims:
             pooling_ens.tile('inputs', dim=dim, factor=factor)
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
@@ -185,7 +185,7 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
  
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
-        print("tiling on\n")
+        #print("tiling on\n")
         for dim, factor in tiled_dims:
             pooling_ens.tile('inputs', dim=dim, factor=factor)
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")

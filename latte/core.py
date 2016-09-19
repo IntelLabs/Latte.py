@@ -646,15 +646,11 @@ class Net:
                 loop_vars[dim + 1] += "_outer"
 
         # Reverse ([::-1]) iteration space for row major indexing
-        print(loop_vars)
         loop_vars = loop_vars[::-1]
-        print( loop_vars)    
 
         #if not isinstance(ensemble, ConcatEnsemble):
-        #print(shape)
         if not isinstance(ensemble, ConcatEnsemble): 
             loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
-            #print(loop_ranges)
             body = fn_def.body
             
         
@@ -1043,7 +1039,7 @@ class Net:
             loop.init.left.type = ctypes.c_int()
             for dim in range(len(loop_vars) - 1):
                 loop = loop.body[0]
-                print(loop)
+                #print(loop)
                 loop.init.left.type = ctypes.c_int()
                 input_shape = self.connections_map[ensemble][0].source.shape
 

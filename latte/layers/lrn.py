@@ -84,7 +84,7 @@ def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
     pooling_ens = net.init_ensemble(neurons)
 
     input_shape = input_ensemble.shape
-    print(input_shape)
+    #print(input_shape)
     def mapping(c, y, x):
         in_y = y
         in_x = x
