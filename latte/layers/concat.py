@@ -44,21 +44,26 @@ def ConcatLayer(net, input_ensemble):
     #values = []
     #value += 0.0
     max_channels = total_channels        
+    #print(input_ensemble[0].shape)
+    #print(input_ensemble[1].shape)
+    # print(input_ensemble[2].shape)
+    #print(input_ensemble[3].shape)
+
+
     for i in range(1, len(input_ensemble)):
         channels, width1,height1  = input_ensemble[i].shape
-
+        print(input_ensemble[i].shape)
         assert input_ensemble[i].ndim == 3 and \
-               input_ensemble[i].ndim == input_ensemble[i-1].ndim and \
-               width == width1 and \
-               height == height1
+                width == width1 and \
+                height == height1
         total_channels += channels#input_ensemble[i].shape[0]
         max_channels = max(channels, max_channels)
         #values += 0.0
 
 
-    for i in range(len(input_ensemble)):
-        if input_ensemble[i].shape[0] < max_channels:
-            input_ensemble[i].set_padding((0,total_channels-input_ensemble[i].shape[0]),(0,0), (0,0))
+    #for i in range(len(input_ensemble)):
+    #    if input_ensemble[i].shape[0] < max_channels:
+    #        input_ensemble[i].set_padding((0,max_channels-input_ensemble[i].shape[0]),(0,0), (0,0))
 
     #assert input_ensemble.ndim == 3, "PoolingLayer only supports 3-d input"
 
@@ -145,4 +150,29 @@ def ConcatLayer(net, input_ensemble):
     for i in range(len(input_ensemble)):
         net.add_connections(input_ensemble[i], concat_ens, d[i])
 
+    if "value" in input_ensemble[0].tiling_info:
+        tiled_dims = input_ensemble[0].tiling_info["value"]
+        for dim, factor in tiled_dims:
+           concat_ens.tile('inputs', dim=dim, factor=factor)
+        #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+        #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
+        concat_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
+        #pooling_ens.tile('sum_value', dim=0, factor=latte.config.SIMDWIDTH)
+        #pooling_ens.tile('alpha', dim=0, factor=latte.config.SIMDWIDTH)
+        #pooling_ens.tile('beta', dim=0, factor=latte.config.SIMDWIDTH)
+        #pooling_ens.tile('n', dim=0, factor=latte.config.SIMDWIDTH)
+        #pooling_ens.tile('k', dim=0, factor=latte.config.SIMDWIDTH)
+ 
+        #pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
+    #else:
+    #    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
+    #    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
+    #if "grad" in input_ensemble.tiling_info:
+    #    tiled_dims = input_ensemble.tiling_info["grad"]
+                                                                                                                                                             
+    if "grad" in input_ensemble[0].tiling_info:
+        tiled_dims = input_ensemble[0].tiling_info["grad"]
+        for dim, factor in tiled_dims:
+            concat_ens.tile('grad_inputs', dim=dim, factor=factor)
+        concat_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
     return concat_ens

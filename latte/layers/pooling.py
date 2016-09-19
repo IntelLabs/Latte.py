@@ -79,6 +79,7 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
 
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
+        print("tiling on\n")
         for dim, factor in tiled_dims:
             pooling_ens.tile('inputs', dim=dim, factor=factor)
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
@@ -184,13 +185,13 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
  
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
+        print("tiling on\n")
         for dim, factor in tiled_dims:
             pooling_ens.tile('inputs', dim=dim, factor=factor)
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
         pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
-        pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
-        pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('kernel', dim=0, factor=latte.config.SIMDWIDTH)
     else:
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
@@ -200,6 +201,7 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         for dim, factor in tiled_dims:
             pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
         pooling_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
- 
+        pooling_ens.tile('kernel', dim=0, factor=latte.config.SIMDWIDTH)
+
     return pooling_ens
 

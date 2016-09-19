@@ -103,20 +103,32 @@ class NeuronTransformer(ast.NodeTransformer):
 
 
             #if node.attr not in ["value", "grad"]:
-            for i in range(ndim):
-                if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
-                    if isinstance(self.ensemble, latte.ensemble.ConcatEnsemble) and node.attr in ["value", "grad"] and i==1:
-                        name2 =  "_output_offset_{}".format(i)
-                        while name2 in self.seen_vars2:
-                            name2 += str(i) 
-                        args.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
-                        self.seen_vars2.add(name2)     
+            if isinstance(self.ensemble, latte.ensemble.ConcatEnsemble):
+                for i in range(ndim):
+                    if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]:
+                        if node.attr in ["value", "grad"] and i==1:
+                            name2 =  "_output_offset_{}".format(i)
+                            while name2 in self.seen_vars2:
+                                name2 += str(i) 
+                            name3 = "_neuron_index_{}".format(i + offset)
+                            for dim, _ in self.ensemble.tiling_info[node.attr]:
+                                if dim == 0:
+                                    name3 += "_outer" 
+                            args.append(ast.BinOp(ast.Name(name3, ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
+                            self.seen_vars2.add(name2)     
                     #else:
                     #    args.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name("_output_offset_{}".format(i), ast.Load())))
     
-                    else:
-                        args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
-                        # if i + offset == 1:
+                        else:
+                            args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
+            else:
+                 for i in range(ndim): 
+                     if name not in self.buffer_dim_info or not self.buffer_dim_info[name][i]: 
+                         args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load())) 
+        
+    
+
+                # if i + offset == 1:
                         #     args[-1].id += "_outer"
 
             if node.attr in ["value", "grad"]:
@@ -130,9 +142,13 @@ class NeuronTransformer(ast.NodeTransformer):
                 for dim, _ in self.ensemble.tiling_info[node.attr]:
                     if node.attr in self.ensemble.batch_fields or node.attr in self.ensemble.private_info:
                         dim += 1  # offset for batch dimension
-                    idx = args[dim].id
-                    args[dim].id = idx + "_outer" 
-                    args.append(ast.Name(idx + "_inner", ast.Load()))
+                    if not dim == 1 or not isinstance(self.ensemble, latte.ensemble.ConcatEnsemble):
+                        idx = args[dim].id
+                        args[dim].id = idx + "_outer" 
+                        args.append(ast.Name(idx + "_inner", ast.Load()))
+                    else:
+                        args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
+    
 
             # return updated indedxing expression
             return ast.Subscript(ast.Name(name, ast.Load()), 
