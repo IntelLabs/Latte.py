@@ -19,6 +19,7 @@ class Ensemble:
         ENSEMBLE_COUNTER += 1
         self.name = "ensemble{}".format(ENSEMBLE_COUNTER)
         self.pad = tuple((0, 0) for _ in neurons.shape)
+        self.filter_pad = tuple((0, 0) for _ in neurons.shape)
         self.parent_group = None
         self.buffer_tiled_dims = {}
         self._tiling_info = {}
@@ -107,6 +108,9 @@ class Ensemble:
     def set_padding(self, *padding):
         self.pad = padding
 
+    def set_filter_padding(self, *padding):
+        self.filter_pad = padding
+
     def is_tiled_field(self, field):
         return self.name + field in self.buffer_tiled_dims
 
@@ -148,6 +152,15 @@ class Ensemble:
                     else:
                         _slice.append(slice(None))
                 to_return = to_return[tuple(_slice)]
+            if field in ["value", "grad"] and any(p != (0, 0) for p in self.filter_pad):
+                _slice = [slice(None)]
+                for p in self.filter_pad:
+                    if p != (0, 0):
+                        _slice.append(slice(p[0], -p[1]))
+                    else:
+                        _slice.append(slice(None))
+                to_return = to_return[tuple(_slice)]
+
             return to_return
 
         setattr(self, "get_" + field, get)

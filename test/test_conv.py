@@ -8,8 +8,15 @@ def reference_conv_forward(_input, weights, bias, pad, stride, dilation=1):
     pad_h, pad_w = pad, pad
     batch_size, in_channels, in_height, in_width = _input.shape
     output_channels, _, kernel_h, kernel_w = weights.shape
-    output_width = ((in_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
-    output_height = ((in_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
+
+    kernel_h_eff = kernel_h + (kernel_h - 1) * (dilation - 1)
+    kernel_w_eff = kernel_w + (kernel_w - 1) * (dilation - 1)
+
+    output_width = ((in_width + 2 * pad_w - kernel_w_eff) // stride_w) + 1
+    output_height = ((in_height + 2 * pad_h - kernel_h_eff) // stride_h) + 1
+
+    #output_width = ((in_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
+    #output_height = ((in_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
     output = np.zeros((batch_size, output_channels, output_height, output_width), dtype=np.float32)
     for n in range(batch_size):
         for o in range(output_channels):

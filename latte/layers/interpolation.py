@@ -43,8 +43,8 @@ def InterpolationLayer(net, input_ensemble, pad=0, resize_factor=1.0):
         pad_h, pad_w = pad, pad
 
     input_channels, input_height, input_width = input_ensemble.shape
-    output_width = math.floor(input_width * resize_factor)
-    output_height = math.floor(input_height * resize_factor)
+    output_width = math.floor(input_width * resize_factor) - pad
+    output_height = math.floor(input_height * resize_factor) - pad
 
     shape = (input_channels, output_height, output_width)
     
@@ -53,8 +53,8 @@ def InterpolationLayer(net, input_ensemble, pad=0, resize_factor=1.0):
     for c in range(input_channels):
         for h in range(output_height):
             for w in range(output_width):
-                r_f = h * resize_factor
-                c_f = w * resize_factor  
+                r_f = h * (1/resize_factor)
+                c_f = w * (1/resize_factor)  
                 delta_r = r_f - math.floor(r_f)
                 delta_c = c_f - math.floor(c_f)
                 neurons[c,h,w] = InterpolatedNeuron(delta_r, delta_c)
