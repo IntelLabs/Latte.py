@@ -14,50 +14,50 @@ net = Net(batch_size)
 data     = MemoryDataLayer(net, (3, 306, 306))
 label     = MemoryDataLayer(net, (1, 306, 306))
 
-conv1_1 = ConvLayer(      net, data, num_filters=64, kernel=3, stride=1, pad=1, weights=np.load('conv1_1.npy', allow_pickle=False), bias=np.transpose(np.load('conv1_1_bias.npy', allow_pickle=False)[0][0]))
+conv1_1 = ConvLayer(      net, data, num_filters=64, kernel=3, stride=1, pad=1)
 relu1_1 = ReLULayer(      net, conv1_1)
-conv1_2 = ConvLayer(      net, relu1_1, num_filters=64, kernel=3, stride=1, pad=1, weights=np.load('conv1_2.npy', allow_pickle=False), bias=np.transpose(np.load('conv1_2_bias.npy', allow_pickle=False)[0][0]))
+conv1_2 = ConvLayer(      net, relu1_1, num_filters=64, kernel=3, stride=1, pad=1)
 relu1_2 = ReLULayer(      net, conv1_2)
 pool1   = MaxPoolingLayer(net, relu1_2, kernel=2, stride=2, pad=1)
 
-conv2_1 = ConvLayer(net,     pool1, num_filters=128, kernel=3, stride=1, pad=1, weights=np.load('conv2_1.npy', allow_pickle=False), bias=np.transpose(np.load('conv2_1_bias.npy', allow_pickle=False)[0][0]))
+conv2_1 = ConvLayer(net,     pool1, num_filters=128, kernel=3, stride=1, pad=1)
 relu2_1 = ReLULayer(net,     conv2_1)
-conv2_2 = ConvLayer(net,     relu2_1, num_filters=128, kernel=3, stride=1, pad=1, weights=np.load('conv2_2.npy', allow_pickle=False), bias=np.transpose(np.load('conv2_2_bias.npy', allow_pickle=False)[0][0]))
+conv2_2 = ConvLayer(net,     relu2_1, num_filters=128, kernel=3, stride=1, pad=1)
 relu2_2 = ReLULayer(net,     conv2_2)
 pool2 = MaxPoolingLayer(net, relu2_2, kernel=2, stride=2, pad=1)
 
-conv3_1 = ConvLayer(net, pool2, num_filters=256, kernel=3, stride=1, pad=1, weights=np.load('conv3_1.npy', allow_pickle=False), bias=np.transpose(np.load('conv3_1_bias.npy', allow_pickle=False)[0][0]))
+conv3_1 = ConvLayer(net, pool2, num_filters=256, kernel=3, stride=1, pad=1)
 relu3_1 = ReLULayer(net, conv3_1)
-conv3_2 = ConvLayer(net, relu3_1, num_filters=256, kernel=3, stride=1, pad=1, weights=np.load('conv3_2.npy', allow_pickle=False), bias=np.transpose(np.load('conv3_2_bias.npy', allow_pickle=False)[0][0]))
+conv3_2 = ConvLayer(net, relu3_1, num_filters=256, kernel=3, stride=1, pad=1)
 relu3_2 = ReLULayer(net, conv3_2)
-conv3_3 = ConvLayer(net, relu3_2, num_filters=256, kernel=3, stride=1, pad=1, weights=np.load('conv3_3.npy', allow_pickle=False), bias=np.transpose(np.load('conv3_3_bias.npy', allow_pickle=False)[0][0]))
+conv3_3 = ConvLayer(net, relu3_2, num_filters=256, kernel=3, stride=1, pad=1)
 relu3_3 = ReLULayer(net, conv3_3)
 pool3 = MaxPoolingLayer(net, relu3_3, kernel=2, stride=2, pad=1)
 
-conv4_1 = ConvLayer(net, pool3, num_filters=512, kernel=3, stride=1, pad=1, weights=np.load('conv4_1.npy', allow_pickle=False), bias=np.transpose(np.load('conv4_1_bias.npy', allow_pickle=False)[0][0]))
+conv4_1 = ConvLayer(net, pool3, num_filters=512, kernel=3, stride=1, pad=1)
 relu4_1 = ReLULayer(net, conv4_1)
-conv4_2 = ConvLayer(net, relu4_1, num_filters=512, kernel=3, stride=1, pad=1, weights=np.load('conv4_2.npy', allow_pickle=False), bias=np.transpose(np.load('conv4_2_bias.npy', allow_pickle=False)[0][0]))
+conv4_2 = ConvLayer(net, relu4_1, num_filters=512, kernel=3, stride=1, pad=1)
 relu4_2 = ReLULayer(net, conv4_2)
-conv4_3 = ConvLayer(net, relu4_2, num_filters=512, kernel=3, stride=1, pad=1, weights=np.load('conv4_3.npy', allow_pickle=False), bias=np.transpose(np.load('conv4_3_bias.npy', allow_pickle=False)[0][0]))
+conv4_3 = ConvLayer(net, relu4_2, num_filters=512, kernel=3, stride=1)
 relu4_3 = ReLULayer(net, conv4_3)
 pool4 = MaxPoolingLayer(net, relu4_3, kernel=2, stride=1, pad=0)
 
-conv5_1 = ConvLayer(net, pool4, num_filters=512, kernel=3, stride=1, pad=2, dilation=2, weights=np.load('conv5_1.npy', allow_pickle=False), bias=np.transpose(np.load('conv5_1_bias.npy', allow_pickle=False)[0][0]))
+conv5_1 = ConvLayer(net, pool4, num_filters=512, kernel=3, stride=1, pad=2, dilation=2)
 relu5_1 = ReLULayer(net, conv5_1)
-conv5_2 = ConvLayer(net, relu5_1, num_filters=512, kernel=3, stride=1, pad=2, dilation=2, weights=np.load('conv5_2.npy', allow_pickle=False), bias=np.transpose(np.load('conv5_2_bias.npy', allow_pickle=False)[0][0]))
+conv5_2 = ConvLayer(net, relu5_1, num_filters=512, kernel=3, stride=1, pad=2, dilation=2)
 relu5_2 = ReLULayer(net, conv5_2)
-conv5_3 = ConvLayer(net, relu5_2, num_filters=512, kernel=3, stride=1, pad=2, dilation=2, weights=np.load('conv5_3.npy', allow_pickle=False), bias=np.transpose(np.load('conv5_3_bias.npy', allow_pickle=False)[0][0]))
+conv5_3 = ConvLayer(net, relu5_2, num_filters=512, kernel=3, stride=1, pad=2, dilation=2)
 relu5_3 = ReLULayer(net, conv5_3)
 pool5 = MaxPoolingLayer(net, relu5_3, kernel=3, stride=1, pad=1)
 
-fc6 = ConvLayer(net, pool5, num_filters=4096, kernel=4, stride=1, pad=6, dilation=4, weights=np.load('fc6.npy', allow_pickle=False), bias=np.transpose(np.load('fc6_bias.npy', allow_pickle=False)[0][0]))
+fc6 = ConvLayer(net, pool5, num_filters=4096, kernel=4, stride=1, pad=6, dilation=4)
 relu6 = ReLULayer(net, fc6)
 drop6 = DropoutLayer(net, relu6, ratio=0.5)
-fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0, weights=np.load('fc7.npy', allow_pickle=False), bias=np.transpose(np.load('fc7_bias.npy', allow_pickle=False)[0][0]))
+fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
 drop7 = DropoutLayer(net, relu7, ratio=0.5)
 
-fc8_pascal = ConvLayer(net, drop7, num_filters=19, kernel=1, stride=1, pad=0, weights=np.load('fc8_pascal.npy', allow_pickle=False), bias=np.transpose(np.load('fc8_pascal_bias.npy', allow_pickle=False)[0][0]))
+fc8_pascal = ConvLayer(net, drop7, num_filters=19, kernel=1, stride=1, pad=0)
 
 shrink_label = InterpolationLayer(net, label, pad=-1, resize_factor=0.125)
 
@@ -146,24 +146,20 @@ for epoch in range(epoch_size):
     
         data.set_value(train_data)
         label.set_value(train_label)
+
+        conv1_1.set_weights(np.load('conv1_1.npy'))
+        conv1_1.set_bias(np.transpose(np.load('conv1_1_bias.npy')[0][0]))
+        conv1_2.set_weights(np.load('conv1_2.npy'))
+        conv1_2.set_bias(np.transpose(np.load('conv1_1_bias.npy')[0][0]))
  
         t = time.time()
         net.forward()
         forward_time += time.time() - t
 
-        '''
-        np.save('conv1_1_out.npy', conv1_1.get_value())
-        np.save('conv1_2_out.npy', conv1_2.get_value())
-        np.save('pool1_out.npy', pool1.get_value())
-        np.save('conv2_1_out.npy', conv2_1.get_value())
-        np.save('conv2_2_out.npy', conv2_2.get_value())
-        np.save('pool2_out.npy', pool2.get_value())
-        '''
+        print("OUTPUT")
         print("conv1_1 max: {}".format(np.max(conv1_1.get_value())))
         print("conv1_2 max: {}".format(np.max(conv1_2.get_value())))
-        print("pool1 max: {}".format(np.max(pool1.get_value())))
-        print("pool2 max: {}".format(np.max(pool2.get_value())))
-
+        
         # Compute loss
         output = fc8_pascal.get_value()
         loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value(), ignore_label)

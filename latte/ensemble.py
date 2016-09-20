@@ -183,6 +183,16 @@ class Ensemble:
 
             if field in self.tiling_info:
                 tiled = value
+                # Handle padding of weights and bias if set using set_value
+                if field in ["weights", "bias"]:
+                    padding = list()
+                    # generate padding tuple
+                    for dim in tiled.shape:
+                        padding += ((0,0),)
+                    for dim, factor in self.tiling_info[field]:
+                        if tiled.shape[dim] % factor != 0:
+                            padding[dim] = (0, factor - tiled.shape[dim] % factor)
+                    tiled = np.lib.pad(tiled, padding, 'constant')
                 for dim, _ in self.tiling_info[field]:
                     if field in self.batch_fields:
                         dim += 1

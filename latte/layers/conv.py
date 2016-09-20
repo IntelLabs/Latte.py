@@ -8,8 +8,8 @@ SIMDWIDTH = latte.config.SIMDWIDTH
 
 class ConvNeuron(WeightedNeuron):
     def forward(self):
-        for j in range_dim(self.inputs, 1):
-            for k in range_dim(self.inputs, 2):
+        for j in range_dim(self.inputs, 2):
+            for k in range_dim(self.inputs, 1):
                 for i in range_dim(self.inputs, 0):
                     self.value += self.inputs[i, j, k] * self.weights[i, j, k]
 
@@ -30,8 +30,8 @@ def compute_output_shape(input_shape, kernel, pad, stride):
     width, height, channels = input_shape
     return width_out, height_out
 
-def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1, weights=None, bias=None):
-    conv_ens = ConvLayerNoBias(net, input_ensemble, num_filters, kernel, stride, pad, dilation, weights)
+def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1):
+    conv_ens = ConvLayerNoBias(net, input_ensemble, num_filters, kernel, stride, pad, dilation)
 
     input_channels, input_height, input_width = input_ensemble.shape
 
@@ -47,10 +47,9 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
         num_filters_pad = latte.config.SIMDWIDTH - (num_filters % latte.config.SIMDWIDTH)
     else:
         num_filters_pad = 0
-
-    if not isinstance(bias, np.ndarray):
-        bias = np.zeros((num_filters, 1), dtype=np.float32)
-    
+   
+    bias = np.zeros((num_filters, 1), dtype=np.float32)
+ 
     bias = np.lib.pad(bias, ((0, num_filters_pad), (0, 0)), 'constant')
     grad_bias = np.zeros_like(bias)
 
@@ -75,7 +74,7 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
 
     return EnsembleGroup(conv_ens, bias_ens)
 
-def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1, weights=None):
+def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1):
     assert num_filters > 0, "num_filters must be specified and greater than 0"
     assert input_ensemble.ndim == 3, "ConvLayer only supports 3-d input"
 
@@ -121,13 +120,10 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     #output_height = ((input_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
 
     scale = np.sqrt(3.0 / (input_channels * kernel_h * kernel_w))
-    if not isinstance(weights, np.ndarray):
-        #weights = np.random.rand(num_filters, input_channels, kernel_h,
-        #        kernel_w).astype(np.float32) * (2 * scale) - scale
-        weights = np.random.uniform(-scale, scale, (num_filters, input_channels, kernel_h,
-                kernel_w)).astype(np.float32)
+    weights = np.random.uniform(-scale, scale, (num_filters, input_channels, kernel_h,
+            kernel_w)).astype(np.float32)
 
-    weights = np.lib.pad(weights, ((0, num_filters_pad), (0, input_channel_pad), (0, 0), (0, 0)), 'constant')
+    weights = np.lib.pad(weights, ((0, num_filters_pad), (0, input_channel_pad), (0, 0), (0, 0)), 'constant', constant_values=(0,))
     input_channels += input_channel_pad
     num_filters += num_filters_pad
     grad_weights = np.zeros_like(weights)
@@ -135,7 +131,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     neurons = np.empty((num_filters, output_height, output_width), dtype='object')
     for o in range(num_filters):
         neurons[o, :, :] = ConvNeuron(weights[o], grad_weights[o])
-
+    
     conv_ens = net.init_ensemble(neurons)
 
     def mapping(c, y, x):
@@ -148,7 +144,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     input_ensemble.set_padding((0, input_channel_pad), (pad, pad), (pad, pad))
 
     net.add_connections(input_ensemble, conv_ens, mapping)
-
+    
     # Begin Optimizations
     input_ensemble.tile('value', dim=0, factor=SIMDWIDTH)
     input_ensemble.tile('grad', dim=0, factor=SIMDWIDTH)
