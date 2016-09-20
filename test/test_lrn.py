@@ -102,9 +102,9 @@ def test_forward_backward():
     #print(bot_grad.shape)
     check_equal(bot_grad, expected_bot_grad)
 
-#def main():
-#    test_forward_backward()
+def main():
+    test_forward_backward()
 
-#if __name__ == "__main__":
-#   main()
+if __name__ == "__main__":
+   main()
 

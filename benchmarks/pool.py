@@ -19,12 +19,13 @@ def main():
     print("    height = {}".format(height))
     print("    width = {}".format(width))
     data = MemoryDataLayer(net, (channels, height, width))
-    MaxPoolingLayer(net, data, kernel=2, stride=2, pad=0)
+    out = MaxPoolingLayer(net, data, kernel=2, stride=2, pad=0)
 
-    data.set_value(np.random.rand(batch_size, channels, height, width))
+    #data.set_value(np.random.rand(batch_size, channels, height, width))
 
     print("Compiling...")
     net.compile()
+    data.set_value(np.random.rand(batch_size, channels, height, width))
 
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)

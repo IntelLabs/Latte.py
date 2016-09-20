@@ -84,41 +84,46 @@ def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
     pooling_ens = net.init_ensemble(neurons)
 
     input_shape = input_ensemble.shape
-
+    #print(input_shape)
     def mapping(c, y, x):
         in_y = y
         in_x = x
         return range(c, c+n), range(in_y, in_y+1), range(in_x, in_x + 1)
     
 
-    input_ensemble.set_padding((0,n-1),(0,0), (0,0))
+    input_ensemble.set_padding((0,8),(0,0), (0,0))
 
     net.add_connections(input_ensemble, pooling_ens, mapping)
 
-    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
-    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
+    #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
 
     pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_2") 
     pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_2") 
     pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_3")  
     pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_3") 
 
-    #if "value" in input_ensemble.tiling_info:
-    #tiled_dims = input_ensemble.tiling_info["value"]
-    #for dim, factor in tiled_dims:
-    #pooling_ens.tile('inputs', dim=dim, factor=factor)
-    #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
-    #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
-    #pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
-    #pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
-    #pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
+    if "value" in input_ensemble.tiling_info:
+        tiled_dims = input_ensemble.tiling_info["value"]
+        for dim, factor in tiled_dims:
+           pooling_ens.tile('inputs', dim=dim, factor=factor)
+        #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+        #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
+        pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('sum_value', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('alpha', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('beta', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('n', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.tile('k', dim=0, factor=latte.config.SIMDWIDTH)
+    
+        #pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
     #else:
-    #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
-    #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
-    #if "grad" in input_ensemble.tiling_info:
-    #tiled_dims = input_ensemble.tiling_info["grad"]
-    #for dim, factor in tiled_dims:
-    #pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
-    #pooling_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
+    #    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
+    #    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
+    if "grad" in input_ensemble.tiling_info:
+        tiled_dims = input_ensemble.tiling_info["grad"]
+        for dim, factor in tiled_dims:
+            pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
+        pooling_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
 
     return pooling_ens

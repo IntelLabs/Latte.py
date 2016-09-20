@@ -11,30 +11,31 @@ def main():
 
     data     = MemoryDataLayer(net, (8, 224, 224))
 
-    _, conv1 = ConvLayer(       net, data, num_filters=96, kernel=11, stride=4, pad=0)
+    conv1 = ConvLayer(       net, data, num_filters=96, kernel=11, stride=4, pad=0)
     relu1    = ReLULayer(       net, conv1)
     pool1    = MaxPoolingLayer( net, relu1, kernel=2, stride=2, pad=0)
 
-    _, conv2 = ConvLayer(       net, pool1, num_filters=256, kernel=5, stride=1, pad=0)
+    conv2 = ConvLayer(       net, pool1, num_filters=256, kernel=5, stride=1, pad=0)
     relu2    = ReLULayer(       net, conv2)
     pool2    = MaxPoolingLayer( net, relu2, kernel=2, stride=2, pad=0)
 
-    _, conv3 = ConvLayer(       net, pool2, num_filters=512, kernel=3, stride=1, pad=1)
+    conv3 = ConvLayer(       net, pool2, num_filters=512, kernel=3, stride=1, pad=1)
     relu3    = ReLULayer(       net, conv3)
-    _, conv4 = ConvLayer(       net, relu3, num_filters=1024, kernel=3, stride=1, pad=1)
+    conv4 = ConvLayer(       net, relu3, num_filters=1024, kernel=3, stride=1, pad=1)
     relu4    = ReLULayer(       net, conv4)
-    _, conv5 = ConvLayer(       net, relu4, num_filters=1024, kernel=3, stride=1, pad=1)
+    conv5 = ConvLayer(       net, relu4, num_filters=1024, kernel=3, stride=1, pad=1)
     relu5    = ReLULayer(       net, conv5)
     pool5    = MaxPoolingLayer(net, relu5, kernel=3, stride=2, pad=0)
 
-    fc6, fc6bias = FullyConnectedLayer(net, pool5, 3072)
-    fc7, fc7bias = FullyConnectedLayer(net, fc6bias, 4096)
-    fc8, fc8bias = FullyConnectedLayer(net, fc7bias, 1000)
+    fc6bias = FullyConnectedLayer(net, pool5, 3072)
+    fc7bias = FullyConnectedLayer(net, fc6bias, 4096)
+    fc8bias = FullyConnectedLayer(net, fc7bias, 1000)
 
-    data.set_value(np.random.rand(batch_size, 8, 224, 224))
+    #data.set_value(np.random.rand(batch_size, 8, 224, 224))
 
     print("Compiling...")
     net.compile()
+    data.set_value(np.random.rand(batch_size, 8, 224, 224))
 
     # warmup
     print("Warming up...")

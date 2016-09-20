@@ -20,7 +20,7 @@ class Mapping:
 
     def set_arg(self, dim, value):
         if self.mapping_func == one_to_one:
-            return
+           return
         self.ast = util.inline_variable(self.ast.args.args[dim].arg, value, self.ast)
 
     def get_offset(self, dim):
