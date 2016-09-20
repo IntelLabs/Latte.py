@@ -21,10 +21,13 @@ def main():
     data = MemoryDataLayer(net, (channels, height, width))
     ReLULayer(net, data)
 
-    data.set_value(np.random.rand(batch_size, channels, height, width))
+    #data.set_value(np.random.rand(batch_size, channels, height, width))
 
     print("Compiling...")
+    #data.set_value(np.random.rand(batch_size, channels, height, width))
+
     net.compile()
+    data.set_value(np.random.rand(batch_size, channels, height, width))
 
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)
