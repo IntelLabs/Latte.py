@@ -102,6 +102,41 @@ params = [
     make_param(fc8_pascal.get_bias_view()      , fc8_pascal.get_grad_bias_view()      ),
 ]
 
+# update network with pretrained model
+print("Updating network with pretrained model...")
+conv1_1.set_weights(np.load('conv1_1.npy'))
+conv1_1.set_bias(np.transpose(np.load('conv1_1_bias.npy')[0][0]))
+conv1_2.set_weights(np.load('conv1_2.npy'))
+conv1_2.set_bias(np.transpose(np.load('conv1_2_bias.npy')[0][0]))
+conv2_1.set_weights(np.load('conv2_1.npy'))
+conv2_1.set_bias(np.transpose(np.load('conv2_1_bias.npy')[0][0]))
+conv2_2.set_weights(np.load('conv2_2.npy'))
+conv2_2.set_bias(np.transpose(np.load('conv2_2_bias.npy')[0][0]))
+conv3_1.set_weights(np.load('conv3_1.npy'))
+conv3_1.set_bias(np.transpose(np.load('conv3_1_bias.npy')[0][0]))
+conv3_2.set_weights(np.load('conv3_2.npy'))
+conv3_2.set_bias(np.transpose(np.load('conv3_2_bias.npy')[0][0]))
+conv3_3.set_weights(np.load('conv3_3.npy'))
+conv3_3.set_bias(np.transpose(np.load('conv3_3_bias.npy')[0][0]))
+conv4_1.set_weights(np.load('conv4_1.npy'))
+conv4_1.set_bias(np.transpose(np.load('conv4_1_bias.npy')[0][0]))
+conv4_2.set_weights(np.load('conv4_2.npy'))
+conv4_2.set_bias(np.transpose(np.load('conv4_2_bias.npy')[0][0]))
+conv4_3.set_weights(np.load('conv4_3.npy'))
+conv4_3.set_bias(np.transpose(np.load('conv4_3_bias.npy')[0][0]))
+conv5_1.set_weights(np.load('conv5_1.npy'))
+conv5_1.set_bias(np.transpose(np.load('conv5_1_bias.npy')[0][0]))
+conv5_2.set_weights(np.load('conv5_2.npy'))
+conv5_2.set_bias(np.transpose(np.load('conv5_2_bias.npy')[0][0]))
+conv5_3.set_weights(np.load('conv5_3.npy'))
+conv5_3.set_bias(np.transpose(np.load('conv5_3_bias.npy')[0][0]))
+fc6.set_weights(np.load('fc6.npy'))
+fc6.set_bias(np.transpose(np.load('fc6_bias.npy')[0][0]))
+fc7.set_weights(np.load('fc7.npy'))
+fc7.set_bias(np.transpose(np.load('fc7_bias.npy')[0][0]))
+fc8_pascal.set_weights(np.load('fc8_pascal.npy'))
+fc8_pascal.set_bias(np.transpose(np.load('fc8_pascal_bias.npy')[0][0]))
+
 base_lr = .001
 gamma = 0.1
 power = .75
@@ -147,18 +182,9 @@ for epoch in range(epoch_size):
         data.set_value(train_data)
         label.set_value(train_label)
 
-        conv1_1.set_weights(np.load('conv1_1.npy'))
-        conv1_1.set_bias(np.transpose(np.load('conv1_1_bias.npy')[0][0]))
-        conv1_2.set_weights(np.load('conv1_2.npy'))
-        conv1_2.set_bias(np.transpose(np.load('conv1_1_bias.npy')[0][0]))
- 
         t = time.time()
         net.forward()
         forward_time += time.time() - t
-
-        print("OUTPUT")
-        print("conv1_1 max: {}".format(np.max(conv1_1.get_value())))
-        print("conv1_2 max: {}".format(np.max(conv1_2.get_value())))
         
         # Compute loss
         output = fc8_pascal.get_value()
