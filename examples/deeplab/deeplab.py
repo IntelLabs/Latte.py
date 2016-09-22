@@ -6,8 +6,6 @@ import time
 from data_loader import load_data, load_images, load_preprocessed_images
 from latte.math import compute_seg_softmax_loss, seg_softmax_loss_backprop, compute_seg_accuracy
 
-#np.set_printoptions(threshold=np.inf)
-
 batch_size = 1
 net = Net(batch_size)
 
@@ -185,13 +183,21 @@ for epoch in range(epoch_size):
         t = time.time()
         net.forward()
         forward_time += time.time() - t
-        
+
+        #print("pool3 max: {}".format(np.max(pool3.get_value())))
+        #print("pool4 max: {}".format(np.max(pool4.get_value())))
+        #print("pool5 max: {}".format(np.max(pool5.get_value())))
+        #print("fc6 max: {}".format(np.max(fc6.get_value())))
+        #print("fc7 max: {}".format(np.max(fc7.get_value())))
+        #print("fc8_pascal max: {}".format(np.max(fc8_pascal.get_value())))  
+
         # Compute loss
         output = fc8_pascal.get_value()
         loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value(), ignore_label)
+        acc = compute_seg_accuracy(output, shrink_label.get_value(), ignore_label)   
  
         #if i % 100 == 0:
-        print("Epoch {}, Train Iteration {} - Loss = {}".format(epoch, i, loss))
+        print("Epoch {}, Train Iteration {} - Loss = {}, Accuracy: {}".format(epoch, i, loss, acc))
         
         # Initialize gradients
         seg_softmax_loss_backprop(output_grad, prob, shrink_label.get_value(), ignore_label)
