@@ -156,7 +156,7 @@ ignore_label = 255
 
 total_forward_time = 0.0
 total_backward_time = 0.0
-epoch_size = 200
+epoch_size = 100
 timing_info = False
 num_train = 1
 
