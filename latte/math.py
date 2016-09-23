@@ -126,13 +126,26 @@ def compute_seg_accuracy(output, label, ignore_label):
     assert output.ndim == 4
     batch_size = output.shape[0]
     accuracy = 0.0
-    confusion_matrix = np.zeros((output.shape[0], output.shape[0]))
+    spatial_dim = output.shape[2]*output.shape[3]
+    dim = int(np.prod(output.shape)/batch_size)
+    confusion_matrix = np.zeros((output.shape[1], output.shape[1]))
+    
+    scale_data = np.zeros((batch_size, 1, output.shape[2], output.shape[3]), dtype=np.float32)
+    pred_labels = np.zeros_like(scale_data)
+
     for n in range(batch_size):
-        pred = np.argmax(output[n])
+        scale_data = output[n]
+        for j in range(spatial_dim):
+            for c in range(output.shape[1]):
+                if output.flat[n*dim+c*spatial_dim+j] >= scale_data.flat[j]:
+                    scale_data.flat[j] = output.flat[n*dim+c*spatial_dim+j]
+                    pred_labels.flat[j] = c
+
+    for n in range(batch_size):
         for h in range(output.shape[2]):
             for w in range(output.shape[3]):
-                actual = int(label.flat[h * output.shape[3] + w])
-                
+                actual = int(label.flat[h*output.shape[3]+w])
+                pred = int(pred_labels.flat[h*output.shape[3]+w])
                 if actual != ignore_label and actual >= 0 and actual < output.shape[1]:
                     confusion_matrix[actual][pred] += 1
 
