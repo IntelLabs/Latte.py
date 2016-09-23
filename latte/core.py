@@ -150,7 +150,7 @@ class Net:
         #if isinstance(ensemble, ConcatEnsemble):
         #    self.buffers[buffer_name + str(0)] = buff
         #else: 
-        self.buffers[buffer_name] = buff
+        #self.buffers[buffer_name] = buff
 
         if isinstance(ensemble, ConcatEnsemble):
             #for src in range(1, len( self.connections_map[ensemble])): 
@@ -163,6 +163,9 @@ class Net:
      
             if "OPENCL" in latte.config.parallel_strategy:
                 raise NotImplementedError("OpenCL not yet implemented for Concat") 
+        else:
+            self.buffers[buffer_name] = buff
+
         if "OPENCL" in latte.config.parallel_strategy:
             self.cl_buffers[buffer_name] = self.cl_buffers[source_name + source_target]
 
@@ -307,7 +310,7 @@ class Net:
                         if "OPENCL" in latte.config.parallel_strategy: 
                             raise NotImplementedError(field)#ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
                         else:
-                            ensemble.set_buffer(field, self.buffers[buffer_name2])
+                            ensemble.set_buffer(field+str(i), self.buffers[buffer_name2])
                 else:
                     ensemble.set_buffer(field, self.buffers[buffer_name])
 
@@ -476,7 +479,8 @@ class Net:
                 # then the buffer should have already been tiled when handling
                 # the input ensemble
                 continue
-            if field in ensemble.tiling_info and field not in ["inputs", "grad_inputs"]:
+            #ANAND: 09/21/2016
+            if field in ensemble.tiling_info and  "inputs" not in field and "grad_inputs" not in field :
                 if name not in self.reshaped_buffers:
                     buf_shape = compute_tiled_shape(buf_shape, field, ensemble)
                     self.reshaped_buffers[name] = buf_shape
