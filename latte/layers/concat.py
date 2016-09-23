@@ -152,8 +152,12 @@ def ConcatLayer(net, input_ensemble):
 
     if "value" in input_ensemble[0].tiling_info:
         tiled_dims = input_ensemble[0].tiling_info["value"]
+        
         for dim, factor in tiled_dims:
-           concat_ens.tile('inputs', dim=dim, factor=factor)
+            concat_ens.tile('inputs', dim=dim, factor=factor)
+            for i in range(1, len(input_ensemble)):
+                concat_ens.tile('inputs'+str(i), dim=dim, factor=factor)
+
         #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
         #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
         concat_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
@@ -174,5 +178,9 @@ def ConcatLayer(net, input_ensemble):
         tiled_dims = input_ensemble[0].tiling_info["grad"]
         for dim, factor in tiled_dims:
             concat_ens.tile('grad_inputs', dim=dim, factor=factor)
+            for i in range(1, len(input_ensemble)):
+                concat_ens.tile('grad_inputs'+str(i), dim=dim, factor=factor)
+
+
         concat_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
     return concat_ens
