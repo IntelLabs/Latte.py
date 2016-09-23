@@ -15,17 +15,15 @@ def reference_conv_forward(_input, weights, bias, pad, stride, dilation=1):
     output_width = ((in_width + 2 * pad_w - kernel_w_eff) // stride_w) + 1
     output_height = ((in_height + 2 * pad_h - kernel_h_eff) // stride_h) + 1
 
-    #output_width = ((in_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
-    #output_height = ((in_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
     output = np.zeros((batch_size, output_channels, output_height, output_width), dtype=np.float32)
     for n in range(batch_size):
         for o in range(output_channels):
             for y in range(output_height):
                 for x in range(output_width):
-                    in_y = y*stride_h - pad
+                    in_y = y*stride_h - pad 
                     in_x = x*stride_w - pad
-                    out_y = in_y + kernel_h * dilation
-                    out_x = in_x + kernel_w * dilation
+                    out_y = in_y + kernel_h_eff
+                    out_x = in_x + kernel_w_eff
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y, dilation)):
                             if p >= 0 and p < in_height:
@@ -44,6 +42,10 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride, dilation=1):
     bot_grad = np.zeros_like(_input)
     bias_grad = np.zeros((output_channels, 1), dtype=np.float32)
     weights_grad = np.zeros_like(weights)
+
+    kernel_h_eff = kernel_h + (kernel_h - 1) * (dilation - 1)
+    kernel_w_eff = kernel_w + (kernel_w - 1) * (dilation - 1)
+
     for n in range(batch_size):
         for o in range(output_channels):
             for y in range(output_height):
@@ -51,8 +53,8 @@ def reference_conv_backward(top_grad, _input, weights, pad, stride, dilation=1):
                     bias_grad[o] += top_grad[n, o, y, x]
                     in_y = y*stride_h - pad
                     in_x = x*stride_w - pad
-                    out_y = in_y + kernel_h * dilation
-                    out_x = in_x + kernel_w * dilation
+                    out_y = in_y + kernel_h_eff
+                    out_x = in_x + kernel_w_eff
                     for c in range(in_channels):
                         for i, p in enumerate(range(in_y, out_y, dilation)):
                             if p >= 0 and p < in_height:
