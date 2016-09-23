@@ -50,12 +50,12 @@ pool5 = MaxPoolingLayer(net, relu5_3, kernel=3, stride=1, pad=1)
 
 fc6 = ConvLayer(net, pool5, num_filters=4096, kernel=4, stride=1, pad=6, dilation=4)
 relu6 = ReLULayer(net, fc6)
-drop6 = DropoutLayer(net, relu6, ratio=0.5)
-fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0)
+#drop6 = DropoutLayer(net, relu6, ratio=0.5)
+fc7 = ConvLayer(net, relu6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
-drop7 = DropoutLayer(net, relu7, ratio=0.5)
+#drop7 = DropoutLayer(net, relu7, ratio=0.5)
 
-fc8_pascal = ConvLayer(net, drop7, num_filters=19, kernel=1, stride=1, pad=0)
+fc8_pascal = ConvLayer(net, relu7, num_filters=19, kernel=1, stride=1, pad=0)
 
 shrink_label = InterpolationLayer(net, label, pad=-1, resize_factor=0.125)
 
@@ -156,24 +156,23 @@ ignore_label = 255
 
 total_forward_time = 0.0
 total_backward_time = 0.0
-epoch_size = 1
-timing_info = True
+epoch_size = 200
+timing_info = False
 num_train = 1
 
 #images, labels = load_images(training_images_list, data_folder="./data/", crop_size=306, start=0, batch_size=num_train)
 images, labels = load_preprocessed_images("data.npy", "label.npy")
 
+print("Training ...")
 for epoch in range(epoch_size):
 
     forward_time = 0.0
     backward_time = 0.0
 
     #random.shuffle(train_batches)
-    print("Epoch {} - Training...".format(epoch))
+    #for i, n in enumerate(train_batches):
     for i in range(num_train):
         n = i
-    #for i, n in enumerate(train_batches):
-        #print("Image ID: " + str(n))
         train_data = images[n:n+batch_size]
         train_label = labels[n:n+batch_size]
     
@@ -184,20 +183,13 @@ for epoch in range(epoch_size):
         net.forward()
         forward_time += time.time() - t
 
-        #print("pool3 max: {}".format(np.max(pool3.get_value())))
-        #print("pool4 max: {}".format(np.max(pool4.get_value())))
-        #print("pool5 max: {}".format(np.max(pool5.get_value())))
-        #print("fc6 max: {}".format(np.max(fc6.get_value())))
-        #print("fc7 max: {}".format(np.max(fc7.get_value())))
-        #print("fc8_pascal max: {}".format(np.max(fc8_pascal.get_value())))  
-
         # Compute loss
         output = fc8_pascal.get_value()
         loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value(), ignore_label)
         acc = compute_seg_accuracy(output, shrink_label.get_value(), ignore_label)   
  
-        #if i % 100 == 0:
-        print("Epoch {}, Train Iteration {} - Loss = {}, Accuracy: {}".format(epoch, i, loss, acc))
+        if epoch % 10 == 0:
+            print("Epoch " + str(epoch) + ", Train Iteration " + str(i) + " - Loss = {0:.3f}".format(loss) + ", Accuracy: {0:.2f}%".format(acc * 100))
         
         # Initialize gradients
         seg_softmax_loss_backprop(output_grad, prob, shrink_label.get_value(), ignore_label)
