@@ -134,6 +134,7 @@ class Ensemble:
                             dim += 1
                         tiled_shape[dim] //= factor
                         tiled_shape.append(factor)
+                #print(tiled_shape)
                 untiled = untiled.reshape(tiled_shape)
                 for dim, _ in reversed(self.tiling_info[field]):
                     if field in self.batch_fields:
@@ -142,7 +143,7 @@ class Ensemble:
                 to_return = untiled
             else:
                 to_return = buffer
-                if "grad_" in field and field != "grad_inputs":
+                if "grad_" in field and "grad_inputs" not in field:
                     to_return = to_return[0]
             if field in ["value", "grad"] and any(p != (0, 0) for p in self.pad):
                 _slice = [slice(None)]
