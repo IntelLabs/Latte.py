@@ -23,7 +23,7 @@ class NeuronTransformer(ast.NodeTransformer):
         self.seen_vars2 = set()
         self.connections = connections
         self.buffer_dim_info = buffer_dim_info
-
+        #self.seen_by_enumerate_dims = already_seen
     def visit(self, node):
         """
         Support replacing nodes with a list of nodes by flattening `body`
@@ -111,9 +111,10 @@ class NeuronTransformer(ast.NodeTransformer):
                             while name2 in self.seen_vars2:
                                 name2 += str(i) 
                             name3 = "_neuron_index_{}".format(i + offset)
-                            for dim, _ in self.ensemble.tiling_info[node.attr]:
-                                if dim == 0:
-                                    name3 += "_outer" 
+                            if node.attr in self.ensemble.tiling_info:
+                                for dim, _ in self.ensemble.tiling_info[node.attr]:
+                                    if dim == 0:
+                                        name3 += "_outer" 
                             args.append(ast.BinOp(ast.Name(name3, ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
                             self.seen_vars2.add(name2)     
                     #else:
