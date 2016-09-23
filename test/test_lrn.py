@@ -31,7 +31,7 @@ def reference_pooling_forward(_input,k,window, alpha, beta,scale):
 def reference_pooling_backward(top_grad,scale,_output,window,  _input,alpha,beta):
     batch_size, in_channels, in_height, in_width = _input.shape
     _, output_channels, output_height, output_width = top_grad.shape
-    bot_grad = np.zeros((batch_size, output_channels+window-1,output_height, output_width), dtype=np.float32)
+    bot_grad = np.zeros((batch_size, output_channels+8,output_height, output_width), dtype=np.float32)
 
     #print("in_channels is %d\n", in_channels)
     #print("output_channels is %d\n", output_channels)
