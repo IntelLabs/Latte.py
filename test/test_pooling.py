@@ -58,86 +58,51 @@ def reference_pooling_backward(top_grad, _input, mask, stride=2, kernel=2, pad=0
 def check_equal(actual, expected, atol=1e-6):
     assert np.allclose(actual, expected, atol=atol)
 
+def check_forward_backward(batch_size=8, input_shape=(16,16,16), pad=0, kernel=2, stride=2):
+    net = Net(batch_size)
+    net.force_backward = True
+    channels, height, width = input_shape
+    data = MemoryDataLayer(net, (channels, height, width))
+    pool1 = MaxPoolingLayer(net, data, kernel=kernel, stride=stride, pad=pad)
+
+    net.compile()
+ 
+    data_value = np.random.rand(batch_size, channels, height, width)
+    data.set_value(data_value)
+
+    net.forward()
+
+    expected, expected_mask = reference_pooling_forward(data_value, kernel, pad, stride)
+
+    actual  = pool1.get_value()
+    actual_mask_j  = pool1.get_mask_j()
+    actual_mask_k  = pool1.get_mask_k()
+    check_equal(actual, expected)
+    check_equal(actual_mask_j, expected_mask[:, :, :, :, 0])
+    check_equal(actual_mask_k, expected_mask[:, :, :, :, 1])
+
+    top_grad = pool1.get_grad()
+    top_grad = np.random.rand(*top_grad.shape)
+    pool1.set_grad(top_grad)
+
+    net.backward()
+
+    expected_bot_grad = \
+        reference_pooling_backward(top_grad, data_value, expected_mask, stride=stride, kernel=kernel, pad=pad)
+
+    bot_grad = pool1.get_grad_inputs()
+    check_equal(bot_grad, expected_bot_grad)
+
+
 def test_forward_backward():
-    net = Net(8)
-    net.force_backward = True
-    channels, height, width = 16, 16, 16
-    pad = 0
-    data = MemoryDataLayer(net, (channels, height, width))
-    pool1 = MaxPoolingLayer(net, data, kernel=2, stride=2, pad=pad)
-
-    net.compile()
- 
-    data_value = np.random.rand(8, channels, height, width)
-    data.set_value(data_value)
-
-    net.forward()
-
-    expected, expected_mask = reference_pooling_forward(data_value, 2, pad, 2)
-
-    actual  = pool1.get_value()
-    print(actual)
-    #print(expected)    
-    actual_mask_j  = pool1.get_mask_j()
-    actual_mask_k  = pool1.get_mask_k()
-    check_equal(actual, expected)
-    check_equal(actual_mask_j, expected_mask[:, :, :, :, 0])
-    check_equal(actual_mask_k, expected_mask[:, :, :, :, 1])
-
-    top_grad = pool1.get_grad()
-    top_grad = np.random.rand(*top_grad.shape)
-    pool1.set_grad(top_grad)
-
-    net.backward()
-
-    expected_bot_grad = \
-        reference_pooling_backward(top_grad, data_value, expected_mask, stride=2, kernel=2, pad=0)
-
-    bot_grad = pool1.get_grad_inputs()
-    check_equal(bot_grad, expected_bot_grad)
-
+    check_forward_backward()
+    
 def test_padding():
-    net = Net(1)
-    net.force_backward = True
-    channels, height, width = 1, 16, 16
-    pad = 1
-    data = MemoryDataLayer(net, (channels, height, width))
-    pool1 = MaxPoolingLayer(net, data, kernel=2, stride=2, pad=pad)
-
-    net.compile()
-
-    data_value = np.random.rand(1, channels, height, width)
-    data.set_value(data_value)
-
-    net.forward()
-
-    expected, expected_mask = reference_pooling_forward(data_value, 2, pad, 2)
-
-    actual  = pool1.get_value()
-    actual_mask_j  = pool1.get_mask_j()
-    actual_mask_k  = pool1.get_mask_k()
-    check_equal(actual, expected)
-    check_equal(actual_mask_j, expected_mask[:, :, :, :, 0])
-    check_equal(actual_mask_k, expected_mask[:, :, :, :, 1])
-
-    top_grad = pool1.get_grad()
-    top_grad = np.random.rand(*top_grad.shape)
-    pool1.set_grad(top_grad)
-
-    net.backward()
-
-    expected_bot_grad = \
-        reference_pooling_backward(top_grad, data_value, expected_mask, stride=2, kernel=2, pad=1)
-
-    bot_grad = pool1.get_grad_inputs()
-    check_equal(bot_grad, expected_bot_grad)
-
-
-def main():
-    test_forward_backward()
-    test_padding()
+    check_forward_backward(batch_size=1, input_shape=(1,16,16), pad=1)
  
-if __name__ == "__main__":
-    main()
- 
+def test_stride_one():
+    check_forward_backward(kernel=2,stride=1)
+
+def test_kernel_pad():
+    check_forward_backward(pad=1,kernel=2,stride=1)
 
