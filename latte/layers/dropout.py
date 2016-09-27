@@ -18,12 +18,18 @@ class DropoutNeuron(Neuron):
 
     def forward(self):
         self.randval = rand()
+        scale = 1./(1.-self.ratio)
         if self.randval < self.ratio:
             self.value = 0.0
+        else:
+            self.value *= scale
         
     def backward(self):
+        scale = 1./(1.-self.ratio)
         if self.randval < self.ratio:
-            self.grad_input = 0.0 
+            self.grad_input = 0.0
+        else:
+            self.grad_input *= scale 
 
     def update_internal(self):
         pass

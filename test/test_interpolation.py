@@ -8,16 +8,15 @@ import math
 def reference_interpolation_forward(_input, pad, resize_factor):
     pad_h, pad_w = pad, pad
     batch_size, in_channels, in_height, in_width = _input.shape
-    output_width = math.floor(in_width * resize_factor)
-    output_height = math.floor(in_height * resize_factor)
+    output_width = math.floor(in_width * resize_factor) - pad
+    output_height = math.floor(in_height * resize_factor) - pad
     output = np.zeros((batch_size, in_channels, output_height, output_width), dtype=np.float32)
     for n in range(batch_size):
         for o in range(in_channels):
             for y in range(output_height):
-                delta_r = (y*resize_factor) - math.floor(y*resize_factor)
+                delta_r = (y/resize_factor) - math.floor(y/resize_factor)
                 for x in range(output_width):
-                    delta_c = (x*resize_factor) - math.floor(x*resize_factor)
-                    
+                    delta_c = (x/resize_factor) - math.floor(x/resize_factor)
                     in_y = min(max(math.floor(y/resize_factor) - pad, 0), in_height - 1)
                     in_x = min(max(math.floor(x/resize_factor) - pad, 0), in_width - 1)
                     
@@ -46,9 +45,9 @@ def reference_interpolation_backward(top_grad, _input, pad, resize_factor):
     for n in range(batch_size):
         for o in range(output_channels):
             for y in range(output_height):
-                delta_r = (y*resize_factor) - math.floor(y*resize_factor)
+                delta_r = (y/resize_factor) - math.floor(y/resize_factor)
                 for x in range(output_width):
-                    delta_c = (x*resize_factor) - math.floor(x*resize_factor)
+                    delta_c = (x/resize_factor) - math.floor(x/resize_factor)
 
                     in_y = min(max(math.floor(y/resize_factor) - pad, 0), in_height - 1)
                     in_x = min(max(math.floor(x/resize_factor) - pad, 0), in_width - 1)
@@ -71,20 +70,19 @@ def reference_interpolation_backward(top_grad, _input, pad, resize_factor):
 def check_equal(actual, expected, atol=1e-6):
     assert np.allclose(actual, expected, atol=atol)
 
-def test_forward_backward_double():
-    net = Net(8)
+def check_forward_backward(batch_size=1, input_shape=(16,16,16), pad=0, resize_factor=1.0):
+    net = Net(batch_size)
     net.force_backward = True
-    channels, height, width = 16, 16, 16
-    pad = 0
-    resize_factor = 2.0
+    channels, height, width = input_shape
+    
+    data_value = np.random.randint(0,255, (batch_size, *input_shape)).astype(np.float32)
+
     data = MemoryDataLayer(net, (channels, height, width))
     interp1 = InterpolationLayer(net, data, pad=pad, resize_factor=resize_factor)
     
     net.compile()
 
-    data_value = np.random.rand(8, channels, height, width)
     data.set_value(data_value)
-
 
     net.forward()
    
@@ -104,36 +102,22 @@ def test_forward_backward_double():
     bot_grad = interp1.get_grad_inputs()
     check_equal(bot_grad, expected_bot_grad)
 
-def test_forward_backward_enlarge():
-    net = Net(8)
-    net.force_backward = True
-    channels, height, width = 16, 16, 16
-    pad = 0
-    resize_factor = 8.0
-    data = MemoryDataLayer(net, (channels, height, width))
-    interp1 = InterpolationLayer(net, data, pad=pad, resize_factor=resize_factor)
 
-    net.compile()
-    
-    data_value = np.random.rand(8, channels, height, width)
-    data.set_value(data_value)
+def test_shrink_half():
+    check_forward_backward(resize_factor=0.5)
 
-    net.forward()
-   
-    expected = reference_interpolation_forward(data_value, pad, resize_factor)
-    actual  = interp1.get_value()
-    check_equal(actual, expected)
+def test_shrink_quarter():
+    check_forward_backward(resize_factor=0.25)
 
-    top_grad = interp1.get_grad()
-    top_grad = np.random.rand(*top_grad.shape)
-    interp1.set_grad(top_grad)
+def test_shrink():
+    check_forward_backward(resize_factor=0.125)
 
-    net.backward()
+def test_shrink_pad():
+    check_forward_backward(pad=-1,resize_factor=0.125)
 
-    expected_bot_grad = reference_interpolation_backward(top_grad,
-            data_value, pad, resize_factor)
+def test_enlarge():
+    check_forward_backward(resize_factor=2.0)
 
-    bot_grad = interp1.get_grad_inputs()
-    check_equal(bot_grad, expected_bot_grad, atol=1e-4)
-
+def test_enlarge_pad():
+    check_forward_backward(pad=-1,resize_factor=2.0)
 
