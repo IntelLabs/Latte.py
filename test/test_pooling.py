@@ -21,16 +21,16 @@ def reference_pooling_forward(_input, kernel, pad, stride):
         for o in range(in_channels):
             for y in range(output_height):
                 for x in range(output_width):
-                    in_y = y*stride_h - pad
-                    in_x = x*stride_w - pad
-                    out_y = in_y + kernel_h
-                    out_x = in_x + kernel_w
+                    in_y = y*stride_h-pad_h
+                    in_x = x*stride_w-pad_w
+                    out_y = in_y+kernel_h
+                    out_x = in_x+kernel_w
                     maxval = float('-inf')
                     idx = ()
                     for i, p in enumerate(range(in_y, out_y)):
-                        p = min(max(p, 0), in_height - 1)
+                        p = min(max(p, 0), in_height-1)
                         for j, q in enumerate(range(in_x, out_x)):
-                            q = min(max(q, 0), in_width - 1)
+                            q = min(max(q, 0), in_width-1)
                             curr = _input[n, o, p, q]
                             if curr > maxval:
                                 idx = (i, j)
@@ -49,9 +49,9 @@ def reference_pooling_backward(top_grad, _input, mask, stride=2, kernel=2, pad=0
         for o in range(output_channels):
             for y in range(output_height):
                 for x in range(output_width):
-                    i, j = mask[n, o, y, x]
-                    in_y = min(max(y*stride_h - pad, 0) + i, in_height - 1)
-                    in_x = min(max(x*stride_w - pad, 0) + j, in_width - 1)
+                    i, j = mask[n, o, y, x]   
+                    in_y = min(max((y*stride_h-pad_h)+i, 0), in_height-1)
+                    in_x = min(max((x*stride_w-pad_w)+j, 0), in_width-1)
                     bot_grad[n,o,in_y,in_x] += top_grad[n, o, y, x]
     return bot_grad
 
@@ -69,7 +69,7 @@ def check_forward_backward(batch_size=8, input_shape=(16,16,16), pad=0, kernel=2
  
     data_value = np.random.rand(batch_size, channels, height, width)
     data.set_value(data_value)
-
+    
     net.forward()
 
     expected, expected_mask = reference_pooling_forward(data_value, kernel, pad, stride)
@@ -77,6 +77,7 @@ def check_forward_backward(batch_size=8, input_shape=(16,16,16), pad=0, kernel=2
     actual  = pool1.get_value()
     actual_mask_j  = pool1.get_mask_j()
     actual_mask_k  = pool1.get_mask_k()
+
     check_equal(actual, expected)
     check_equal(actual_mask_j, expected_mask[:, :, :, :, 0])
     check_equal(actual_mask_k, expected_mask[:, :, :, :, 1])
@@ -91,6 +92,7 @@ def check_forward_backward(batch_size=8, input_shape=(16,16,16), pad=0, kernel=2
         reference_pooling_backward(top_grad, data_value, expected_mask, stride=stride, kernel=kernel, pad=pad)
 
     bot_grad = pool1.get_grad_inputs()
+
     check_equal(bot_grad, expected_bot_grad)
 
 
@@ -104,5 +106,9 @@ def test_stride_one():
     check_forward_backward(kernel=2,stride=1)
 
 def test_kernel_pad():
-    check_forward_backward(pad=1,kernel=2,stride=1)
+    check_forward_backward(pad=1,kernel=3,stride=1)
+
+def test_kernel_pad_large():
+    check_forward_backward(batch_size=1, input_shape=(1,40,40),pad=1,kernel=3,stride=1)
+
 
