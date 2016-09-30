@@ -51,7 +51,7 @@ def compute_seg_softmax_loss(output, prob, label, ignore_label):
                 e_x = math.exp(x)
                 prob.flat[i*dim+j*spatial_dim+k] = e_x 
 
-        prob[i] = prob[i]/np.sum(prob, axis=1, keepdims=True)
+        prob[i] = prob[i]/np.sum(prob[i], axis=0, keepdims=True)
         '''
         for k in range(spatial_dim): 
             for j in range(channels): 
@@ -128,28 +128,30 @@ def compute_seg_accuracy(output, label, ignore_label):
     accuracy = 0.0
     spatial_dim = output.shape[2]*output.shape[3]
     dim = int(np.prod(output.shape)/batch_size)
-    confusion_matrix = np.zeros((output.shape[1], output.shape[1]))
+    label_dim = int(np.prod(label.shape)/batch_size)
+    confusion_matrix = np.zeros((batch_size, output.shape[1], output.shape[1]))
     
     scale_data = np.zeros((batch_size, 1, output.shape[2], output.shape[3]), dtype=np.float32)
     pred_labels = np.zeros_like(scale_data)
 
     for n in range(batch_size):
-        scale_data = output[n]
+        scale_data[n] = output[n,0]
         for j in range(spatial_dim):
             for c in range(output.shape[1]):
-                if output.flat[n*dim+c*spatial_dim+j] >= scale_data.flat[j]:
-                    scale_data.flat[j] = output.flat[n*dim+c*spatial_dim+j]
-                    pred_labels.flat[j] = c
+                if output.flat[n*dim+c*spatial_dim+j] >= scale_data.flat[n*label_dim+j]:
+                    scale_data.flat[n*label_dim+j] = output.flat[n*dim+c*spatial_dim+j]
+                    pred_labels.flat[n*label_dim+j] = c
 
     for n in range(batch_size):
         for h in range(output.shape[2]):
             for w in range(output.shape[3]):
-                actual = int(label.flat[h*output.shape[3]+w])
-                pred = int(pred_labels.flat[h*output.shape[3]+w])
+                actual = int(label[n,0,h,w])
+                pred = int(pred_labels[n,0,h,w])
                 if actual != ignore_label and actual >= 0 and actual < output.shape[1]:
-                    confusion_matrix[actual][pred] += 1
+                    confusion_matrix[n,actual,pred] += 1
 
-    if np.sum(confusion_matrix) != 0:
-        accuracy = np.trace(confusion_matrix)/np.sum(confusion_matrix)
+    for n in range(batch_size):
+        if np.sum(confusion_matrix[n]) != 0:
+            accuracy += np.trace(confusion_matrix[n])/np.sum(confusion_matrix[n])
 
     return accuracy / batch_size
