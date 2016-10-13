@@ -313,6 +313,9 @@ class ConcatEnsemble(Ensemble):
     def __init__(self, neurons):
         super().__init__(neurons)
 
+class LRNEnsemble(Ensemble):
+    def __init__(self, neurons):
+        super().__init__(neurons)
 
    
 class EnsembleGroup:

@@ -21,6 +21,8 @@ class NeuronTransformer(ast.NodeTransformer):
         self.ensemble = ensemble
         self.seen_vars = set()
         self.seen_vars2 = set()
+        self.tiled_vars = dict()
+        self.index_vars = set()
         self.connections = connections
         self.buffer_dim_info = buffer_dim_info
         #self.seen_by_enumerate_dims = already_seen
@@ -61,7 +63,20 @@ class NeuronTransformer(ast.NodeTransformer):
                         args.append(ast.Name("_neuron_index_{}_inner".format(dim), ast.Load()))
                 for i, p in enumerate(self.ensemble.pad):
                     if p[0] > 0:
-                        args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
+                        #ANAND: if both tiling and padding on pad has to be divided by tile factor
+                        if field in self.ensemble.tiling_info:
+                            found = False
+                            for dim, factor in self.ensemble.tiling_info[field]:
+                                if dim == i:
+                                    found = True
+                                    pad = p[0]//factor
+                                    args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(pad))
+                                    pad2 = p[0]%factor
+                                    args[i + ndim] = ast.BinOp(args[i + ndim], ast.Add(), ast.Num(pad2))
+                            if found == False:
+                                args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
+                        else:
+                             args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
                 return ast.Subscript(ast.Name(name, ast.Load()), 
                                      ast.Index(ast.Tuple(args, ast.Load())), node.ctx)
 
@@ -117,9 +132,6 @@ class NeuronTransformer(ast.NodeTransformer):
                                         name3 += "_outer" 
                             args.append(ast.BinOp(ast.Name(name3, ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
                             self.seen_vars2.add(name2)     
-                    #else:
-                    #    args.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name("_output_offset_{}".format(i), ast.Load())))
-    
                         else:
                             args.append(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()))
             else:
@@ -129,14 +141,6 @@ class NeuronTransformer(ast.NodeTransformer):
         
     
 
-                # if i + offset == 1:
-                        #     args[-1].id += "_outer"
-
-            if node.attr in ["value", "grad"]:
-                #raise Exception("value")   
-                for i, p in enumerate(self.ensemble.pad):
-                    if p[0] > 0:
-                        args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
 
             if node.attr in self.ensemble.scalar_fields and \
                     node.attr in self.ensemble.tiling_info:
@@ -149,7 +153,26 @@ class NeuronTransformer(ast.NodeTransformer):
                         args.append(ast.Name(idx + "_inner", ast.Load()))
                     else:
                         args.append(ast.Name("_neuron_index_1_inner", ast.Load()))
-    
+            
+
+            if node.attr in ["value", "grad"]:
+                for i, p in enumerate(self.ensemble.pad):
+                    if p[0] > 0:
+                        #ANAND 10/11/2016: Adding pading update by tiling factor
+                        if node.attr in self.ensemble.tiling_info:
+                            found = False
+                            for dim, factor in self.ensemble.tiling_info[node.attr]: 
+                                if dim == i:
+                                    found = True    
+                                    #factor = self.ensemble.tiling_info[node.attr]
+                                    pad = p[0]//factor    
+                                    args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(pad))
+                                    pad2 = p[0]%factor
+                                    args[i + ndim] = ast.BinOp(args[i + ndim], ast.Add(), ast.Num(pad2))
+                            if found == False:
+                                args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
+                        else:            
+                             args[i + 1] = ast.BinOp(args[i + 1], ast.Add(), ast.Num(p[0]))
 
             # return updated indedxing expression
             return ast.Subscript(ast.Name(name, ast.Load()), 
@@ -184,8 +207,17 @@ class NeuronTransformer(ast.NodeTransformer):
                     index = value.slice.value.elts[dim]
                     if isinstance(index, ast.Name):
                         orig_var = index.id
+                        #Anand: modifying below, tiled variable names reflected only if
+                        #they are  mapping dims   
+                        #if "_neuron_index_" in orig_var:
                         value.slice.value.elts[dim] = ast.Name(orig_var + "_outer", ast.Load())
                         value.slice.value.elts.append(ast.Name(orig_var + "_inner", ast.Load()))
+                            
+                        self.tiled_vars[orig_var] = dim
+
+                        #else:
+                        #    value.slice.value.elts.append(ast.Name(orig_var, ast.Load()))
+
                     elif isinstance(value.slice.value.elts[dim], ast.Num) and \
                             index.n == 0:
                         value.slice.value.elts.append(ast.Num(0))
@@ -212,35 +244,7 @@ class NeuronTransformer(ast.NodeTransformer):
                                 ast.Name("_input_offset_{}_inner".format(i), ast.Load())) 
                     else:
                         value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(), 
-                                ast.Name("_input_offset_{}".format(i), ast.Load())) 
-                #        if "inputs" in value.value.id or "grad_inputs" in value.value.id:
-                # Add the input offsets defined by user's mapping for the
-                # connection
-            #if "value" in value.value.id: #isinstance(self.ensemble, latte.ensemble.ConcatEnsemble):       
-            #    ndim = self.ensemble.ndim
-            #    # if isinstance(value.slice.value.elts[1], ast.Num) and value.slice.value.elts[1].n == 0:
-            #    #     value.slice.value.elts.append(ast.Name("_input_offset_1_inner", ast.Load()))
-            #    raise NotImplementedError("Something wrong\n")
- 
-            #for i in range(1, ndim + 1):
-            #        elem = value.slice.value.elts[i]
-            #         tile = False
-            #        if field in self.ensemble.tiling_info:
-            #            for dim, _ in self.ensemble.tiling_info[field]:
-            #                if dim + 1 == i:
-            #                    raise NotImplementedError("tiling not implemented for ConcatEnsemble")#tile = True
-            #        #if tile:
-            #        #    value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(),
-            #        #            ast.Name("_input_offset_{}_outer".format(i), ast.Load()))
-            #        #    value.slice.value.elts[i + ndim] = ast.BinOp(value.slice.value.elts[i + ndim], ast.Add(),
-            #        #            ast.Name("_input_offset_{}_inner".format(i), ast.Load()))
-            #        #else:
-            #        value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(),
-            #                    ast.Name("_output_offset_{}".format(i), ast.Store()))
-
-
-
-            # return child node
+                                ast.Name("_input_offset_{}".format(i), ast.Load()))
             return value
         else:
             raise NotImplementedError()
@@ -255,6 +259,9 @@ class NeuronTransformer(ast.NodeTransformer):
         """
         Converts iteration expressionsinto RangeDim semantic nodes
         """
+        index = node.target
+        if isinstance(index, ast.Name):
+            self.index_vars.add(index.id) 
         _range = node.iter
         if isinstance(_range, ast.Call) and _range.func.id == "eachindex":
             loopvars = []

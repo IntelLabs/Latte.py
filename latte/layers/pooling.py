@@ -3,7 +3,7 @@ from ..neuron import Neuron
 from ..ensemble import Ensemble
 import itertools
 import latte
-
+import math
 class MaxNeuron(Neuron):
     batch_fields     = Neuron.batch_fields + ["mask_j", "mask_k"]
     zero_init_fields = Neuron.zero_init_fields + ["mask_j", "mask_k"]
@@ -56,8 +56,10 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         pad_h, pad_w = pad, pad
 
     input_channels, input_height, input_width = input_ensemble.shape
-    output_width = ((input_width - kernel_w + 2 * pad_w) // stride_w) + 1
-    output_height = ((input_height - kernel_h + 2 * pad_h) // stride_h) + 1
+    #ANAND : Changing output volume calculation to use ceil instead of floor, matches caffe
+    #intepretation 
+    output_width = int(math.ceil((input_width - kernel_w + 2 * pad_w) / stride_w)) + 1
+    output_height = int(math.ceil((input_height - kernel_h + 2 * pad_h) / stride_h)) + 1
 
     shape = (input_channels, output_height, output_width)
     neurons = np.empty(shape, dtype='object')
@@ -162,8 +164,10 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         pad_h, pad_w = pad, pad
  
     input_channels, input_height, input_width = input_ensemble.shape
-    output_width = ((input_width - kernel_w + 2 * pad_w) // stride_w) + 1
-    output_height = ((input_height - kernel_h + 2 * pad_h) // stride_h) + 1
+    #ANAND : Changing output volume calculation to use ceil instead of floor, matches caffe
+    #intepretation
+    output_width = int(math.ceil((input_width - kernel_w + 2 * pad_w) / stride_w)) + 1
+    output_height = int(math.ceil((input_height - kernel_h + 2 * pad_h) / stride_h)) + 1
  
     shape = (input_channels, output_height, output_width)
     neurons = np.empty(shape, dtype='object')
@@ -178,7 +182,7 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         in_x = x*stride_w - pad
         return range(c, c+1), range(in_y, in_y+kernel_h), range(in_x, in_x+kernel_w)
  
-    net.add_connections(input_ensemble, pooling_ens, mapping)
+    net.add_connections(input_ensemble, pooling_ens, mapping, clamp=True)
  
     pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
     pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_0")

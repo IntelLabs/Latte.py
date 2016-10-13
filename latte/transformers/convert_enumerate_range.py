@@ -77,7 +77,40 @@ class ConvertEnumerateRange(ast.NodeTransformer):
             body = []
             body += [self.visit(s) for s in node.child_for.body]
             # FIXME: This check does not cover general cases
-            if (self.direction == "forward" and "inputs" in self.ensemble.tiling_info and 
+            #ANAND-special casing for LRN, needs refactoring
+            if isinstance(self.ensemble, latte.ensemble.LRNEnsemble) and length < latte.config.SIMDWIDTH:
+                if (self.direction == "forward" and "inputs" in self.ensemble.tiling_info and
+                    any(dim == x[0] for x in self.ensemble.tiling_info["inputs"])) or (
+                    self.direction in ["backward", "update_internal"] and "grad_inputs" in self.ensemble.tiling_info and
+                    any(dim == x[0] for x in self.ensemble.tiling_info["grad_inputs"])):
+                    body = [UpdateInputIndices(loop_var+"_outer", C.Div( C.Add(C.SymbolRef(loop_var), C.SymbolRef("_input_offset_{}_inner".format(dim+1))), C.Constant( latte.config.SIMDWIDTH))).visit(s) for s in body]
+                    body = [UpdateInputIndices("_input_offset_{}_inner".format(dim+1), C.Constant(0)).visit(s) for s in body]
+                    body = [UpdateInputIndices(loop_var+"_inner", C.Mod( C.Add(C.SymbolRef(loop_var), C.SymbolRef("_input_offset_{}_inner".format(dim+1))), C.Constant(latte.config.SIMDWIDTH))).visit(s) for s in body]
+                    return C.For(
+                        C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
+                        C.AddAssign(C.SymbolRef(loop_var), C.Constant(1)),
+                        body,
+                    # "unroll_and_jam({})".format(length)
+                    # "unroll"
+                    )
+                else:
+                    body = [UpdateInputIndices(loop_var, C.Mul(C.SymbolRef(loop_var), C.Constant(step))).visit(s) for s in body]
+                    return C.For(
+                        C.Assign(C.SymbolRef(loop_var, ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef(loop_var), C.Constant(length)),
+                        C.AddAssign(C.SymbolRef(loop_var), C.Constant(1)),
+                        body,
+                    # "unroll_and_jam({})".format(length)
+                    # "unroll"
+                    )
+
+             
+
+
+
+ 
+            elif (self.direction == "forward" and "inputs" in self.ensemble.tiling_info and 
                     any(dim == x[0] for x in self.ensemble.tiling_info["inputs"])) or (
                     self.direction in ["backward", "update_internal"] and "grad_inputs" in self.ensemble.tiling_info and 
                     any(dim == x[0] for x in self.ensemble.tiling_info["grad_inputs"])):
@@ -110,7 +143,8 @@ class ConvertEnumerateRange(ast.NodeTransformer):
 def convert_enumerate_ranges(node, direction, ensemble):
     return ConvertEnumerateRange(direction, ensemble).visit(node)
 
-
+def update_input_indices(body, index, to_replace):
+    return [UpdateInputIndices(index, to_replace).visit(s) for s in body]                               
 class UpdateInputIndices(ast.NodeTransformer):
     def __init__(self, index, to_replace):
         self.index = index
