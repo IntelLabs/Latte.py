@@ -6,7 +6,7 @@ import time
 from data_loader import load_data, load_images, load_preprocessed_images
 from latte.math import compute_seg_softmax_loss, seg_softmax_loss_backprop, compute_seg_accuracy
 
-batch_size = 1
+batch_size = 20
 net = Net(batch_size)
 
 data     = MemoryDataLayer(net, (3, 306, 306))
@@ -50,12 +50,12 @@ pool5 = MaxPoolingLayer(net, relu5_3, kernel=3, stride=1, pad=1)
 
 fc6 = ConvLayer(net, pool5, num_filters=4096, kernel=4, stride=1, pad=6, dilation=4)
 relu6 = ReLULayer(net, fc6)
-#drop6 = DropoutLayer(net, relu6, ratio=0.5)
-fc7 = ConvLayer(net, relu6, num_filters=4096, kernel=1, stride=1, pad=0)
+drop6 = DropoutLayer(net, relu6, ratio=0.5)
+fc7 = ConvLayer(net, drop6, num_filters=4096, kernel=1, stride=1, pad=0)
 relu7 = ReLULayer(net, fc7)
-#drop7 = DropoutLayer(net, relu7, ratio=0.5)
+drop7 = DropoutLayer(net, relu7, ratio=0.5)
 
-fc8_pascal = ConvLayer(net, relu7, num_filters=19, kernel=1, stride=1, pad=0)
+fc8_pascal = ConvLayer(net, drop7, num_filters=19, kernel=1, stride=1, pad=0)
 
 shrink_label = InterpolationLayer(net, label, pad=-1, resize_factor=0.125)
 
@@ -156,9 +156,8 @@ ignore_label = 255
 
 total_forward_time = 0.0
 total_backward_time = 0.0
-epoch_size = 100
-timing_info = False
-num_train = 1
+epoch_size = 1
+timing_info = True
 
 #images, labels = load_images(training_images_list, data_folder="./data/", crop_size=306, start=0, batch_size=num_train)
 images, labels = load_preprocessed_images("data.npy", "label.npy")
@@ -170,9 +169,7 @@ for epoch in range(epoch_size):
     backward_time = 0.0
 
     #random.shuffle(train_batches)
-    #for i, n in enumerate(train_batches):
-    for i in range(num_train):
-        n = i
+    for i, n in enumerate(train_batches):
         train_data = images[n:n+batch_size]
         train_label = labels[n:n+batch_size]
     
@@ -188,8 +185,8 @@ for epoch in range(epoch_size):
         loss = compute_seg_softmax_loss(output, prob, shrink_label.get_value(), ignore_label)
         acc = compute_seg_accuracy(output, shrink_label.get_value(), ignore_label)   
  
-        if epoch % 10 == 0:
-            print("Epoch " + str(epoch) + ", Train Iteration " + str(i) + " - Loss = {0:.3f}".format(loss) + ", Accuracy: {0:.2f}%".format(acc * 100))
+        #if i % 10 == 0:
+        print("Epoch " + str(epoch) + ", Train Iteration " + str(i) + " - Loss = {0:.3f}".format(loss) + ", Accuracy: {0:.2f}%".format(acc*100))
         
         # Initialize gradients
         seg_softmax_loss_backprop(output_grad, prob, shrink_label.get_value(), ignore_label)
@@ -210,7 +207,7 @@ for epoch in range(epoch_size):
     if timing_info:
         print("FP                   : {0:.3f} ms".format(forward_time * 1000))
         print("BP+WU                : {0:.3f} ms".format(backward_time * 1000))
-        print("Training Throughput  : {0:.3f}".format((num_train)/(forward_time + backward_time)))
+        print("Training Throughput  : {0:.3f} images/second".format((num_train)/(forward_time + backward_time)))
         print("")
     
     total_forward_time += forward_time
@@ -218,4 +215,4 @@ for epoch in range(epoch_size):
     
 print("Total FP                   : {0:.3f} ms".format(total_forward_time * 1000))
 print("Total BP+WU                : {0:.3f} ms".format(total_backward_time * 1000))
-print("Total Training Throughput  : {0:.3f}".format((num_train * epoch_size)/(total_forward_time + total_backward_time)))
+print("Total Training Throughput  : {0:.3f} images/second".format((num_train * epoch_size)/(total_forward_time + total_backward_time)))
