@@ -143,9 +143,9 @@ def test_forward_backward():
     #bot_grad = concat1.get_grad_inputs()
     #check_equal(bot_grad, top_grad)
 
-def main():
-    test_forward_backward()
+#def main():
+#    test_forward_backward()
  
-if __name__ == "__main__":
-    main()
+#if __name__ == "__main__":
+#    main()
  

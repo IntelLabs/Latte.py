@@ -7,20 +7,50 @@ import latte.util as util
 #import ctree
 #from ctree.transformations import PyBasicConversions
 #import sys
+def reference_conv_forward(_input, weights, bias, pad=1, stride=1, dilation=1):
+    stride_h, stride_w = stride, stride
+    pad_h, pad_w = pad, pad
+    batch_size, in_channels, in_height, in_width = _input.shape
+    output_channels, _, kernel_h, kernel_w = weights.shape
+    output_width = ((in_width - kernel_w * dilation + 2 * pad_w) // stride_w) + 1
+    output_height = ((in_height - kernel_h * dilation + 2 * pad_h) // stride_h) + 1
+    output = np.zeros((batch_size, output_channels, output_height, output_width), dtype=np.float32)
+    for n in range(batch_size):
+        for o in range(output_channels):
+            for y in range(output_height):
+                for x in range(output_width):
+                    in_y = y*stride_h - pad
+                    in_x = x*stride_w - pad
+                    out_y = in_y + kernel_h * dilation
+                    out_x = in_x + kernel_w * dilation
+                    for c in range(in_channels):
+                        for i, p in enumerate(range(in_y, out_y, dilation)):
+                            if p >= 0 and p < in_height:
+                                for j, q in enumerate(range(in_x, out_x, dilation)):
+                                    if q >= 0 and q < in_width:
+                                        output[n, o, y, x] += weights[o, c, i, j] * _input[n, c, p, q]
+                    output[n, o, y, x] += bias[o][0]
+    return output
+ 
+ 
+
+
 
 def reference_pooling_forward(_input,k,window, alpha, beta,scale):
     batch_size, in_channels, in_height, in_width = _input.shape
     output = np.zeros((batch_size, in_channels,in_height, in_width), dtype=np.float32)
     
     #print("in_channels is %d\n", in_channels)
+    offset = (window - 1)//2
 
     for n in range(batch_size):
          for y in range(in_height):
             for x in range(in_width):
                 for o in range(in_channels):
                     sumval = 0.0
-                    for m in range(min(window, in_channels -o)):   
-                        sumval += _input[n,o+m,y,x]*_input[n,o+m,y,x]
+                    #for m in range(min(window, in_channels -o)):   
+                    for m in range (max(0,o-offset), min(o+offset+1, in_channels)):
+                        sumval += _input[n,m,y,x]*_input[n,m,y,x]
                     sumval /= window
                     sumval *= alpha    
                     sumval += k
@@ -35,14 +65,14 @@ def reference_pooling_backward(top_grad,scale,_output,window,  _input,alpha,beta
 
     #print("in_channels is %d\n", in_channels)
     #print("output_channels is %d\n", output_channels)
-
+    offset = (window - 1)//2
     for n in range(batch_size):
         for y in range(in_height): 
             for x in range(in_width):
                 for o in range(in_channels):
                     sumval = 0.0
-                    for m in range(min(window, in_channels - o)):
-                        sumval += _output[n,o+m,y,x]
+                    for m in range (min(0,o-offset), max(o+offset, in_channels)):
+                        sumval += _output[n,m,y,x]
                     sumval /= window
                     sumval *= 2*alpha*beta*_input[n,o,y,x]
                     sumval /= scale[n,o,y,x]
@@ -57,19 +87,22 @@ def test_forward_backward():
     net = Net(8)
     net.force_backward = True
     channels, height, width = 16, 16, 16
-    pad = 0
+    #pad = 0
     
 
     data = MemoryDataLayer(net, (channels, height, width))
+    conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=1)
+  
+
     #data_value = np.random.rand(8, channels, height, width)
     #data.set_value(data_value)
     #k = 1.0
     window = 5
     beta = 0.75 
     alpha =0.0001
-    k = 1.0 
-
-    pool1 = LRNLayer(net, data)
+    k = 1.0
+    conv1.set_padding((8,8),(0,0), (0,0))
+    pool1 = LRNLayer(net, conv1)
    
     net.compile()
  
@@ -77,9 +110,26 @@ def test_forward_backward():
     scale = np.zeros((8, channels,height,width),np.float32)
     data.set_value(data_value)
     #print(data_value)
+    #conv1.set_padding((8,8),(0,0), (0,0)) 
+
     net.forward()
     #print(data_value)
-    expected = reference_pooling_forward(data_value,k,window, alpha, beta,scale)
+    #weights = conv1.get_weights()
+    #bias = conv1.get_bias()
+
+    weights = conv1.get_weights()
+    bias    = conv1.get_bias()
+    #bias    = np.random.rand(*bias.shape)
+    #conv1.set_bias(bias)
+    #conv1.set_padding((8,8),(0,0), (0,0)) 
+    #conv1_expected = reference_conv_forward(data_value[0], weights, bias)
+
+  
+
+    expected_0 = reference_conv_forward(data_value, weights, bias, 1, 1)
+    check_equal(expected_0, conv1.get_value())
+
+    expected = reference_pooling_forward(expected_0,k,window, alpha, beta,scale)
 
     actual  = pool1.get_value()
     #print(actual)
@@ -90,21 +140,21 @@ def test_forward_backward():
     #check_equal(actual_mask_j, expected_mask[:, :, :, :, 0])
     #check_equal(actual_mask_k, expected_mask[:, :, :, :, 1])
 
-    top_grad = pool1.get_grad()
-    top_grad = np.random.rand(*top_grad.shape)
-    pool1.set_grad(top_grad)
+    #top_grad = pool1.get_grad()
+    #top_grad = np.random.rand(*top_grad.shape)
+    #pool1.set_grad(top_grad)
 
-    net.backward()
+    #net.backward()
 
-    expected_bot_grad = \
-        reference_pooling_backward(top_grad,scale,expected,window, data_value,alpha,beta)
-    bot_grad = pool1.get_grad_inputs()
+    #expected_bot_grad = \
+    #    reference_pooling_backward(top_grad,scale,expected,window, data_value,alpha,beta)
+   #bot_grad = pool1.get_grad_inputs()
     #print(bot_grad.shape)
-    check_equal(bot_grad, expected_bot_grad)
+    #check_equal(bot_grad, expected_bot_grad)
 
-def main():
-    test_forward_backward()
+#def main():
+#    test_forward_backward()
 
-if __name__ == "__main__":
-   main()
+#if __name__ == "__main__":
+#   main()
 
