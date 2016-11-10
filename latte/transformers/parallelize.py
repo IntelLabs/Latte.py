@@ -283,6 +283,8 @@ def parallelize(tree, buffers, cl_buffers, kernels, batch_size):
         raise NotImplementedError()
     elif latte.config.parallel_strategy == "OPENMP":
         return LatteOpenMPParallel(buffers, batch_size).visit(tree)
+    elif latte.config.parallel_strategy == "LIBXSMMOPENMP":
+        return LatteOpenMPParallel(buffers, batch_size).visit(tree)
     elif latte.config.parallel_strategy == "OPENCL_SIMPLE_LOOP":
         return LatteOpenCLSimpleLoopParallel(buffers, cl_buffers, kernels, batch_size).visit(tree)
     else:

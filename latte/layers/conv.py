@@ -33,6 +33,10 @@ def compute_output_shape(input_shape, kernel, pad, stride):
 def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dilation=1):
     conv_ens = ConvLayerNoBias(net, input_ensemble, num_filters, kernel, stride, pad, dilation)
 
+
+    # Added by Raj/Anand
+    conv_ens.stride = stride
+
     input_channels, input_height, input_width = input_ensemble.shape
 
     kernel_eff = kernel + (kernel-1) * (dilation-1)
@@ -162,6 +166,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
 
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad', dim=0, factor=SIMDWIDTH)
+    conv_ens.use_libxsmm(1)
 
     if "OPENCL" not in latte.config.parallel_strategy:
         conv_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
