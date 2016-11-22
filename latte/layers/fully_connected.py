@@ -53,7 +53,8 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
     ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
     if "OPENCL" not in latte.config.parallel_strategy:
         ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
-        factor = 8
+        #factor = 8
+        factor = 16
         while net.batch_size % factor != 0:
             factor -= 1
         ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
@@ -70,13 +71,16 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
     if "value" in input_ensemble.tiling_info:
         if "OPENCL" not in latte.config.parallel_strategy:
             ens.vectorize(phase="backward", loop_var="__unique_loopvar0_inner", factor=latte.config.SIMDWIDTH)
-            factor = 8
+            #factor = 8
+            factor = 16
             while net.batch_size % factor != 0:
                 factor -= 1
             ens.unroll(phase="backward", loop_var="_neuron_index_0", factor=factor)
             ens.unroll(phase="update_internal", loop_var="_neuron_index_0", factor=factor)
             ens.vectorize(phase="update_internal", loop_var="__unique_loopvar0_inner", factor=latte.config.SIMDWIDTH)
-
+    # Added by Raj/Anand
+    #ens.use_libxsmm(1)
+    ens.stride=1
     return ens
 
 def FullyConnectedLayer(net, input_ensemble, num_outputs):

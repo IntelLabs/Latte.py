@@ -61,8 +61,20 @@ elif parallel_strategy == "OPENMP":
     if nthreads is not None:
         os.environ["OMP_NUM_THREADS"] = nthreads
 
+codegen_strategies = [
+    "GEMM",       # MKL GEMM formulation
+    "AUTOVEC"    # Automatic vectorization
+]
+
+codegen_strategy = os.getenv("LATTE_CODEGEN_STRATEGY", "AUTOVEC")
+
+if codegen_strategy not in codegen_strategies:
+    logger.warn("Invalid codegen strategy [%s], defaulting to GEMM", codegen_strategy)
+    codegen_strategy = "AUTOVEC"
+
 logger.info("========== Configuration ==========")
 logger.info("    march             = %s", vec_config)
 logger.info("    parallel_strategy = %s", parallel_strategy)
 logger.info("    nthreads          = %s", nthreads or "unspecified")
+logger.info("    codegen_strategy = %s", codegen_strategy)
 logger.info("===================================")
