@@ -1,22 +1,10 @@
 import numpy as np
 from latte import *
-#from latte.solvers import sgd_update
-#import random
-#from data_loader import load_data, load_images
-#from latte.math import compute_seg_softmax_loss, seg_softmax_loss_backprop, compute_seg_accuracy
 import caffe
-# If you get "No module named _caffe", either you have not built pycaffe or you have the wrong path.
- 
 from latte.math import compute_softmax_loss
 import os
  
 caffe_root ='/home/avenkat/caffe/'
- 
-#if os.path.isfile(caffe_root + 'models/bvlc_googlenet/bvlc_googlenet.caffemodel'):
-    ##print('GoogLeNet found.')
-#else:
-    ##print( 'Downloading pre-trained GoogLeNet model...')
-#    os.system("/home/avenkat/caffe/scripts/download_model_binary.py  /home/avenkat/caffe/models/bvlc_googlenet")
  
 caffe.set_mode_cpu()
  
@@ -115,8 +103,8 @@ for i in range (batch_size):
 # copy the image data into the memory allocated for the net
 net2.blobs['data'].data[...] = transformed_image
  
-caffe_output = net2.forward()
-
+net2.forward()
+net2.backward()
 
 ##print("caffe weights\n") 
 ##print(conv_params["loss3/classifier"][0].size)
@@ -583,7 +571,8 @@ data.set_value(batched_image)
 print("Finished Copying\n")
 net.forward()
 print("Finished forward computation\n") 
-
+net.backward()
+print("Finished backward computation\n")
 
 output = loss3_classifier.get_value()
 
