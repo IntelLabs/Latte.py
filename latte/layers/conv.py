@@ -67,7 +67,6 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     # Begin Optimizations
 
     # bias_ens.privatize('grad_bias')
-
     bias_ens.tile('bias', dim=0, factor=SIMDWIDTH)
     bias_ens.tile('grad_bias', dim=0, factor=SIMDWIDTH)
     bias_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
@@ -150,6 +149,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     net.add_connections(input_ensemble, conv_ens, mapping)
     
     # Begin Optimizations
+    
+
     input_ensemble.tile('value', dim=0, factor=SIMDWIDTH)
     input_ensemble.tile('grad', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('inputs', dim=0, factor=SIMDWIDTH)
@@ -166,7 +167,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
 
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad', dim=0, factor=SIMDWIDTH)
-    conv_ens.use_libxsmm(1)
+    #conv_ens.use_libxsmm(1)
 
     if "OPENCL" not in latte.config.parallel_strategy:
         conv_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
@@ -186,6 +187,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_1_inner", "j"))
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_1_inner", "k"))
 
+    
     if "OPENCL" not in latte.config.parallel_strategy:
         factor = 8
         while output_width % factor != 0:
@@ -193,7 +195,6 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=factor)
         conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=factor)
         conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=factor)
-
+    
     # End Optimizations
-
     return conv_ens

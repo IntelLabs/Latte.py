@@ -148,20 +148,9 @@ class Net:
         if conn.reshape is not None:
             assert False, "Deprecated"
             buff = buff.reshape((self.batch_size, ) + conn.reshape)
-        #if isinstance(ensemble, ConcatEnsemble):
-        #    self.buffers[buffer_name + str(0)] = buff
-        #else: 
-        #self.buffers[buffer_name] = buff
-
         if isinstance(ensemble, ConcatEnsemble):
-            #for src in range(1, len( self.connections_map[ensemble])): 
-            source_name2 = self.connections_map[ensemble][connection].source.name
-            buff2 = self.buffers[source_name2 + source_target]
-            #if connection > 0:
-            #    self.buffers[buffer_name + str(connection)] = buff2
-            #else:
-            self.buffers[buffer_name] = buff2
-     
+            self.buffers[buffer_name] = self.buffers[source_name + source_target]
+
             if "OPENCL" in latte.config.parallel_strategy:
                 raise NotImplementedError("OpenCL not yet implemented for Concat") 
         else:
@@ -266,7 +255,6 @@ class Net:
         
         for field in vars(neuron):
             buffer_name = ensemble.name + field
-            #print(field)
             if field in ["value", "grad"]:
                 # `value` and `grad` are initialized in the second pass, after
                 # `inputs` and `grad_inputs` have been initialized (for in
@@ -276,10 +264,8 @@ class Net:
                 source_target = "value" if field == "inputs" else "grad"
                 self._initialize_inputs(ensemble, source_target, buffer_name)
                 if isinstance(ensemble, ConcatEnsemble):
-                    #print(buffer_name)
                     for i in range(1, len(self.connections_map[ensemble])):
                             source_target = "value" if field == "inputs"  else "grad"
-                            #print(buffer_name)    
                             self._initialize_inputs(ensemble, source_target, buffer_name+str(i), i)
             else:
                 value = getattr(neuron, field)
@@ -301,9 +287,6 @@ class Net:
             if isinstance(ensemble, ConcatEnsemble): 
                 if field in ["inputs", "grad_inputs"]:
                     buffer_name2  = buffer_name
-                    #if "OPENCL" in latte.config.parallel_strategy:
-                    #    raise NotImplementedError(field)#ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
-                    #else:
                     ensemble.set_buffer(field, self.buffers[buffer_name2])
 
                     for i in range(1,len(self.connections_map[ensemble])):
@@ -369,7 +352,6 @@ class Net:
             if isinstance(ensemble, ActivationEnsemble):
                 source = self.connections_map[ensemble][0].source
                 in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
-
         logger.info("Compiling functions...")
         for args, direction, body, tasks, in zip([forward_args, backward_args], 
                                                  ["forward", "backward"],
@@ -845,7 +827,6 @@ class Net:
 
         # inserted by Raj
         if latte.config.parallel_strategy == "LIBXSMMOPENMP" and ensemble.use_libxsmm_lib == 1:
-        #if latte.config.parallel_strategy == "LIBXSMMOPENMP":
           body = self._gen_libxsmm_function(ensemble, neuron, direction)
           print("body:", body)
           self._reshape_buffer(args, ensemble)
@@ -868,20 +849,13 @@ class Net:
           return func_def.defn, [arg.arg for arg in args]
 
         else:
-          #if not isinstance(ensemble, ConcatEnsemble):
           if not isinstance(ensemble, ConcatEnsemble):
               loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
               body = fn_def.body
               
-          
-              #if isinstance(ensemble, ConcatEnsemble):
-              #   for i in range(1,len(self.connections_map[ensemble])    
-              #        body.append(body)
 
               body = [util.gen_loop_nest(body, loop_vars, loop_ranges)]
           else:
-              #loop_vars2 = loop_vars[0:ensemble.ndim]
-              #loop_ranges = ([d for d in shape])[::-1]      
               fullbody = []
               channel_offset = 0
               for j in range(len(self.connections_map[ensemble])):
@@ -1050,16 +1024,6 @@ class Net:
         #body = []
         # TODO: MAKE THIS A FUNCTION
        
-        #if isinstance(ensemble, ConcatEnsemble):
-        #    for loop in func_def.body:
-        #        for dim in range(len(loop_vars) - 1):
-        #            loop = loop.body[0]
-        #    loop2 = copy(loop.body)
-        #    for i in range(1,len(self.connections_map[ensemble])
-        #        loop2 += loop.body
-                      
-        #    loop.body = loop2[0]
-
         if not isinstance(ensemble, ConcatEnsemble):
             for loop in func_def.body:
                 for dim in range(len(loop_vars) - 1):
@@ -1151,18 +1115,8 @@ class Net:
                     continue
 
                 input_offset = "_input_offset_{}".format(dim)
-#<<<<<<< HEAD
+                
                 if not isinstance(ensemble, ConcatEnsemble): 
-                #    if mapping.clamp:
-                #        if dim in ensemble.tiling_info:
-                #            gen_clamp = gen_gen_clamp(input_shape[dim - 1] // latte.config.SIMDWIDTH - 1)
-                #            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
-                #            gen_clamp = gen_gen_clamp(latte.config.SIMDWIDTH - 1)
-                #            loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
-                #        else:
-                #            gen_clamp = gen_gen_clamp(input_shape[dim - 1] - 1)
-                #            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
-#=======
                     if mapping.clamp:
                         if dim in ensemble.tiling_info:
                             gen_clamp = gen_gen_clamp(input_shape[dim - 1] // latte.config.SIMDWIDTH - 1)
@@ -1174,8 +1128,6 @@ class Net:
                             loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
                             if dim+1 == (len(loop_vars) - 1):
                                 loop.body = [util.ClampInputIndex("_input_offset_{}".format(dim+1), gen_clamp).visit(s) for s in loop.body]
-                    
-#>>>>>>> 78c048c737177c0ed64a462daebcc2f8104a8b02
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
