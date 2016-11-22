@@ -19,6 +19,10 @@
 #endif
 #endif
 
+#if $INCLUDE_LIBXSMM
+#include <libxsmm.h>
+#endif
+
 $TRANSPOSE
 
 extern "C"

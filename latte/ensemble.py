@@ -20,6 +20,7 @@ class Ensemble:
         self.name = "ensemble{}".format(ENSEMBLE_COUNTER)
         self.pad = tuple((0, 0) for _ in neurons.shape)
         self.filter_pad = tuple((0, 0) for _ in neurons.shape)
+        self.stride = 0
         self.parent_group = None
         self.buffer_tiled_dims = {}
         self._tiling_info = {}
@@ -32,6 +33,7 @@ class Ensemble:
         self.simd_info = {'forward': [], 'backward': [], "update_internal": []}
 
         self.scalar_fields = ["value", "grad"]
+        self.use_libxsmm_lib = 0
 
     @property
     def private_info(self):
@@ -86,6 +88,9 @@ class Ensemble:
     def swap_loops(self, phase, loop_vars):
         assert isinstance(loop_vars, tuple) and len(loop_vars) == 2
         self.loops_to_swap[phase].append(loop_vars)
+
+    def use_libxsmm(self, use_libxsmm):
+        self.use_libxsmm_lib = use_libxsmm
 
     @property
     def batch_fields(self):

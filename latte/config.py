@@ -27,7 +27,8 @@ parallel_strategies = [
     "FLOWGRAPH_LOOP",    # FlowGraph model for first level
                          # parallelism, parallel_for for nested
     "OPENMP",            # pragma omp parallel for (supports collapse(2))
-    "OPENCL_SIMPLE_LOOP" # converts parallel loops to NDRange kernel
+    "OPENCL_SIMPLE_LOOP",# converts parallel loops to NDRange kernel
+    "LIBXSMMOPENMP"     # LIBXSMM with OpenMP
 ]
 
 parallel_strategy = os.getenv("LATTE_PARALLEL_STRATEGY", "SIMPLE_LOOP")

@@ -45,7 +45,8 @@ include = FileTemplate(package_path + "/templates/includes.tmpl.c", {
     "INCLUDE_RUNTIME": C.SymbolRef("1" if latte.config.parallel_strategy in ["SIMPLE_LOOP"] else "0"),
     "TRANSPOSE": transpose,
     "SIMDWIDTH": C.Constant(latte.config.SIMDWIDTH),
-    "INCLUDE_OPENCL": C.SymbolRef("1" if "OPENCL" in latte.config.parallel_strategy else "0")
+    "INCLUDE_OPENCL": C.SymbolRef("1" if "OPENCL" in latte.config.parallel_strategy else "0"),
+    "INCLUDE_LIBXSMM": C.SymbolRef("1" if latte.config.parallel_strategy in ["LIBXSMMOPENMP"] else "0")
 })
 
 def compute_tiled_shape(buf_shape, field, ensemble):
@@ -147,20 +148,9 @@ class Net:
         if conn.reshape is not None:
             assert False, "Deprecated"
             buff = buff.reshape((self.batch_size, ) + conn.reshape)
-        #if isinstance(ensemble, ConcatEnsemble):
-        #    self.buffers[buffer_name + str(0)] = buff
-        #else: 
-        #self.buffers[buffer_name] = buff
-
         if isinstance(ensemble, ConcatEnsemble):
-            #for src in range(1, len( self.connections_map[ensemble])): 
-            source_name2 = self.connections_map[ensemble][connection].source.name
-            buff2 = self.buffers[source_name2 + source_target]
-            #if connection > 0:
-            #    self.buffers[buffer_name + str(connection)] = buff2
-            #else:
-            self.buffers[buffer_name] = buff2
-     
+            self.buffers[buffer_name] = self.buffers[source_name + source_target]
+
             if "OPENCL" in latte.config.parallel_strategy:
                 raise NotImplementedError("OpenCL not yet implemented for Concat") 
         else:
@@ -265,7 +255,6 @@ class Net:
         
         for field in vars(neuron):
             buffer_name = ensemble.name + field
-            #print(field)
             if field in ["value", "grad"]:
                 # `value` and `grad` are initialized in the second pass, after
                 # `inputs` and `grad_inputs` have been initialized (for in
@@ -275,10 +264,8 @@ class Net:
                 source_target = "value" if field == "inputs" else "grad"
                 self._initialize_inputs(ensemble, source_target, buffer_name)
                 if isinstance(ensemble, ConcatEnsemble):
-                    #print(buffer_name)
                     for i in range(1, len(self.connections_map[ensemble])):
                             source_target = "value" if field == "inputs"  else "grad"
-                            #print(buffer_name)    
                             self._initialize_inputs(ensemble, source_target, buffer_name+str(i), i)
             else:
                 value = getattr(neuron, field)
@@ -300,9 +287,6 @@ class Net:
             if isinstance(ensemble, ConcatEnsemble): 
                 if field in ["inputs", "grad_inputs"]:
                     buffer_name2  = buffer_name
-                    #if "OPENCL" in latte.config.parallel_strategy:
-                    #    raise NotImplementedError(field)#ensemble.set_buffer(field, self.buffers[buffer_name], self.cl_buffers[buffer_name])
-                    #else:
                     ensemble.set_buffer(field, self.buffers[buffer_name2])
 
                     for i in range(1,len(self.connections_map[ensemble])):
@@ -368,7 +352,6 @@ class Net:
             if isinstance(ensemble, ActivationEnsemble):
                 source = self.connections_map[ensemble][0].source
                 in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
-
         logger.info("Compiling functions...")
         for args, direction, body, tasks, in zip([forward_args, backward_args], 
                                                  ["forward", "backward"],
@@ -532,7 +515,197 @@ class Net:
             'node_list': C.SymbolRef("node_list_" + str(id)),
         })
 
+    def _gen_libxsmm_function(self, ensemble, neuron, direction):
+      #print("weights:" , neuron.weights.shape)
+      #print("ensamble.shape:" , ensemble.shape)
+      #print("nifm:", self.connections_map[ensemble][0].source.shape[0], " ifh:", self.connections_map[ensemble][0].source.shape[1], " ifw:", self.connections_map[ensemble][0].source.shape[2])
+      #print("stride:", ensemble.stride)
+      #print("name:",ensemble.name)
+      if direction == "forward" :
+        return StringTemplate("""
+      {
+      libxsmm_dnn_conv_desc conv_desc;
+      libxsmm_dnn_conv_handle* libxsmm_handle;
+      libxsmm_dnn_buffer* libxsmm_input;
+      libxsmm_dnn_buffer* libxsmm_output;
+      libxsmm_dnn_filter* libxsmm_filter;
+      libxsmm_dnn_err_t status; 
+      unsigned int kind;
+      conv_desc.N = $nImg;
+      conv_desc.C = $nIfm;
+      conv_desc.H = $ifh;
+      conv_desc.W = $ifw;
+      conv_desc.K = $nOfm;
+      conv_desc.R = $kh;
+      conv_desc.S = $kw;
+      conv_desc.u = $stride_h;
+      conv_desc.v = $stride_w;
+      conv_desc.pad_h_in = 0;
+      conv_desc.pad_w_in = 0;
+      conv_desc.pad_h_out = 0;
+      conv_desc.pad_w_out = 0;
+      conv_desc.threads = omp_get_max_threads();
+      conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
+      conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+      conv_desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+      conv_desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
+      conv_desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+      conv_desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
+      conv_desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
 
+      libxsmm_handle = libxsmm_dnn_create_conv_handle_check( conv_desc, &status );
+
+      /* setup LIBXSMM buffers and filter */
+      libxsmm_input = libxsmm_dnn_link_input_buffer_check( libxsmm_handle,  $input, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+      libxsmm_output = libxsmm_dnn_link_output_buffer_check( libxsmm_handle,  $output, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+      libxsmm_filter = libxsmm_dnn_link_filter_check( libxsmm_handle,  $filter, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+
+      /* bind buffers and filter to handle */
+       libxsmm_dnn_bind_input_buffer( libxsmm_handle, libxsmm_input ) ;
+       libxsmm_dnn_bind_output_buffer( libxsmm_handle, libxsmm_output ) ;
+       libxsmm_dnn_bind_filter( libxsmm_handle, libxsmm_filter );
+      # pragma omp parallel
+      {
+        const int tid = omp_get_thread_num();
+        libxsmm_dnn_convolve_st( libxsmm_handle, LIBXSMM_DNN_CONV_KIND_FWD, 0, tid ) ;
+      }
+      }
+      """, {'nImg': C.Constant(self.batch_size)
+      , 'nIfm': C.Constant(self.connections_map[ensemble][0].source.shape[0]) 
+      , 'ifh': C.Constant(self.connections_map[ensemble][0].source.shape[1])
+      , 'ifw': C.Constant(self.connections_map[ensemble][0].source.shape[2])
+      , 'nOfm': C.Constant(ensemble.shape[0])
+      , 'kh': C.Constant(neuron.weights.shape[1])
+      , 'kw': C.Constant(neuron.weights.shape[2])
+      , 'stride_h': C.Constant(ensemble.stride)
+      , 'stride_w': C.Constant(ensemble.stride)
+      , 'input': C.SymbolRef(ensemble.name + "inputs")
+      , 'output': C.SymbolRef(ensemble.name+"value")
+      , 'filter': C.SymbolRef(ensemble.name+"weights")})
+
+      elif direction == "backward":
+        return StringTemplate("""
+      {
+      libxsmm_dnn_conv_desc conv_desc;
+      libxsmm_dnn_conv_handle* libxsmm_handle;
+      libxsmm_dnn_buffer* libxsmm_input;
+      libxsmm_dnn_buffer* libxsmm_output;
+      libxsmm_dnn_filter* libxsmm_filter;
+      libxsmm_dnn_err_t status; 
+      conv_desc.N = $nImg;
+      conv_desc.C = $nIfm;
+      conv_desc.H = $ifh;
+      conv_desc.W = $ifw;
+      conv_desc.K = $nOfm;
+      conv_desc.R = $kh;
+      conv_desc.S = $kw;
+      conv_desc.u = $stride_h;
+      conv_desc.v = $stride_w;
+      conv_desc.pad_h_in = 0;
+      conv_desc.pad_w_in = 0;
+      conv_desc.pad_h_out = 0;
+      conv_desc.pad_w_out = 0;
+      conv_desc.threads = omp_get_max_threads();
+      conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
+      conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+      conv_desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+      conv_desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
+      conv_desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+      conv_desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
+      conv_desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+
+      libxsmm_handle = libxsmm_dnn_create_conv_handle_check( conv_desc, &status );
+
+      /* setup LIBXSMM buffers and filter */
+      libxsmm_input = libxsmm_dnn_link_input_buffer_check( libxsmm_handle,  $input, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+      libxsmm_output = libxsmm_dnn_link_output_buffer_check( libxsmm_handle,  $output, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+      libxsmm_filter = libxsmm_dnn_link_filter_check( libxsmm_handle,  $filter, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+
+      /* bind buffers and filter to handle */
+      libxsmm_dnn_bind_input_buffer( libxsmm_handle, libxsmm_input ) ;
+      libxsmm_dnn_bind_output_buffer( libxsmm_handle, libxsmm_output ) ;
+      libxsmm_dnn_bind_filter( libxsmm_handle, libxsmm_filter ) ;
+
+    # pragma omp parallel
+      {
+        const int tid = omp_get_thread_num();
+        libxsmm_dnn_convolve_st( libxsmm_handle, LIBXSMM_DNN_CONV_KIND_BWD, 0, tid ) ;
+      }
+      }
+      """, {'nImg': C.Constant(self.batch_size)
+      , 'nIfm': C.Constant(self.connections_map[ensemble][0].source.shape[0]) 
+      , 'ifh': C.Constant(self.connections_map[ensemble][0].source.shape[1])
+      , 'ifw': C.Constant(self.connections_map[ensemble][0].source.shape[2])
+      , 'nOfm': C.Constant(ensemble.shape[0])
+      , 'kh': C.Constant(neuron.weights.shape[1])
+      , 'kw': C.Constant(neuron.weights.shape[2])
+      , 'stride_h': C.Constant(ensemble.stride)
+      , 'stride_w': C.Constant(ensemble.stride)
+      , 'input': C.SymbolRef(ensemble.name + "grad_inputs")
+      , 'output': C.SymbolRef(ensemble.name+"grad")
+      , 'filter': C.SymbolRef(ensemble.name+"weights")})
+
+      else:
+        return StringTemplate("""
+    {
+    libxsmm_dnn_conv_desc conv_desc;
+    libxsmm_dnn_conv_handle* libxsmm_handle;
+    libxsmm_dnn_buffer* libxsmm_input;
+    libxsmm_dnn_buffer* libxsmm_output;
+    libxsmm_dnn_filter* libxsmm_filter;
+    libxsmm_dnn_err_t status; 
+    conv_desc.N = $nImg;
+    conv_desc.C = $nIfm;
+    conv_desc.H = $ifh;
+    conv_desc.W = $ifw;
+    conv_desc.K = $nOfm;
+    conv_desc.R = $kh;
+    conv_desc.S = $kw;
+    conv_desc.u = $stride_h;
+    conv_desc.v = $stride_w;
+    conv_desc.pad_h_in = 0;
+    conv_desc.pad_w_in = 0;
+    conv_desc.pad_h_out = 0;
+    conv_desc.pad_w_out = 0;
+    conv_desc.threads = omp_get_max_threads();
+    conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
+    conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+    conv_desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+    conv_desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
+    conv_desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+    conv_desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
+    conv_desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+
+    libxsmm_handle = libxsmm_dnn_create_conv_handle_check( conv_desc, &status );
+
+    /* setup LIBXSMM buffers and filter */
+    libxsmm_input = libxsmm_dnn_link_input_buffer_check( libxsmm_handle,  $input, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+    libxsmm_output = libxsmm_dnn_link_output_buffer_check( libxsmm_handle,  $output, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+    libxsmm_filter = libxsmm_dnn_link_filter_check( libxsmm_handle,  $filter, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
+
+    /* bind buffers and filter to handle */
+    libxsmm_dnn_bind_input_buffer( libxsmm_handle, libxsmm_input ) ;
+    libxsmm_dnn_bind_output_buffer( libxsmm_handle, libxsmm_output ) ;
+    libxsmm_dnn_bind_filter( libxsmm_handle, libxsmm_filter ) ;
+  # pragma omp parallel
+    {
+      const int tid = omp_get_thread_num();
+      libxsmm_dnn_convolve_st( libxsmm_handle, LIBXSMM_DNN_CONV_KIND_UPD, 0, tid );
+    }
+    }
+      """, {'nImg': C.Constant(self.batch_size)
+      , 'nIfm': C.Constant(self.connections_map[ensemble][0].source.shape[0]) 
+      , 'ifh': C.Constant(self.connections_map[ensemble][0].source.shape[1])
+      , 'ifw': C.Constant(self.connections_map[ensemble][0].source.shape[2])
+      , 'nOfm': C.Constant(ensemble.shape[0])
+      , 'kh': C.Constant(neuron.weights.shape[1])
+      , 'kw': C.Constant(neuron.weights.shape[2])
+      , 'stride_h': C.Constant(ensemble.stride)
+      , 'stride_w': C.Constant(ensemble.stride)
+      , 'input': C.SymbolRef(ensemble.name + "inputs")
+      , 'output': C.SymbolRef(ensemble.name+"grad")
+      , 'filter': C.SymbolRef(ensemble.name+"grad_weights")})
+              
     def _gen_transposes(self, transposed_buffers):
         pre_trans = []
         post_trans = []
@@ -541,7 +714,7 @@ class Net:
             shape = self.buffers[buffer_name].shape
 
             # node = util.gen_for("x0", 0, shape[0], curr_body)
-            if latte.config.parallel_strategy == "OPENMP":
+            if latte.config.parallel_strategy == "OPENMP" or latte.config.parallel_strategy == "LIBXSMMOPENMP":
                 node = StringTemplate("""
                 #pragma omp parallel for
                 for (int x0 = 0; x0 < $len; x0++) {
@@ -652,180 +825,193 @@ class Net:
         # Reverse ([::-1]) iteration space for row major indexing
         loop_vars = loop_vars[::-1]
 
-        #if not isinstance(ensemble, ConcatEnsemble):
-        if not isinstance(ensemble, ConcatEnsemble): 
-            loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
-            body = fn_def.body
-            
-        
-            #if isinstance(ensemble, ConcatEnsemble):
-            #   for i in range(1,len(self.connections_map[ensemble])    
-            #        body.append(body)
+        # inserted by Raj
+        if latte.config.parallel_strategy == "LIBXSMMOPENMP" and ensemble.use_libxsmm_lib == 1:
+          body = self._gen_libxsmm_function(ensemble, neuron, direction)
+          print("body:", body)
+          self._reshape_buffer(args, ensemble)
+          func_def = ast.FunctionDef('func',
+                ast.arguments(args, None, [], [], None, []), body,
+                [], None)
+          #util.print_ast(func_def)
+          func_def = transformers.convert_tuple_subscripts(func_def)
+          # convert domain ast nodes introduced by the neuron transformer
+          func_def = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
+          # basic python -> C conversion
+          func_def = PyBasicConversions().visit(func_def)
+          # Seed the argument types as pointers for type inference
+          for arg in func_def.params:
+            buf = self.buffers[arg.name]
+            arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
+          # Basic type inference and constant propogation
+          func_def = analyzer.type_infer(func_def)
+          # func_def = optimizer.propogate_constants(func_def) [], None)
+          return func_def.defn, [arg.arg for arg in args]
 
-            body = [util.gen_loop_nest(body, loop_vars, loop_ranges)]
         else:
-            #loop_vars2 = loop_vars[0:ensemble.ndim]
-            #loop_ranges = ([d for d in shape])[::-1]      
-            fullbody = []
-            channel_offset = 0
-            for j in range(len(self.connections_map[ensemble])):
-                loop_vars2 = loop_vars[0:ensemble.ndim]
-                shape = list(self.connections_map[ensemble][j].source.shape)
-                
-                if "value" in ensemble.tiling_info:
-                    for dim, factor in ensemble.tiling_info["value"]:
-                        if shape[dim] % factor != 0:
-                            raise Exception(("Invalid tiling factor of {} on dimension "
-                            + "{} for {}'s value buffer (shape={})").format(factor,
-                                dim, ensemble.name, shape))
- 
-                        shape[dim] //= factor
-                        shape.append(factor)
-                        loop_vars2.append(loop_vars2[dim + 1] + "_inner")
-                        loop_vars2[dim + 1] += "_outer"
+          if not isinstance(ensemble, ConcatEnsemble):
+              loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
+              body = fn_def.body
+              
+
+              body = [util.gen_loop_nest(body, loop_vars, loop_ranges)]
+          else:
+              fullbody = []
+              channel_offset = 0
+              for j in range(len(self.connections_map[ensemble])):
+                  loop_vars2 = loop_vars[0:ensemble.ndim]
+                  shape = list(self.connections_map[ensemble][j].source.shape)
+                  
+                  if "value" in ensemble.tiling_info:
+                      for dim, factor in ensemble.tiling_info["value"]:
+                          if shape[dim] % factor != 0:
+                              raise Exception(("Invalid tiling factor of {} on dimension "
+                              + "{} for {}'s value buffer (shape={})").format(factor,
+                                  dim, ensemble.name, shape))
+   
+                          shape[dim] //= factor
+                          shape.append(factor)
+                          loop_vars2.append(loop_vars2[dim + 1] + "_inner")
+                          loop_vars2[dim + 1] += "_outer"
 
 
 
-                loop_ranges = ([d for d in shape])[::-1]
-                body = []
-                
-                #for dim in range(0, ensemble.ndim):
-                #    is_tiled_dim = "inputs" in ensemble.tiling_info and \
-                #        any(tiled_dim == dim
-                #                for tiled_dim, _ in ensemble.tiling_info["inputs"])
- 
-                #      if is_tiled_dim:
-                #        for tiled_dim, factor in ensemble.tiling_info["inputs"]:
-                #            if tiled_dim == dim:
-                #                # factor is now the tiling factor for tiled_dim
-                #                break
-                #        mapping.set_arg(dim, ast.BinOp(
-                #                ast.BinOp(
-                #                ast.Name("_neuron_index_{}_outer".format(dim + 1), ast.Load()),
-                #                ast.Mult(),
-                #                ast.Num(factor)),
-                #                ast.Add(),
-                #                ast.Name("_neuron_index_{}_inner".format(dim + 1), ast.Load())
-                #            ))
-                #   else:
-                #        #else i ==  0 and dim == 0i:
-                #        #    mapping.set_arg(dim, ast.Name("_neuron_index_{}".format(dim + 1), ast.Store()))
-                #        #if i > 0 and dim == 0:
-                #        #    print("Entered %d", channel_offset) 
-                #        #     mapping.set_arg(dim, ast.BinOp(ast.Name("_neuron_index_{}".format(dim+1),ast.Add(),ast.Num(channel_offset))         
-                #        #    mapping.set_arg(dim, 
-                #        #        ast.BinOp(
-                #        #        ast.Name("_neuron_index_{}".format(dim + 1), ast.Store()),
-                #        #        ast.Add(),
-                #        #        ast.Num(channel_offset)))
-                #        #else :
-                #        mapping.set_arg(dim, ast.Name("_neuron_index_{}".format(dim + 1), ast.Store()))
-                #        #util.print_ast(mapping_func)    
-                #    offset = mapping.get_offset(dim)
-                #    input_offset = "_input_offset_{}".format(dim + 1)
- 
-                    #if dim == 0:
-                if j  == 0:
-                    output_offset = "_output_offset_{}".format(1)
-                elif j > 0:
-                    output_offset += str(1)
-                     
-                body.append(ast.Assign([ast.Name(output_offset, ast.Store())], ast.Num(channel_offset)))
+                  loop_ranges = ([d for d in shape])[::-1]
+                  body = []
+                  
+                  #for dim in range(0, ensemble.ndim):
+                  #    is_tiled_dim = "inputs" in ensemble.tiling_info and \
+                  #        any(tiled_dim == dim
+                  #                for tiled_dim, _ in ensemble.tiling_info["inputs"])
+   
+                  #      if is_tiled_dim:
+                  #        for tiled_dim, factor in ensemble.tiling_info["inputs"]:
+                  #            if tiled_dim == dim:
+                  #                # factor is now the tiling factor for tiled_dim
+                  #                break
+                  #        mapping.set_arg(dim, ast.BinOp(
+                  #                ast.BinOp(
+                  #                ast.Name("_neuron_index_{}_outer".format(dim + 1), ast.Load()),
+                  #                ast.Mult(),
+                  #                ast.Num(factor)),
+                  #                ast.Add(),
+                  #                ast.Name("_neuron_index_{}_inner".format(dim + 1), ast.Load())
+                  #            ))
+                  #   else:
+                  #        #else i ==  0 and dim == 0i:
+                  #        #    mapping.set_arg(dim, ast.Name("_neuron_index_{}".format(dim + 1), ast.Store()))
+                  #        #if i > 0 and dim == 0:
+                  #        #    print("Entered %d", channel_offset) 
+                  #        #     mapping.set_arg(dim, ast.BinOp(ast.Name("_neuron_index_{}".format(dim+1),ast.Add(),ast.Num(channel_offset))         
+                  #        #    mapping.set_arg(dim, 
+                  #        #        ast.BinOp(
+                  #        #        ast.Name("_neuron_index_{}".format(dim + 1), ast.Store()),
+                  #        #        ast.Add(),
+                  #        #        ast.Num(channel_offset)))
+                  #        #else :
+                  #        mapping.set_arg(dim, ast.Name("_neuron_index_{}".format(dim + 1), ast.Store()))
+                  #        #util.print_ast(mapping_func)    
+                  #    offset = mapping.get_offset(dim)
+                  #    input_offset = "_input_offset_{}".format(dim + 1)
+   
+                      #if dim == 0:
+                  if j  == 0:
+                      output_offset = "_output_offset_{}".format(1)
+                  elif j > 0:
+                      output_offset += str(1)
+                       
+                  body.append(ast.Assign([ast.Name(output_offset, ast.Store())], ast.Num(channel_offset)))
 
-                if direction == "forward":
- 
-                        
-                    name = ensemble.name + "value"
-                    if  j > 0:
-                        name2 = ensemble.name + "inputs" + str(j)
-                    else:
-                        name2 = ensemble.name + "inputs"     
-                    args1 = []
-                    args2 = []
-                    for i in range(ensemble.ndim + 1):
-                        name3 = "_neuron_index_{}".format(i)
- 
-                        if "value" in ensemble.tiling_info:
-                            for dim, factor in ensemble.tiling_info["value"]:
-                                if dim == i-1:
-                                    name3 +="_outer"  
+                  if direction == "forward":
+   
+                          
+                      name = ensemble.name + "value"
+                      if  j > 0:
+                          name2 = ensemble.name + "inputs" + str(j)
+                      else:
+                          name2 = ensemble.name + "inputs"     
+                      args1 = []
+                      args2 = []
+                      for i in range(ensemble.ndim + 1):
+                          name3 = "_neuron_index_{}".format(i)
+   
+                          if "value" in ensemble.tiling_info:
+                              for dim, factor in ensemble.tiling_info["value"]:
+                                  if dim == i-1:
+                                      name3 +="_outer"  
 
-                        if i == 1:
-                            s = str(1)
-                            for k in range(j):
-                                s += str(1)
+                          if i == 1:
+                              s = str(1)
+                              for k in range(j):
+                                  s += str(1)
 
-                            #name3 = "_neuron_index_{}".format(i)  
-                                  
-                            #if "value" in ensemble.tiling_info:
-                            #    for dim, factor in ensemble.tiling_info["value"]:
-                            #        if dim == 0                                                                                      
-                            #            name3 +="_outer"    
-                            args1.append(ast.BinOp(ast.Name(name3, ast.Load()), ast.Add(), ast.Name("_output_offset_" + s, ast.Load())))
-                        else:
-                            args1.append(ast.Name(name3, ast.Load()))#args1.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
-                        args2.append(ast.Name(name3, ast.Load()))
-     
-                        #name3 = "_neuron_index_{}".format(i)
- 
-                    if "value" in ensemble.tiling_info:
-                        for dim, factor in ensemble.tiling_info["value"]:
-                            name3 = "_neuron_index_{}".format(dim+1)
-                            args1.append(ast.Name(name3+"_inner", ast.Load()))    
-                            args2.append(ast.Name(name3+"_inner", ast.Load()))             
+                              #name3 = "_neuron_index_{}".format(i)  
+                                    
+                              #if "value" in ensemble.tiling_info:
+                              #    for dim, factor in ensemble.tiling_info["value"]:
+                              #        if dim == 0                                                                                      
+                              #            name3 +="_outer"    
+                              args1.append(ast.BinOp(ast.Name(name3, ast.Load()), ast.Add(), ast.Name("_output_offset_" + s, ast.Load())))
+                          else:
+                              args1.append(ast.Name(name3, ast.Load()))#args1.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
+                          args2.append(ast.Name(name3, ast.Load()))
+       
+                          #name3 = "_neuron_index_{}".format(i)
+   
+                      if "value" in ensemble.tiling_info:
+                          for dim, factor in ensemble.tiling_info["value"]:
+                              name3 = "_neuron_index_{}".format(dim+1)
+                              args1.append(ast.Name(name3+"_inner", ast.Load()))    
+                              args2.append(ast.Name(name3+"_inner", ast.Load()))             
 
-                    body.append(ast.Assign([ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args1, ast.Load())),\
-                                    ast.Store())],ast.Subscript(ast.Name(name2, ast.Load()), ast.Index(ast.Tuple(args2, ast.Load())), ast.Load())))
-                elif direction == "backward":
-                    name = ensemble.name + "grad"
-                    if  j > 0:
-                        name2 = ensemble.name + "grad_inputs" + str(j)
-                    else:
-                        name2 = ensemble.name + "grad_inputs"
+                      body.append(ast.Assign([ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args1, ast.Load())),\
+                                      ast.Store())],ast.Subscript(ast.Name(name2, ast.Load()), ast.Index(ast.Tuple(args2, ast.Load())), ast.Load())))
+                  elif direction == "backward":
+                      name = ensemble.name + "grad"
+                      if  j > 0:
+                          name2 = ensemble.name + "grad_inputs" + str(j)
+                      else:
+                          name2 = ensemble.name + "grad_inputs"
 
-                    args1 = []
-                    args2 = []
- 
-                    for i in range(ensemble.ndim + 1):
-                        name3 = "_neuron_index_{}".format(i)
-    
-                        if "grad" in ensemble.tiling_info:
-                            for dim, factor in ensemble.tiling_info["grad"]:
-                                if dim == i-1:
-                                    name3 +="_outer"
- 
-                        if i == 1:
-                            s = str(1)
-                            for k in range(j):
-                                s += str(1)
-                            args1.append(ast.BinOp(ast.Name(name3, ast.Load()), ast.Add(), ast.Name("_output_offset_" + s, ast.Load())))
-                        else:
-                            args1.append(ast.Name(name3, ast.Load()))#args1.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
-                        args2.append(ast.Name(name3, ast.Load()))
-                    
-
-                    if "grad" in ensemble.tiling_info:
-                        for dim, factor in ensemble.tiling_info["grad"]:
-                            name3 = "_neuron_index_{}".format(dim+1)
-                            args1.append(ast.Name(name3+"_inner", ast.Load()))               
-                            args2.append(ast.Name(name3+"_inner", ast.Load()))  
-                    
-                    body.append(ast.Assign([ast.Subscript(ast.Name(name2, ast.Load()), ast.Index(ast.Tuple(args2, ast.Load())),\
-                               ast.Store())],ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args1, ast.Load())), ast.Load())))
-               
-
-
-                                            
-                fullbody += [util.gen_loop_nest(body, loop_vars, loop_ranges)]
-                channel_offset += shape[0]
-            
-            body = [util.gen_loop_nest(fullbody, ["_neuron_index_0"],[self.batch_size])]
+                      args1 = []
+                      args2 = []
+   
+                      for i in range(ensemble.ndim + 1):
+                          name3 = "_neuron_index_{}".format(i)
       
-            #loop.body = body
+                          if "grad" in ensemble.tiling_info:
+                              for dim, factor in ensemble.tiling_info["grad"]:
+                                  if dim == i-1:
+                                      name3 +="_outer"
+   
+                          if i == 1:
+                              s = str(1)
+                              for k in range(j):
+                                  s += str(1)
+                              args1.append(ast.BinOp(ast.Name(name3, ast.Load()), ast.Add(), ast.Name("_output_offset_" + s, ast.Load())))
+                          else:
+                              args1.append(ast.Name(name3, ast.Load()))#args1.append(ast.BinOp(ast.Name("_neuron_index_{}".format(i + offset), ast.Load()), ast.Add(), ast.Name(name2, ast.Load())))
+                          args2.append(ast.Name(name3, ast.Load()))
+                      
 
-  
+                      if "grad" in ensemble.tiling_info:
+                          for dim, factor in ensemble.tiling_info["grad"]:
+                              name3 = "_neuron_index_{}".format(dim+1)
+                              args1.append(ast.Name(name3+"_inner", ast.Load()))               
+                              args2.append(ast.Name(name3+"_inner", ast.Load()))  
+                      
+                      body.append(ast.Assign([ast.Subscript(ast.Name(name2, ast.Load()), ast.Index(ast.Tuple(args2, ast.Load())),\
+                                 ast.Store())],ast.Subscript(ast.Name(name, ast.Load()), ast.Index(ast.Tuple(args1, ast.Load())), ast.Load())))
+                 
 
 
+                                              
+                  fullbody += [util.gen_loop_nest(body, loop_vars, loop_ranges)]
+                  channel_offset += shape[0]
+              
+              body = [util.gen_loop_nest(fullbody, ["_neuron_index_0"],[self.batch_size])]
+        
+              #loop.body = body
 
         # This placeholder function is used to wrap the body of statements for
         # convenience, after transformations have completed, the function body
@@ -833,20 +1019,11 @@ class Net:
         func_def = ast.FunctionDef('func',
                 ast.arguments(args, None, [], [], None, []), body,
                 [], None)
+
         #util.print_ast(func_def)
         #body = []
         # TODO: MAKE THIS A FUNCTION
        
-        #if isinstance(ensemble, ConcatEnsemble):
-        #    for loop in func_def.body:
-        #        for dim in range(len(loop_vars) - 1):
-        #            loop = loop.body[0]
-        #    loop2 = copy(loop.body)
-        #    for i in range(1,len(self.connections_map[ensemble])
-        #        loop2 += loop.body
-                      
-        #    loop.body = loop2[0]
-
         if not isinstance(ensemble, ConcatEnsemble):
             for loop in func_def.body:
                 for dim in range(len(loop_vars) - 1):
@@ -938,18 +1115,8 @@ class Net:
                     continue
 
                 input_offset = "_input_offset_{}".format(dim)
-#<<<<<<< HEAD
+                
                 if not isinstance(ensemble, ConcatEnsemble): 
-                #    if mapping.clamp:
-                #        if dim in ensemble.tiling_info:
-                #            gen_clamp = gen_gen_clamp(input_shape[dim - 1] // latte.config.SIMDWIDTH - 1)
-                #            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
-                #            gen_clamp = gen_gen_clamp(latte.config.SIMDWIDTH - 1)
-                #            loop.body = [util.ClampInputIndex(input_offset + "_inner", gen_clamp).visit(s) for s in loop.body]
-                #        else:
-                #            gen_clamp = gen_gen_clamp(input_shape[dim - 1] - 1)
-                #            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
-#=======
                     if mapping.clamp:
                         if dim in ensemble.tiling_info:
                             gen_clamp = gen_gen_clamp(input_shape[dim - 1] // latte.config.SIMDWIDTH - 1)
@@ -961,8 +1128,6 @@ class Net:
                             loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
                             if dim+1 == (len(loop_vars) - 1):
                                 loop.body = [util.ClampInputIndex("_input_offset_{}".format(dim+1), gen_clamp).visit(s) for s in loop.body]
-                    
-#>>>>>>> 78c048c737177c0ed64a462daebcc2f8104a8b02
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
