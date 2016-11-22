@@ -847,11 +847,13 @@ class Net:
         if latte.config.parallel_strategy == "LIBXSMMOPENMP" and ensemble.use_libxsmm_lib == 1:
         #if latte.config.parallel_strategy == "LIBXSMMOPENMP":
           body = self._gen_libxsmm_function(ensemble, neuron, direction)
-          print("body:", body)
+          #print("body:", body)
           self._reshape_buffer(args, ensemble)
+
           func_def = ast.FunctionDef('func',
                 ast.arguments(args, None, [], [], None, []), body,
                 [], None)
+
           #util.print_ast(func_def)
           func_def = transformers.convert_tuple_subscripts(func_def)
           # convert domain ast nodes introduced by the neuron transformer
@@ -864,6 +866,20 @@ class Net:
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
           # Basic type inference and constant propogation
           func_def = analyzer.type_infer(func_def)
+          #if direction in ensemble.vectorize_info:
+            # RAJ hack here
+          #  func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
+          #          ensemble.vectorize_info[direction][0])
+          #  pre_trans, post_trans = self._gen_transposes(transposed_buffers)
+
+          #  for buffer_name, trans_dim in transposed_buffers.items():
+          #      curr_body = []
+          #      shape = self.buffers[buffer_name].shape
+          #      shape_str = "".join("[{}]".format(d) for d in shape)
+
+          #      args.append(ast.arg(buffer_name + "_transposed", None))
+          #      self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
+          #func_def.defn[0].pre_trans = pre_trans
           # func_def = optimizer.propogate_constants(func_def) [], None)
           return func_def.defn, [arg.arg for arg in args]
 
@@ -1135,6 +1151,7 @@ class Net:
         # handle math functions that are different in C than python
         func_def = transformers.PatternMatchMath().visit(func_def)
 
+
         for loop in func_def.defn:
             # convert loopvars from long to int
             # we do this because PyBasicConversion defaults to using longs for
@@ -1146,13 +1163,15 @@ class Net:
                 loop.init.left.type = ctypes.c_int()
                 input_shape = self.connections_map[ensemble][0].source.shape
 
-                if dim == 0 or dim==1:
+                if latte.config.codegen_strategy == "AUTOVEC":
+
+                  if dim == 0 or dim==1:
                     # Do not need to clamp batch dimension or channels dimension
                     continue
 
-                input_offset = "_input_offset_{}".format(dim)
+                  input_offset = "_input_offset_{}".format(dim)
 #<<<<<<< HEAD
-                if not isinstance(ensemble, ConcatEnsemble): 
+                  if not isinstance(ensemble, ConcatEnsemble): 
                 #    if mapping.clamp:
                 #        if dim in ensemble.tiling_info:
                 #            gen_clamp = gen_gen_clamp(input_shape[dim - 1] // latte.config.SIMDWIDTH - 1)
@@ -1163,7 +1182,7 @@ class Net:
                 #            gen_clamp = gen_gen_clamp(input_shape[dim - 1] - 1)
                 #            loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
 #=======
-                    if mapping.clamp:
+                      if mapping.clamp:
                         if dim in ensemble.tiling_info:
                             gen_clamp = gen_gen_clamp(input_shape[dim - 1] // latte.config.SIMDWIDTH - 1)
                             loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
@@ -1186,7 +1205,9 @@ class Net:
         func_def = analyzer.type_infer(func_def)
         func_def = optimizer.propogate_constants(func_def)
 
-        for loop_var1, loop_var2 in ensemble.loops_to_swap[direction]:
+        if latte.config.codegen_strategy == "AUTOVEC":
+          # optimizations applied
+          for loop_var1, loop_var2 in ensemble.loops_to_swap[direction]:
             loop1 = util.find_loop(func_def, loop_var1)
             loop2 = util.find_loop(func_def, loop_var2)
             # loop.init = (int x = 0)
@@ -1196,7 +1217,7 @@ class Net:
             loop1.test, loop2.test = loop2.test, loop1.test
             loop1.incr, loop2.incr = loop2.incr, loop1.incr
 
-        if direction in ensemble.vectorize_info:
+          if direction in ensemble.vectorize_info:
             # RAJ hack here
             func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
                     ensemble.vectorize_info[direction][0])
@@ -1205,20 +1226,23 @@ class Net:
             func_def = code_motion.lift_invariant_load_stores(func_def)
             func_def = vectorizer.fuse_multiply_adds(func_def)
 
-        if direction in ensemble.simd_info:
+          if direction in ensemble.simd_info:
             for loopvar in ensemble.simd_info[direction]:
                 func_def = transformers.insert_pragma_simd(func_def, loopvar)
 
-        if direction in ensemble.unroll_info:
+          if direction in ensemble.unroll_info:
             unroll_var, unroll_factor = ensemble.unroll_info[direction]
             unroller.unroll_loop(func_def, unroll_var, unroll_factor)
+            #if direction == "forward":
+            #  unroll_var_2, unroll_factor_2 = ensemble.unroll_2_info[direction]
+            #  unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
 
-        self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
+          self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
-        type_sig = []
-        self._reshape_buffer(args, ensemble)
+          type_sig = []
+          self._reshape_buffer(args, ensemble)
 
-        if direction in ensemble.vectorize_info:
+          if direction in ensemble.vectorize_info:
             pre_trans, post_trans = self._gen_transposes(transposed_buffers)
 
             for buffer_name, trans_dim in transposed_buffers.items():
@@ -1228,9 +1252,13 @@ class Net:
 
                 args.append(ast.arg(buffer_name + "_transposed", None))
                 self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-        else:
+          else:
             pre_trans = []
             post_trans = []
+
+        else: #GEMM formulation
+          func_def = transformers.pattern_match_gemm(func_def)
+          raise NotImplementedError("GEMM formulation is not complete yet")
 
         assert isinstance(func_def.defn[0], C.For)
         func_def.defn[0].pre_trans = pre_trans
