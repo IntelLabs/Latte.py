@@ -29,7 +29,9 @@ def main():
 
     fc6bias = FullyConnectedLayer(net, pool5, 3072)
     fc7bias = FullyConnectedLayer(net, fc6bias, 4096)
-    fc8bias = FullyConnectedLayer(net, fc7bias, 1000)
+    #fc8bias = FullyConnectedLayer(net, fc7bias, 1000)
+    #changed by raj to 1008
+    fc8bias = FullyConnectedLayer(net, fc7bias, 1008)
 
     #data.set_value(np.random.rand(batch_size, 8, 224, 224))
 

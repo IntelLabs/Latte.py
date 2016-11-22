@@ -27,6 +27,7 @@ class Ensemble:
         self._transpose_info = {}
         self._vectorize_info = {}
         self._unroll_info = {}
+        self._unroll_2_info = {}
         self._private_info = set()
         self._parallel_info = {"forward": [], "backward": [], "update_internal": []}
         self.loops_to_swap = {'forward': [], 'backward': [], "update_internal": []}
@@ -56,6 +57,10 @@ class Ensemble:
         return self._unroll_info
 
     @property
+    def unroll_2_info(self):
+        return self._unroll_2_info
+
+    @property
     def parallel_info(self):
         return self._parallel_info
 
@@ -81,6 +86,9 @@ class Ensemble:
 
     def unroll(self, phase, loop_var, factor):
         self._unroll_info[phase] = (loop_var, factor)
+
+    def unroll_2(self, phase, loop_var, factor):
+        self._unroll_2_info[phase] = (loop_var, factor)
 
     def parallelize(self, phase, loop_var):
         self._parallel_info[phase].append(loop_var)
@@ -296,6 +304,10 @@ class ActivationEnsemble(Ensemble):
     @property
     def unroll_info(self):
         return self._unroll_info
+
+    @property
+    def unroll_2_info(self):
+        return self._unroll_2_info
 
     @property
     def tiling_info(self):

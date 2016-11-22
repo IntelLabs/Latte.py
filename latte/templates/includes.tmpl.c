@@ -21,6 +21,7 @@
 
 #if $INCLUDE_LIBXSMM
 #include <libxsmm.h>
+#include <libxsmm_dnn.h>
 #endif
 
 $TRANSPOSE
