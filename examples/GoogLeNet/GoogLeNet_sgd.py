@@ -1134,7 +1134,9 @@ print(net2.blobs["conv2/3x3_reduce"].diff)
 print(conv2_3x3_reduce.get_grad())
 print(net2.blobs["conv2/3x3"].diff)
 print(conv2_3x3.get_grad())
+
 print(net2.blobs["conv2/norm2"].diff)
+
 print(conv2_norm2.get_grad())
 print(net2.blobs["pool2/3x3_s2"].diff)
 print(pool2_3x3_s2.get_grad())
@@ -1310,8 +1312,8 @@ print(pool5_7x7_s1.get_grad())
 '''
 
 #assert np.allclose(net2.params["conv1/7x7_s2"][0].data, conv1_7x7_s2.get_weights(), 1e-3, 1e-3)
-#assert np.allclose(net2.params["conv2/3x3_reduce"][0].data, conv2_3x3_reduce.get_weights(), 1e-3, 1e-3)
-#assert np.allclose(net2.params["conv2/3x3"][0].data, conv2_3x3.get_weights(), 1e-3, 1e-3)
+assert np.allclose(net2.params["conv2/3x3_reduce"][0].data, conv2_3x3_reduce.get_weights(), 1e-3, 1e-3)
+assert np.allclose(net2.params["conv2/3x3"][0].data, conv2_3x3.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_3a/1x1"][0].data, inception_3a_1x1.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_3a/3x3_reduce"][0].data, inception_3a_3x3_reduce.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_3a/3x3"][0].data, inception_3a_3x3.get_weights(), 1e-3, 1e-3)
@@ -1331,8 +1333,10 @@ assert np.allclose(net2.params["inception_4a/5x5_reduce"][0].data, inception_4a_
 assert np.allclose(net2.params["inception_4a/5x5"][0].data, inception_4a_5x5.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_4a/pool_proj"][0].data, inception_4a_pool_proj.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["loss1/conv"][0].data, loss1_conv.get_weights(), 1e-3, 1e-3)
-#assert np.allclose(net2.params["loss1/fc"][0].data, loss1_fc.get_weights(), 1e-3, 1e-3)
-#assert np.allclose(net2.params["loss1/classifier"][0].data, loss1_classifier.get_weights(), 1e-3, 1e-3)
+temp = net2.params["loss1/fc"][0].data.reshape(loss1_fc.get_weights().shape)
+assert np.allclose(temp, loss1_fc.get_weights(), 1e-3, 1e-3)
+temp = net2.params["loss1/classifier"][0].data.reshape(loss1_classifier.get_weights().shape)
+assert np.allclose(temp, loss1_classifier.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_4b/1x1"][0].data, inception_4b_1x1.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_4b/3x3_reduce"][0].data, inception_4b_3x3_reduce.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_4b/3x3"][0].data, inception_4b_3x3.get_weights(), 1e-3, 1e-3)
@@ -1352,7 +1356,12 @@ assert np.allclose(net2.params["inception_4d/5x5_reduce"][0].data, inception_4d_
 assert np.allclose(net2.params["inception_4d/5x5"][0].data, inception_4d_5x5.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_4d/pool_proj"][0].data, inception_4d_pool_proj.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["loss2/conv"][0].data, loss2_conv.get_weights(), 1e-3, 1e-3)
-#assert np.allclose(net2.params["loss2/fc"][0].data, loss2_fc.get_weights(), 1e-3, 1e-3)
+temp = net2.params["loss2/fc"][0].data.reshape(loss2_fc.get_weights().shape)
+
+assert np.allclose(temp, loss2_fc.get_weights(), 1e-3, 1e-3)
+temp = net2.params["loss2/classifier"][0].data.reshape(loss2_classifier.get_weights().shape) 
+assert np.allclose(temp, loss2_classifier.get_weights(), 1e-3, 1e-3)
+
 #assert np.allclose(net2.params["loss2/classifier"][0].data, loss2_classifier.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_4e/1x1"][0].data, inception_4e_1x1.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_4e/3x3_reduce"][0].data, inception_4e_3x3_reduce.get_weights(), 1e-3, 1e-3)
@@ -1373,6 +1382,8 @@ assert np.allclose(net2.params["inception_5b/5x5_reduce"][0].data, inception_5b_
 assert np.allclose(net2.params["inception_5b/5x5"][0].data, inception_5b_5x5.get_weights(), 1e-3, 1e-3)
 assert np.allclose(net2.params["inception_5b/pool_proj"][0].data, inception_5b_pool_proj.get_weights(), 1e-3, 1e-3)
 #assert np.allclose(net2.params["loss3/classifier"][0].data, loss3_classifier.get_weights(), 1e-3, 1e-3)
+temp = net2.params["loss3/classifier"][0].data.reshape(loss3_classifier.get_weights().shape) 
+assert np.allclose(temp, loss3_classifier.get_weights(), 1e-3, 1e-3)
 
 
 print("Success\n")
