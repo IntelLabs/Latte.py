@@ -47,22 +47,20 @@ def test_forward_backward():
 
     net.compile()
     
-    data_value = np.random.rand(8, channels, height, width)
+    data_value = np.random.uniform(0, 0.01, (8, channels, height, width))
     data.set_value(data_value)
 
     weights = conv1.get_weights()
     bias    = conv1.get_bias()
-    weights = np.random.rand(*weights.shape)
-    bias    = np.random.rand(*bias.shape)
-    conv1.set_bias(bias)
-    conv1.set_weights(weights)
 
     net.forward()
 
     expected_conv = reference_conv_forward(data_value, weights, bias, 1, 1, 1)
     expected = np.tanh(expected_conv) 
 
+
     actual  = tanh1.get_value()
+    check_equal(conv1.get_value(), expected_conv, 1e-4)
     check_equal(actual, expected, 1e-4)
     
     top_grad = tanh1.get_grad()
@@ -74,7 +72,6 @@ def test_forward_backward():
     
     expected_bot_grad = (expected * (1.0 - expected)) * top_grad_value
     check_equal(bot_grad, expected_bot_grad)
-    
 
 def main():
     test_forward_backward()
