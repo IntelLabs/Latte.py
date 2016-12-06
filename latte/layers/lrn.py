@@ -30,11 +30,11 @@ class LRNNeuron(Neuron):
         self.value = self.inputs[index,0,0]/pow(self.sum_value,self.beta)
 
     def backward(self):
-
-        self.grad_inputs[0,0,0] += (self.grad/pow(self.sum_value,self.beta))
+        index = self.n/2
+        self.grad_inputs[index,0,0] += (self.grad/pow(self.sum_value,self.beta))
         for i in range_dim(self.inputs, 0):
-            self.grad_inputs[i,0,0] = self.grad_inputs[i,0,0] -  (((((2/self.n)*self.alpha)*(self.beta*self.grad))*self.inputs[0,0,0])/self.sum_value)
-    
+            self.grad_inputs[index,0,0] -=  ((((((2/self.n)*self.alpha)*(self.beta*self.grad))*self.inputs[i,0,0])/(pow(self.sum_value, self.beta +1)))*self.inputs[index,0,0])
+   
     def update_internal(self):
         pass
 
