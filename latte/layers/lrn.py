@@ -31,10 +31,10 @@ class LRNNeuron(Neuron):
 
     def backward(self):
         index = self.n/2
-        self.grad_inputs[index,0,0] += (self.grad/pow(self.sum_value,self.beta))
+        self.grad_inputs[index,0,0]  += (self.grad/pow(self.sum_value,self.beta))
         for i in range_dim(self.inputs, 0):
-            self.grad_inputs[index,0,0] -=  ((((((2/self.n)*self.alpha)*(self.beta*self.grad))*self.inputs[i,0,0])/(pow(self.sum_value, self.beta +1)))*self.inputs[index,0,0])
-   
+            self.grad_inputs[i,0,0] -= (((((2.0/self.n)*self.alpha)*(self.beta*self.grad))*self.inputs[index,0,0])*self.inputs[i,0,0]/pow(self.sum_value,self.beta+1))
+    
     def update_internal(self):
         pass
 
@@ -45,9 +45,24 @@ def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
     input_channels, input_height, input_width = input_ensemble.shape
 
 
+    #k_  = np.zeros((1), dtype=np.float32)
+    #n_  = np.zeros((1), dtype=np.float32)
+    #alpha_  = np.zeros((1), dtype=np.float32)
+    #beta_  = np.zeros((1), dtype=np.float32)
+
+    #k_[0] = float(k)
+    #n_[0] = float(n)
+    #alpha_[0] = float(alpha)
+    #beta_[0] = float(beta)
+
+
+    #sum_value = np.zeros(input_ensemble.shape, dtype=np.float32)
+
+
+
     shape = (input_channels, input_height, input_width)
     neurons = np.empty(shape, dtype='object')
-    neurons[:] = LRNNeuron(k,n,alpha,beta)
+    neurons[:,:,:] = LRNNeuron(float(k),int(n),float(alpha),float(beta))
 
  
     lrn_ens = LRNEnsemble(neurons)
