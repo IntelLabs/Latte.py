@@ -47,7 +47,7 @@ class BasicTypeInference(ast.NodeTransformer):
                 right = self._get_type(node.right)
                 return ctree.types.get_common_ctype([left, right])
         elif isinstance(node, C.FunctionCall):
-            if node.func.name in ["MAX", "MIN", "max", "min", "floor"]:
+            if node.func.name in ["MAX", "MIN", "max", "min", "floor", "pow"]:
                 return ctree.types.get_common_ctype([self._get_type(a) for a in node.args])
         elif isinstance(node, C.Cast):
             return node.type
