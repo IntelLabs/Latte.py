@@ -17,7 +17,6 @@ def weight_update_and_check_output(net2, convs, layers):
     lr_w_mult = 1
     lr_b_mult = 1
     momentum_hist = {}
- 
     for layer in net2.params:
         m_w = np.zeros_like(net2.params[layer][0].data)
         m_b = np.zeros_like(net2.params[layer][1].data)
@@ -33,8 +32,8 @@ def weight_update_and_check_output(net2, convs, layers):
     for param in convs:
         sgd_update(param[1].get_weights_view(), param[1].get_grad_weights_view(),np.zeros_like(param[1].get_weights_view()), base_lr, momentum, batch_size)
         sgd_update(param[1].get_bias_view(), param[1].get_grad_bias_view(),np.zeros_like(param[1].get_bias_view()), base_lr, momentum, batch_size)
- 
     for layer in layers:
+        print(layer[0])
         assert np.allclose(net2.blobs[layer[0]].data, layer[1].get_value(), 1e-7, 1e-1)
         assert np.allclose(net2.blobs[layer[0]].diff, layer[1].get_grad(), 1e-7, 1e-1)
     for conv in convs:
@@ -43,7 +42,7 @@ def weight_update_and_check_output(net2, convs, layers):
             bias = net2.params[conv[0]][1].data
             grad_wt  = net2.params[conv[0]][0].diff
             grad_bias = net2.params[conv[0]][1].diff
- 
+            print(conv[0])
             if weights.shape == conv[1].get_weights().shape:
                 assert np.allclose(net2.params[conv[0]][0].data, conv[1].get_weights(), 1e-7, 1e-2)
             else:
@@ -357,8 +356,6 @@ timing_info = False
 #train_labels = np.random.randint(0, 255, (num_train, 1, 306, 306)).astype(np.float32)
  
 print("Training ...")
-#label = net2.blobs["label"].data.reshape((1,1))
-
 for epoch in range(epoch_size):
  
  
@@ -371,13 +368,21 @@ for epoch in range(epoch_size):
         #train_label = train_labels[n:n+batch_size]
         #data.set_value(train_data)
         #label.set_value(train_label)
-        data.set_value(net2.blobs["data"].data)
+        #data.set_value(net2.blobs["data"].data)
 
         net2.forward()
+
+        #print(net2.blobs["loss1/classifier"].diff)
+
         net2.backward()
             
         if i == 0:
             copy_weights(net2,convs)
+            label = net2.blobs["label"].data
+            label = label.reshape(1,1)
+            data.set_value(net2.blobs["data"].data)
+
+        print(label[0][0])
 
         t = time.time()
         net.forward()
@@ -397,17 +402,31 @@ for epoch in range(epoch_size):
         output_grad2 = np.zeros_like(output2)
         output_grad3 = np.zeros_like(output3)
         
-        loss1 = compute_softmax_loss(output1, prob1, net2.blobs["label"].data)
-        loss2 = compute_softmax_loss(output2, prob2, net2.blobs["label"].data)
-        loss3 = compute_softmax_loss(output2, prob3, net2.blobs["label"].data)
-
-
+        loss1 = compute_softmax_loss(output1, prob1, label)
+        loss2 = compute_softmax_loss(output2, prob2, label)
+        loss3 = compute_softmax_loss(output3, prob3, label)
+            
         #acc = compute_seg_accuracy(output, shrink_label.get_value(), ignore_label)
  
         # Initialize gradients
-        softmax_loss_backprop(output_grad1, prob1, net2.blobs["label"].data)
-        softmax_loss_backprop(output_grad2, prob2, net2.blobs["label"].data)
-        softmax_loss_backprop(output_grad3, prob3, net2.blobs["label"].data)
+        
+
+        softmax_loss_backprop(output_grad1, prob1, label)
+        softmax_loss_backprop(output_grad2, prob2, label)
+        softmax_loss_backprop(output_grad3, prob3, label)
+
+        output_grad1 *= (0.3)
+        output_grad2 *= (0.3)
+
+
+        #print(output_grad1)
+        #print(net2.blobs["loss1/classifier"].diff) 
+
+        #assert np.allclose(net2.blobs["loss1/classifier"].diff, output_grad1, 1e-7, 1e-1)
+        #assert np.allclose(net2.blobs["loss2/loss"].data, loss2, 1e-7, 1e-1)
+        #assert np.allclose(net2.blobs["loss3/loss"].data, loss3, 1e-7, 1e-1)
+
+
 
         loss1_classifier.set_grad(output_grad1)
         loss2_classifier.set_grad(output_grad2)
@@ -415,9 +434,8 @@ for epoch in range(epoch_size):
 
         t = time.time()
         net.backward()
-
+        
         backward_time += time.time() - t
- 
         #lr = base_lr * (1 + gamma * i)**power
         #mom = .9
         #for param in params:

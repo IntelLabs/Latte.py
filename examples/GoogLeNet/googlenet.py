@@ -349,10 +349,9 @@ net2 = solver.net
 net.compile() 
 
 num_train = 1
-data.set_value(np.random.rand(batch_size, 3, 224, 224))
  
  
-train_batches = [i for i in range(0, num_train, batch_size)]
+#train_batches = [i for i in range(0, num_train, batch_size)]
 total_forward_time = 0.0
 total_backward_time = 0.0
 epoch_size = 10
@@ -373,10 +372,11 @@ print("Training ...")
 for epoch in range(epoch_size):
  
  
-    for i in enumerate(train_batches):
+    for i in range(1):
         forward_time = 0.0
         backward_time = 0.0
  
+        data.set_value(np.random.rand(batch_size, 3, 224, 224))
  
         #train_data = train_images[n:n+batch_size]
         #train_label = train_labels[n:n+batch_size]
@@ -472,7 +472,7 @@ for epoch in range(epoch_size):
         net.loss = 0.0
  
         if timing_info:
-            print("Iteration {} -- ".format(i))
+            print("Iteration {} -- ".format(epoch))
             print("FP                   : {0:.3f} ms".format(forward_time * 1000))
             print("BP+WU                : {0:.3f} ms".format(backward_time * 1000))
             print("Total Time           : {0:.3f} ms".format((forward_time+backward_time)*1000))

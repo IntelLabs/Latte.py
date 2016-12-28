@@ -15,29 +15,8 @@ layer {
     mean_value: 123
   }
   data_param {
-    source: "examples/imagenet/ilsvrc12_train_lmdb"
-    batch_size: 32
-    backend: LMDB
-  }
-}
-layer {
-  name: "data"
-  type: "Data"
-  top: "data"
-  top: "label"
-  include {
-    phase: TEST
-  }
-  transform_param {
-    mirror: false
-    crop_size: 224
-    mean_value: 104
-    mean_value: 117
-    mean_value: 123
-  }
-  data_param {
-    source: "examples/imagenet/ilsvrc12_val_lmdb"
-    batch_size: 50
+    source: "/home/avenkat/caffe/examples/imagenet/ilsvrc12_train_lmdb"
+    batch_size: 1
     backend: LMDB
   }
 }
@@ -892,15 +871,6 @@ layer {
   top: "loss1/fc"
 }
 layer {
-  name: "loss1/drop_fc"
-  type: "Dropout"
-  bottom: "loss1/fc"
-  top: "loss1/fc"
-  dropout_param {
-    dropout_ratio: 0.7
-  }
-}
-layer {
   name: "loss1/classifier"
   type: "InnerProduct"
   bottom: "loss1/fc"
@@ -1655,15 +1625,6 @@ layer {
   top: "loss2/fc"
 }
 layer {
-  name: "loss2/drop_fc"
-  type: "Dropout"
-  bottom: "loss2/fc"
-  top: "loss2/fc"
-  dropout_param {
-    dropout_ratio: 0.7
-  }
-}
-layer {
   name: "loss2/classifier"
   type: "InnerProduct"
   bottom: "loss2/fc"
@@ -2365,15 +2326,6 @@ layer {
     pool: AVE
     kernel_size: 7
     stride: 1
-  }
-}
-layer {
-  name: "pool5/drop_7x7_s1"
-  type: "Dropout"
-  bottom: "pool5/7x7_s1"
-  top: "pool5/7x7_s1"
-  dropout_param {
-    dropout_ratio: 0.4
   }
 }
 layer {
