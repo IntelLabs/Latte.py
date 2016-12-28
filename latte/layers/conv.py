@@ -198,7 +198,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     
     # End Optimizations
     # Added by Raj/Anand
-    #conv_ens.use_libxsmm(1)
+    conv_ens.use_libxsmm(1)
     conv_ens.stride = stride
 
     return conv_ens
