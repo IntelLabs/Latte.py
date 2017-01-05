@@ -150,6 +150,11 @@ def ConcatLayer(net, input_ensemble):
     for i in range(len(input_ensemble)):
         net.add_connections(input_ensemble[i], concat_ens, d[i])
 
+    concat_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    concat_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
+  
+
+
     if "value" in input_ensemble[0].tiling_info:
         tiled_dims = input_ensemble[0].tiling_info["value"]
         

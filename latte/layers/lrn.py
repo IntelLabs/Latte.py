@@ -87,6 +87,10 @@ def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
     input_ensemble.set_padding((effective_pad,effective_pad),(0,0), (0,0))
     net.add_connections(input_ensemble, lrn_ens, mapping)
 
+    lrn_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    lrn_ens.parallelize(phase="backward", loop_var="_neuron_index_0")
+
+
 
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
