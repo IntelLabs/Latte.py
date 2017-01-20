@@ -19,6 +19,7 @@ from latte.mapping import Mapping, one_to_one
 from latte.connection import Connection
 from latte.task import Task
 import latte.transformers.vectorize as vectorizer
+import latte.transformers.prefetch as prefetcher
 import latte.transformers.parallelize as parallelizer
 import latte.transformers.code_motion as code_motion
 import latte.transformers.unroll as unroller
@@ -1195,10 +1196,6 @@ class Net:
           if direction in ensemble.unroll_info:
             unroll_var, unroll_factor = ensemble.unroll_info[direction]
             unroller.unroll_loop(func_def, unroll_var, unroll_factor)
-            #if direction == "forward":
-            #  unroll_var_2, unroll_factor_2 = ensemble.unroll_2_info[direction]
-            #  unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
-
           self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
           type_sig = []
@@ -1217,6 +1214,20 @@ class Net:
           else:
             pre_trans = []
             post_trans = []
+
+          if direction in ensemble.prefetch_info:
+              if direction == "forward":
+                unroll_var_2, unroll_factor_2 = ensemble.unroll_2_info[direction]
+                unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
+              prefetch_dict_list = ensemble.prefetch_info[direction]
+              for field, value in prefetch_dict_list.items():
+                  if value[0] == 1:
+                    prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
+                    prefetcher.insert_simple_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
+                  elif value[0] == 2:
+                    prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
+                    prefetcher.insert_strided_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
+
 
         else: #GEMM formulation
           func_def = transformers.pattern_match_gemm(func_def)

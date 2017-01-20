@@ -30,6 +30,8 @@ class Ensemble:
         self._unroll_2_info = {}
         self._private_info = set()
         self._parallel_info = {"forward": [], "backward": [], "update_internal": []}
+        self._prefetch_info = {"forward": {}, "backward": {}, "update_internal": {}}
+        #self._prefetch_info = {}
         self.loops_to_swap = {'forward': [], 'backward': [], "update_internal": []}
         self.simd_info = {'forward': [], 'backward': [], "update_internal": []}
 
@@ -51,6 +53,10 @@ class Ensemble:
     @property
     def vectorize_info(self):
         return self._vectorize_info
+
+    @property
+    def prefetch_info(self):
+        return self._prefetch_info
 
     @property
     def unroll_info(self):
@@ -92,6 +98,14 @@ class Ensemble:
 
     def parallelize(self, phase, loop_var):
         self._parallel_info[phase].append(loop_var)
+
+    #def prefetch(self, field, phase, loop_var, dim, distance, prefetch_once, cacheline):
+    #    if field not in self.prefetch_info:
+    #        self.prefetch_info[field] = []
+    #    if (phase, loop_var, dim, distance, prefetch_once, cacheline) not in self.prefetch_info[field]:
+    #        self.prefetch_info[field].append((phase, loop_var, dim, distance, prefetch_once, cacheline))
+    def prefetch(self, phase, prefetch_dict_list):
+        self._prefetch_info[phase]=prefetch_dict_list
 
     def swap_loops(self, phase, loop_vars):
         assert isinstance(loop_vars, tuple) and len(loop_vars) == 2

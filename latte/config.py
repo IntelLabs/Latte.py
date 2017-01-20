@@ -63,7 +63,8 @@ elif parallel_strategy == "OPENMP":
 
 codegen_strategies = [
     "GEMM",       # MKL GEMM formulation
-    "AUTOVEC"    # Automatic vectorization
+    "AUTOVEC",    # Automatic vectorization
+    "LIBXSMM"    # use libxsmm
 ]
 
 codegen_strategy = os.getenv("LATTE_CODEGEN_STRATEGY", "AUTOVEC")

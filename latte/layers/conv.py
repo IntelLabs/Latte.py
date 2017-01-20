@@ -165,7 +165,6 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
 
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad', dim=0, factor=SIMDWIDTH)
-    #conv_ens.use_libxsmm(1)
 
     if "OPENCL" not in latte.config.parallel_strategy:
         conv_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
@@ -187,18 +186,29 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
 
     
     if "OPENCL" not in latte.config.parallel_strategy:
-        factor = 16
+        outer_unroll_factor = 16
         #factor = 8
-        while output_width % factor != 0:
-            factor -= 1
-        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=factor)
-        #conv_ens.unroll_2(phase="forward", loop_var="i_inner", factor=SIMDWIDTH)
-        conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=factor)
-        conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=factor)
-    
+        while output_width % outer_unroll_factor != 0:
+           outer_unroll_factor -= 1
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        inner_unroll_factor = 4
+        conv_ens.unroll_2(phase="forward", loop_var="i_inner", factor=inner_unroll_factor)
+        #syntax [enclose_loop, dimension, forall, prefetch_loop_var, prefetch_multiplier, prefetch_constant, dest_loop, cacheline_hint]
+        if outer_unroll_factor == output_width:
+          #3350
+          conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, 1, 64, "i_inner", "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]  })
+          #3563GF
+          #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
+        else:
+          conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -1, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -2, inner_unroll_factor, 64, "i_inner", "_neuron_index_2", "_neuron_index_3", 1, inner_unroll_factor, 0]  })
+        #backward  
+        conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+         
     # End Optimizations
     # Added by Raj/Anand
-    conv_ens.use_libxsmm(1)
-    conv_ens.stride = stride
+    if "LIBXSMM" in latte.config.codegen_strategy:
+      conv_ens.use_libxsmm(1)
+      conv_ens.stride = stride
 
     return conv_ens

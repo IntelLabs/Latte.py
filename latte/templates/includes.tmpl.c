@@ -24,6 +24,14 @@
 #include <libxsmm_dnn.h>
 #endif
 
+inline void __mm_prefetch_t0(float const *a) {
+  _mm_prefetch((char const *)a, _MM_HINT_T0);
+}
+
+inline void __mm_prefetch_t1(float const *a) {
+  _mm_prefetch((char const *)a, _MM_HINT_T1);
+}
+
 $TRANSPOSE
 
 extern "C"
