@@ -200,7 +200,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
           #3563GF
           conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
         else:
-          conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -1, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -2, inner_unroll_factor, 64, "i_inner", "_neuron_index_2", "_neuron_index_3", 1, inner_unroll_factor, 0]  })
+          conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -1, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0]})
+          #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -1, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -2, inner_unroll_factor, 64, "i_inner", "_neuron_index_2", "_neuron_index_3", 1, inner_unroll_factor, 0]  })
         #backward  
         conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
         conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=outer_unroll_factor)
