@@ -33,6 +33,14 @@ parallel_strategies = [
 
 parallel_strategy = os.getenv("LATTE_PARALLEL_STRATEGY", "SIMPLE_LOOP")
 
+MODES = [
+    "REL_MODE",
+    "DEV_MODE"
+]
+
+MODE = os.getenv("LATTE_MODE", "REL_MODE")
+ 
+
 if parallel_strategy not in parallel_strategies:
     logger.warn("Invalid parallel strategy [%s], defaulting to SIMPLE_LOOP", parallel_strategy)
     parallel_strategy = "SIMPLE_LOOP"

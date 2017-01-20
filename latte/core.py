@@ -39,6 +39,13 @@ transpose_path = {
 }[latte.config.vec_config]
 package_path = os.path.dirname(os.path.abspath(__file__))
 
+if latte.config.MODE in ["DEV_MODE"]:
+    forward_path = "/templates/forward0.cpp"
+    backward_path = "/templates/backward1.cpp"
+    forward_pre_gen = FileTemplate(package_path + forward_path)
+    backward_pre_gen = FileTemplate(package_path + backward_path)
+
+
 transpose = FileTemplate(package_path + transpose_path)
 
 include = FileTemplate(package_path + "/templates/includes.tmpl.c", {
@@ -360,15 +367,39 @@ class Net:
                                                  [self.forward_tasks, self.backward_tasks],
                                                  ):
             args = list(args)
+            
+            #if latte.config.MODE in ["DEV_MODE"]:
+            args.sort() 
+
+
             arg_bufs = [self.buffers[arg] for arg in args]
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
             params   = [C.SymbolRef("_" + arg, typ()) for arg, typ in zip(args, type_sig)]
 
             _id = self._uniqueid()
+
+           
+
+     
+            if latte.config.MODE in ["DEV_MODE"]:
+                
+                if direction == "forward":
+                    c_file = C.CFile(direction + _id, [
+                    forward_pre_gen
+                    ], path=".compiled")
+                else:
+                    c_file = C.CFile(direction + _id, [
+                    backward_pre_gen
+                    ], path=".compiled")
+
+                c_file._ext = "cpp"
+            
+            
+
             c_file = C.CFile(direction + _id, [
-                include, 
-                C.FunctionDecl(None, C.SymbolRef(direction + _id), params, body)
-            ], path=".compiled")
+                    include, 
+                    C.FunctionDecl(None, C.SymbolRef(direction + _id), params, body)
+                ], path=".compiled")
 
             c_file._ext = "cpp"
 
@@ -416,6 +447,21 @@ class Net:
                     type_sig.append(cl.cl_kernel)
                     params.append(C.SymbolRef(name, cl.cl_kernel()))
             # c_file = transformers.remove_repeated_declarations(c_file)
+           
+            if latte.config.MODE in ["DEV_MODE"]:
+ 
+                if direction == "forward":
+                    c_file = C.CFile(direction + _id, [
+                    forward_pre_gen
+                    ], path=".compiled")
+                else:
+                    c_file = C.CFile(direction + _id, [
+                    backward_pre_gen
+                    ], path=".compiled")
+ 
+                c_file._ext = "cpp"
+ 
+
             module = util.mpi_compile(ctree.nodes.Project([c_file]))
             # get_callable(functions_handle, type_signature)
 
@@ -1116,7 +1162,7 @@ class Net:
         # handle math functions that are different in C than python
         func_def = transformers.PatternMatchMath().visit(func_def)
 
-
+                       
         for loop in func_def.defn:
             # convert loopvars from long to int
             # we do this because PyBasicConversion defaults to using longs for
@@ -1158,6 +1204,20 @@ class Net:
                             loop.body = [util.ClampInputIndex(input_offset, gen_clamp).visit(s) for s in loop.body]
                             if dim+1 == (len(loop_vars) - 1):
                                 loop.body = [util.ClampInputIndex("_input_offset_{}".format(dim+1), gen_clamp).visit(s) for s in loop.body]
+
+        #ANAND-- IN PROGRESS 1/5/2017
+        if isinstance(ensemble, ConcatEnsemble):
+                
+            for loop in func_def.defn:
+                #loop.init.left.type = ctypes.c_int()
+                inner = loop.body[0]
+                inner.init.left.type = ctypes.c_int()
+                inner = inner.body[0]   
+                inner.init.left.type = ctypes.c_int()
+                inner = inner.body[0]
+                inner.init.left.type = ctypes.c_int() 
+
+
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
