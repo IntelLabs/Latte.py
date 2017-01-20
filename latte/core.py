@@ -1275,9 +1275,9 @@ class Net:
             pre_trans = []
             post_trans = []
 
-          if direction in ensemble.prefetch_info:
-              if direction == "forward":
-                unroll_var_2, unroll_factor_2 = ensemble.unroll_2_info[direction]
+          if direction in ensemble.prefetch_info and direction in ensemble.unroll_2_info:
+              if direction == "forward" :
+                (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
                 unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
               prefetch_dict_list = ensemble.prefetch_info[direction]
               for field, value in prefetch_dict_list.items():
