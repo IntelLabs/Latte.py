@@ -171,6 +171,7 @@ class Net:
         try:
             neuron = ensemble.neurons.flat[0]
             value = getattr(neuron, field)
+            assert type(value) != None
             if field in ensemble.batch_fields:
                 buff = util.empty((self.batch_size, ) + ensemble.shape, type(value))
                 self.buffers[ensemble.name + field] = buff
@@ -213,7 +214,7 @@ class Net:
             shape.insert(0, self.batch_size)
             # Never uniform across batch dimension
             uniform_across_dim.insert(0, False)
-
+        assert value.dtype != None
         buff = util.zeros(shape, value.dtype)
         self.buffers[ensemble.name + field] = buff
         self.buffer_dim_info[ensemble.name + field] = uniform_across_dim
@@ -277,7 +278,7 @@ class Net:
                             self._initialize_inputs(ensemble, source_target, buffer_name+str(i), i)
             else:
                 value = getattr(neuron, field)
-                if isinstance(value, numbers.Real):
+                if isinstance(value, numbers.Real) or isinstance(value, numbers.Integral):
                     ensemble.scalar_fields.append(field)
                     self._initialize_numeric_field(ensemble, field)
                 elif isinstance(value, np.ndarray):
@@ -375,10 +376,12 @@ class Net:
             arg_bufs = [self.buffers[arg] for arg in args]
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
             params   = [C.SymbolRef("_" + arg, typ()) for arg, typ in zip(args, type_sig)]
+            args2   = [C.SymbolRef(arg, typ()) for arg, typ in zip(args, type_sig)]
 
+            #args_duplicate = 
             _id = self._uniqueid()
 
-           
+            
 
      
             if latte.config.MODE in ["DEV_MODE"]:
@@ -393,8 +396,37 @@ class Net:
                     ], path=".compiled")
 
                 c_file._ext = "cpp"
-            
-            
+           
+            #body = PyBasicConversions().visit(body)
+ 
+            #body = analyzer.type_infer(body)
+            #body = optimizer.propogate_constants(body)
+           
+
+
+            #body = transformers.simple_fusion(C.Block(body))
+            #body =  PyBasicConversions().visit(body)
+
+            #func_def = ast.FunctionDef('func',P
+            #    ast.arguments(args2, None, [], [], None, []), body,
+            #    [], None)
+        # basic python -> C conversion
+            #func_def = PyBasicConversions().visit(func_def)
+ 
+          # Seed the argument types as pointers for type inference
+            #for arg in func_def.params:
+            #  buf = self.buffers[arg.name]
+            #  arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
+            #  print(arg.type) 
+            # Basic type inference and constant propogation
+            #func_def = analyzer.type_infer(func_def)
+ 
+   
+
+            #func_def = analyzer.type_infer(func_def)
+            #func_def = optimizer.propogate_constants(func_def)
+
+
 
             c_file = C.CFile(direction + _id, [
                     include, 
@@ -402,15 +434,46 @@ class Net:
                 ], path=".compiled")
 
             c_file._ext = "cpp"
+            
+            #c_file = transformers.simple_fusion(c_file)
+            
 
-            # c_file = transformers.simple_fusion(c_file)
+            '''
+            func_def =[] 
+            inc = 0 
+            for i in c_file.body[1].defn: 
+                tmp = C.FunctionDecl(None, C.SymbolRef(direction + _id),args2,i )
+                for arg in tmp.params:
+                    buf = self.buffers[arg.name]
+                    arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
+                    #print(arg.type) 
 
+                
+
+                tmp2 = analyzer.type_infer(tmp)
+                tmp2 = optimizer.propogate_constants(tmp2)
+                func_def.append(tmp2.defn)
+                inc=inc+1
+            '''
             new_body = []
             incr = -1
             kernels = {}
+            
+
+
+
+            #for stmt in func_def:
             for stmt in c_file.body[1].defn:
+ 
                 incr += 1
-                if isinstance(stmt, C.For):
+                #stmt = analyzer.type_infer(stmt)
+                #stmt = optimizer.propogate_constants(stmt)
+                #stmt = analyzer.type_infer(stmt)
+                #stmt = optimizer.propogate_constants(stmt)
+                
+             
+
+                if isinstance(stmt, C.For): 
                     if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
                         new_body.extend(stmt.pre_trans)
                     # loopvar1 = C.SymbolRef(stmt.init.left.name)
@@ -431,8 +494,18 @@ class Net:
                 buf = self.buffers[name]
                 new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
                 util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
+  
 
-            c_file.body[1].defn = new_body # + [execute_stmt]
+
+
+            #new_body =  PyBasicConversions().visit(new_body)
+ 
+
+           
+            
+            
+
+            c_file.body[1].defn = new_body 
 
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
@@ -822,9 +895,9 @@ class Net:
             if not isinstance(self.connections_map[ensemble][0].source, DataEnsemble) or \
                     self.force_backward:
                 fn_def = util.get_ast(neuron.backward).body[0]
-                # if hasattr(neuron, 'update_internal'):
-                #     fn_def.body += util.get_ast(neuron.update_internal).body[0].body
-                #     fn_def = transformers.simple_fusion(fn_def)
+                #if hasattr(neuron, 'update_internal'):
+                #    fn_def.body += util.get_ast(neuron.update_internal).body[0].body
+                #    fn_def = transformers.simple_fusion(fn_def)
             # elif hasattr(neuron, 'update_internal'):
             #     fn_def = util.get_ast(neuron.update_internal).body[0]
             else:
@@ -840,8 +913,8 @@ class Net:
         fn_def = transformer.visit(fn_def)
         #util.print_ast(fn_def)
         # Grab seen variables
+
         args = [ast.arg(arg, None) for arg in transformer.seen_vars]
-        #print(args)
         loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)]
         if not isinstance(ensemble, ConcatEnsemble):
             shape = list(ensemble.shape)
@@ -1218,15 +1291,14 @@ class Net:
                 inner.init.left.type = ctypes.c_int() 
 
 
-
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:
-            buf = self.buffers[arg.name]
-            arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
-
+           buf = self.buffers[arg.name]
+           arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
         # Basic type inference and constant propogation
         func_def = analyzer.type_infer(func_def)
         func_def = optimizer.propogate_constants(func_def)
+        
 
         if latte.config.codegen_strategy == "AUTOVEC":
           # optimizations applied
@@ -1281,14 +1353,13 @@ class Net:
                 unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
               prefetch_dict_list = ensemble.prefetch_info[direction]
               for field, value in prefetch_dict_list.items():
-                  if value[0] == 1:
-                    prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
-                    prefetcher.insert_simple_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
-                  elif value[0] == 2:
-                    prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
-                    prefetcher.insert_strided_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
-
-
+                  if len(value) > 0 :
+                    if value[0] == 1:
+                        prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
+                        prefetcher.insert_simple_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
+                    elif value[0] == 2:
+                        prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
+                        prefetcher.insert_strided_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
         else: #GEMM formulation
           func_def = transformers.pattern_match_gemm(func_def)
           raise NotImplementedError("GEMM formulation is not complete yet")

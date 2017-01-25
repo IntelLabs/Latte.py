@@ -9,8 +9,39 @@ class SimpleFusion(ast.NodeTransformer):
 
     Does not perform dependence analysis
     """
+    def __init__(self):
+        self.seen = {}
+
+
+    def visit_BinaryOp(self, node):
+        node.left = self.visit(node.left)
+        node.right = self.visit(node.right)
+ 
+ 
+        if isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.SymbolRef) and node.left.name not in self.seen and node.left.type is not None:
+            self.seen[node.left.name] = node.left.type
+        elif isinstance(node.op, C.Op.Assign) and isinstance(node.left, C.SymbolRef) and node.left.name in self.seen and node.left.type is not None:
+            node.left.type = None
+ 
+ 
+ 
+        node.right = self.visit(node.right)
+        return node
+
     def visit(self, node):
+     
+
+        if hasattr(node, 'body'):
+            curr = deepcopy(self.seen)
+  
         node = super().visit(node)
+        
+
+        if hasattr(node, 'body'):
+           #curr = deepcopy(self.seen)
+           self.seen= {}
+
+
         if hasattr(node, 'body') and len(node.body) > 1:
             new_body = [node.body[0]]
             for statement in node.body[1:]:
@@ -36,6 +67,12 @@ class SimpleFusion(ast.NodeTransformer):
                 else:
                     new_body.append(statement)
             node.body = [self.visit(s) for s in new_body]
+
+        if hasattr(node, 'body'):
+           #curr = deepcopy(self.seen) 
+           self.seen= curr
+
+
 
         return node
 
