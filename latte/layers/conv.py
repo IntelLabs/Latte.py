@@ -195,12 +195,14 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         inner_unroll_factor = 4
         conv_ens.unroll_2(phase="forward", loop_var="i_inner", factor=inner_unroll_factor)
         #syntax [enclose_loop, dimension, forall, prefetch_loop_var, prefetch_multiplier, prefetch_constant, dest_loop, cacheline_hint]
+        #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, 7, 64, "i_inner", "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
         if outer_unroll_factor == output_width:
           #3350
           #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, 1, 64, "i_inner", "_neuron_index_2", "_neuron_index_2", stride_h, 2, 0]  })
           #3563GF
           conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
         elif kernel_h == 1 and kernel_w == 1:
+          #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, 7, 64, "i_inner", "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
           conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, 7, 64, "i_inner", "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
 
         else:
