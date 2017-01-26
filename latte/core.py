@@ -39,7 +39,7 @@ transpose_path = {
 }[latte.config.vec_config]
 package_path = os.path.dirname(os.path.abspath(__file__))
 
-if latte.config.MODE in ["DEV_MODE"]:
+if latte.config.MODE in ["DEV"]:
     forward_path = "/templates/forward0.cpp"
     backward_path = "/templates/backward1.cpp"
     forward_pre_gen = FileTemplate(package_path + forward_path)
@@ -369,7 +369,7 @@ class Net:
                                                  ):
             args = list(args)
             
-            #if latte.config.MODE in ["DEV_MODE"]:
+            #if latte.config.MODE in ["DEV"]:
             args.sort() 
 
 
@@ -384,7 +384,7 @@ class Net:
             
 
      
-            if latte.config.MODE in ["DEV_MODE"]:
+            if latte.config.MODE in ["DEV"]:
                 
                 if direction == "forward":
                     c_file = C.CFile(direction + _id, [
@@ -468,7 +468,7 @@ class Net:
                     params.append(C.SymbolRef(name, cl.cl_kernel()))
             # c_file = transformers.remove_repeated_declarations(c_file)
            
-            if latte.config.MODE in ["DEV_MODE"]:
+            if latte.config.MODE in ["DEV"]:
  
                 if direction == "forward":
                     c_file = C.CFile(direction + _id, [
@@ -1296,7 +1296,7 @@ class Net:
             pre_trans = []
             post_trans = []
 
-          if direction in ensemble.prefetch_info and direction in ensemble.unroll_2_info:
+          if "PREFETCH" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
               if direction == "forward" and ensemble.unroll_2_info[direction]:
                 (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
                 unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
