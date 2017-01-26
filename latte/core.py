@@ -1296,10 +1296,10 @@ class Net:
             pre_trans = []
             post_trans = []
 
+          if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
+            (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
+            unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
           if "PREFETCH" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
-              if direction == "forward" and ensemble.unroll_2_info[direction]:
-                (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
-                unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
               prefetch_dict_list = ensemble.prefetch_info[direction]
               for field, value in prefetch_dict_list.items():
                   if len(value) > 0 :
