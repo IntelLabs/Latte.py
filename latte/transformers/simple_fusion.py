@@ -54,7 +54,7 @@ class SimpleFusion(ast.NodeTransformer):
                         isinstance(statement, C.For) and \
                         statement.init.codegen() == new_body[-1].init.codegen() and \
                         statement.incr.codegen() == new_body[-1].incr.codegen() and \
-                        statement.test.codegen() == new_body[-1].test.codegen():
+                        statement.test.codegen() == new_body[-1].test.codegen() and node.parallel == statement.parallel:
                     # new_body[-1].body.extend(statement.body)
                     for stmt in statement.body:
                         add = True

@@ -397,35 +397,6 @@ class Net:
 
                 c_file._ext = "cpp"
            
-            #body = PyBasicConversions().visit(body)
- 
-            #body = analyzer.type_infer(body)
-            #body = optimizer.propogate_constants(body)
-           
-
-
-            #body = transformers.simple_fusion(C.Block(body))
-            #body =  PyBasicConversions().visit(body)
-
-            #func_def = ast.FunctionDef('func',P
-            #    ast.arguments(args2, None, [], [], None, []), body,
-            #    [], None)
-        # basic python -> C conversion
-            #func_def = PyBasicConversions().visit(func_def)
- 
-          # Seed the argument types as pointers for type inference
-            #for arg in func_def.params:
-            #  buf = self.buffers[arg.name]
-            #  arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
-            #  print(arg.type) 
-            # Basic type inference and constant propogation
-            #func_def = analyzer.type_infer(func_def)
- 
-   
-
-            #func_def = analyzer.type_infer(func_def)
-            #func_def = optimizer.propogate_constants(func_def)
-
 
 
             c_file = C.CFile(direction + _id, [
@@ -435,26 +406,8 @@ class Net:
 
             c_file._ext = "cpp"
             
-            #c_file = transformers.simple_fusion(c_file)
+            c_file = transformers.simple_fusion(c_file)
             
-
-            '''
-            func_def =[] 
-            inc = 0 
-            for i in c_file.body[1].defn: 
-                tmp = C.FunctionDecl(None, C.SymbolRef(direction + _id),args2,i )
-                for arg in tmp.params:
-                    buf = self.buffers[arg.name]
-                    arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
-                    #print(arg.type) 
-
-                
-
-                tmp2 = analyzer.type_infer(tmp)
-                tmp2 = optimizer.propogate_constants(tmp2)
-                func_def.append(tmp2.defn)
-                inc=inc+1
-            '''
             new_body = []
             incr = -1
             kernels = {}
@@ -498,12 +451,6 @@ class Net:
 
 
 
-            #new_body =  PyBasicConversions().visit(new_body)
- 
-
-           
-            
-            
 
             c_file.body[1].defn = new_body 
 
@@ -566,6 +513,8 @@ class Net:
                 node.body = [self.visit(s) for s in node.body]
                 if node.init.left.name in self.loopvars:
                     node.parallel = True
+                else:
+                    node.parallel = False
                 return node
 
         return Marker(loopvars).visit(func_def)
@@ -1360,6 +1309,7 @@ class Net:
                     elif value[0] == 2:
                         prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
                         prefetcher.insert_strided_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
+
         else: #GEMM formulation
           func_def = transformers.pattern_match_gemm(func_def)
           raise NotImplementedError("GEMM formulation is not complete yet")
