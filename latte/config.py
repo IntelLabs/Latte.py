@@ -40,10 +40,10 @@ MODES = [
 MODE = os.getenv("LATTE_MODE", "RELEASE")
  
 prefetch_options = [
-    "PREFETCH",
-    "NOPREFETCH"
+    "ENABLE",
+    "DISABLE"
 ]
-prefetch_option = os.getenv("LATTE_PREFETCH_MODE", "PREFETCH")
+prefetch_option = os.getenv("LATTE_PREFETCH_MODE", "ENABLE")
 
 if parallel_strategy not in parallel_strategies:
     logger.warn("Invalid parallel strategy [%s], defaulting to SIMPLE_LOOP", parallel_strategy)
