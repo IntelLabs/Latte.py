@@ -20,6 +20,8 @@ from latte.connection import Connection
 from latte.task import Task
 import latte.transformers.vectorize as vectorizer
 import latte.transformers.prefetch as prefetcher
+import latte.transformers.loop_simplify as loopsimplifier
+import latte.transformers.copy_propagation as copypropagator
 import latte.transformers.parallelize as parallelizer
 import latte.transformers.code_motion as code_motion
 import latte.transformers.unroll as unroller
@@ -1261,6 +1263,10 @@ class Net:
             loop1.test, loop2.test = loop2.test, loop1.test
             loop1.incr, loop2.incr = loop2.incr, loop1.incr
 
+          # drop loops that iterate for one iteration only and constant propagate indices and hoist address computations
+          func_def = loopsimplifier.simplify_loops(func_def)
+          func_def = optimizer.propogate_constants(func_def)
+
           if direction in ensemble.vectorize_info:
             # RAJ hack here
             func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
@@ -1299,6 +1305,7 @@ class Net:
           if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
             (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
             unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
+          func_def = copypropagator.propagate_copies(func_def)
           if "ENABLE" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
               prefetch_dict_list = ensemble.prefetch_info[direction]
               for field, value in prefetch_dict_list.items():
