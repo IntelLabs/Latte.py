@@ -1305,6 +1305,7 @@ class Net:
           if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
             (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
             unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
+          # check for fused code
           func_def = copypropagator.propagate_copies(func_def)
           if "ENABLE" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
               prefetch_dict_list = ensemble.prefetch_info[direction]
