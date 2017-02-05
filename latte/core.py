@@ -1319,7 +1319,7 @@ class Net:
                         prefetcher.insert_strided_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
           # drop loops that iterate for one iteration only and constant propagate indices and hoist address computations
           func_def = loopsimplifier.simplify_loops(func_def)
-          func_def = optimizer.propogate_constants(func_def)
+          #func_def = optimizer.propogate_constants(func_def)
 
         else: #GEMM formulation
           func_def = transformers.pattern_match_gemm(func_def)

@@ -31,6 +31,7 @@ class CopyPropagation(ast.NodeTransformer):
              isinstance(stmt.left, C.SymbolRef) and \
              (stmt.left.name.startswith("in_") or stmt.left.name.startswith("_input_")) and \
              not isinstance(stmt.right, C.FunctionCall):
+               new_body.append(stmt)
                if isinstance(stmt.right, C.SymbolRef) and \
                  du_map and du_map[stmt.right.name]:
                  du_map[stmt.left.name] = du_map[stmt.right.name]
