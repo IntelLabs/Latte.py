@@ -409,6 +409,7 @@ class Net:
             c_file._ext = "cpp"
             
             c_file = transformers.simple_fusion(c_file)
+            c_file = transformers.timer(c_file)
             
             new_body = []
             incr = -1

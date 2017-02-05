@@ -32,6 +32,11 @@ inline void __mm_prefetch_t1(float const *a) {
   _mm_prefetch((char const *)a, _MM_HINT_T1);
 }
 
+double *times;
+double *doublecalloccast(const int size) {
+  return (double *)calloc(size,sizeof(double));
+}
+
 $TRANSPOSE
 
 extern "C"

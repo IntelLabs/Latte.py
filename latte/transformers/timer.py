@@ -14,7 +14,6 @@ class Timer(ast.NodeTransformer):
     
     def visit_FunctionDecl(self, node):
         new_body = []
-
         count = 0
         #Declare array of times here
 
@@ -33,11 +32,14 @@ class Timer(ast.NodeTransformer):
                 new_body.append(statement)
         
         #arraydef = C.ArrayDef(C.SymbolRef('times'), ctypes.c_int(count))
-        #memset = C.Statement(C.FunctionCall(C.SymbolRef('memset'),[C.SymbolRef('times'), C.Constant(0), C.Constant(count)]))
-        #new_body.insert(0, memset)
+        #arraydef = C.Array(C.SymbolRef('times'), ctypes.c_int(count))
         #new_body.insert(0, arraydef)       
+        memset = C.Assign(C.SymbolRef('times'), C.FunctionCall(C.SymbolRef('doublecalloccast'),[C.Constant(count)]))
+        new_body.insert(0,  memset)
+        for i in range(0,count):
+          print_stmt = C.FunctionCall(C.SymbolRef('printf'),[C.String("\ttimes[%d] = %g\\n"), C.Constant(i), C.ArrayRef(C.SymbolRef('times'), C.Constant(i))])
+          new_body.append(print_stmt)
         node.defn = new_body     
-        #node.defn = [self.visit(s) for s in new_body]
         return node
 
 def timer(ast):
