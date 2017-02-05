@@ -5,20 +5,9 @@ import astor
 import ctypes
 
 class Timer(ast.NodeTransformer):
-    """
-    Performs simple fusion of loops when to_source(node.iter) and to_source(node.target) are identical
-
-    Does not perform dependence analysis
-    """
-   
-    
     def visit_FunctionDecl(self, node):
         new_body = []
         count = 0
-        #Declare array of times here
-
-
-        #
         for statement in node.defn:
                    
             if isinstance(statement, ast.For) or isinstance(statement, C.For):
@@ -31,11 +20,9 @@ class Timer(ast.NodeTransformer):
             else:
                 new_body.append(statement)
         
-        #arraydef = C.ArrayDef(C.SymbolRef('times'), ctypes.c_int(count))
-        #arraydef = C.Array(C.SymbolRef('times'), ctypes.c_int(count))
-        #new_body.insert(0, arraydef)       
-        memset = C.Assign(C.SymbolRef('times'), C.FunctionCall(C.SymbolRef('doublecalloccast'),[C.Constant(count)]))
+        memset = C.Assign(C.SymbolRef('times'), C.FunctionCall(C.SymbolRef('calloc_doubles'),[C.Constant(count)]))
         new_body.insert(0,  memset)
+        new_body.insert(0, C.Assign(C.SymbolRef("*times", ctypes.c_double()), C.Constant(0)))
         for i in range(0,count):
           print_stmt = C.FunctionCall(C.SymbolRef('printf'),[C.String("\ttimes[%d] = %g\\n"), C.Constant(i), C.ArrayRef(C.SymbolRef('times'), C.Constant(i))])
           new_body.append(print_stmt)

@@ -32,8 +32,7 @@ inline void __mm_prefetch_t1(float const *a) {
   _mm_prefetch((char const *)a, _MM_HINT_T1);
 }
 
-double *times;
-double *doublecalloccast(const int size) {
+inline double *calloc_doubles(size_t size) {
   return (double *)calloc(size,sizeof(double));
 }
 
