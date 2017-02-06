@@ -172,5 +172,7 @@ class StridedPrefetcher(ast.NodeTransformer):
         return node
 
 def insert_strided_prefetches(ast,  prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint):
+     escape_body=[]
+     init_body=[]
      return InitPrefetcher(prefetch_init_loop).visit(HoistPrefetch(prefetch_dest_loop).visit(StridedPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint).visit(ast)))
 

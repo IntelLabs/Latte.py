@@ -3,6 +3,7 @@ from ..neuron import WeightedNeuron, BiasNeuron
 from ..ensemble import Ensemble, EnsembleGroup
 import itertools
 import latte.core
+import math
 
 SIMDWIDTH = latte.config.SIMDWIDTH
 
@@ -198,27 +199,26 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
           conv_ens.unroll_2(phase="forward", loop_var="i_inner", factor=inner_unroll_factor)
           #syntax [prefetch_type=1, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint]
           #syntax [prefetch_type=2, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint]
-          fp_pf_factor = (kernel_h*(outer_unroll_factor+kernel_w-1))/(kernel_h*kernel_w*inner_unroll_factor)
-          if int(fp_pf_factor) > 1:
+          fp_pf_factor = math.ceil((kernel_h*(input_height))/(kernel_h*kernel_w*inner_unroll_factor))
+          if fp_pf_factor > 1:
             fp_pf_loop = "i_inner"
           else:
             fp_pf_loop = "k"
-          if stride_h == 1:
-            if kernel_h == 1 and kernel_w == 1:
-              #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, 7, 64, "i_inner", "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
-              #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
-              #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
-              conv_ens.prefetch(phase="forward", prefetch_dict_list={})
-            elif outer_unroll_factor == output_width:
-              #3563GF
-              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
-              #3400
-              #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-            else: #please tune this scenario
-              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
+          if kernel_h == 1 and kernel_w == 1:
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, 7, 64, "i_inner", "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={})
+          elif outer_unroll_factor == output_width:
+            #3563GF
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
+            #3400
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+          elif input_channels <= SIMDWIDTH: 
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+
           else:
-              #conv_ens.prefetch(phase="forward", prefetch_dict_list={})
-              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0]})
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, 64, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
         else:
           outer_unroll_factor = 16
           while output_width % outer_unroll_factor != 0:
