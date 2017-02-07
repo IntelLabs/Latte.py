@@ -163,9 +163,13 @@ def ConcatLayer(net, input_ensemble):
             for i in range(1, len(input_ensemble)):
                 concat_ens.tile('inputs'+str(i), dim=dim, factor=factor)
 
-        #pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
-        #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
+        concat_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+        concat_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
         concat_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
+        if "OPENCL" not in latte.config.parallel_strategy:
+            concat_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
+
+
         #pooling_ens.tile('sum_value', dim=0, factor=latte.config.SIMDWIDTH)
         #pooling_ens.tile('alpha', dim=0, factor=latte.config.SIMDWIDTH)
         #pooling_ens.tile('beta', dim=0, factor=latte.config.SIMDWIDTH)
@@ -174,8 +178,8 @@ def ConcatLayer(net, input_ensemble):
  
         #pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
     #else:
-    #    pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
-    #    pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
+    #      concat_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
+    #      concat_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
     #if "grad" in input_ensemble.tiling_info:
     #    tiled_dims = input_ensemble.tiling_info["grad"]
                                                                                                                                                              
@@ -188,4 +192,7 @@ def ConcatLayer(net, input_ensemble):
 
 
         concat_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
+        if "OPENCL" not in latte.config.parallel_strategy: 
+            concat_ens.vectorize(phase="backward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
+
     return concat_ens
