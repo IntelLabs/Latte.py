@@ -409,7 +409,8 @@ class Net:
             c_file._ext = "cpp"
             
             c_file = transformers.simple_fusion(c_file)
-            c_file = transformers.timer(c_file)
+            if "ON" in latte.config.TIMER:
+              c_file = transformers.timer(c_file)
             
             new_body = []
             incr = -1
@@ -1308,7 +1309,7 @@ class Net:
             unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
           # check for fused code
           func_def = copypropagator.propagate_copies(func_def)
-          if "ENABLE" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
+          if "ON" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
               prefetch_dict_list = ensemble.prefetch_info[direction]
               for field, value in prefetch_dict_list.items():
                   if len(value) > 0 :

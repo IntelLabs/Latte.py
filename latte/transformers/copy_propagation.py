@@ -33,7 +33,7 @@ class CopyPropagation(ast.NodeTransformer):
              not isinstance(stmt.right, C.FunctionCall):
                new_body.append(stmt)
                if isinstance(stmt.right, C.SymbolRef) and \
-                 du_map and du_map[stmt.right.name]:
+                 stmt.right.name in du_map:
                  du_map[stmt.left.name] = du_map[stmt.right.name]
                else:
                  du_map[stmt.left.name] = stmt.right
@@ -54,5 +54,6 @@ class CopyPropagation(ast.NodeTransformer):
         return node
 
 def propagate_copies(ast):
+     du_map = {}
      return CopyPropagation().visit(ast)
 

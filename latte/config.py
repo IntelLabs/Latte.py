@@ -38,12 +38,18 @@ MODES = [
     "DEV"
 ]
 MODE = os.getenv("LATTE_MODE", "RELEASE")
+
+TIMERS = [
+    "ON",
+    "OFF"
+]
+TIMER = os.getenv("LATTE_TIMER", "OFF")
  
 prefetch_options = [
-    "ENABLE",
-    "DISABLE"
+    "ON",
+    "OFF"
 ]
-prefetch_option = os.getenv("LATTE_PREFETCH_MODE", "ENABLE")
+prefetch_option = os.getenv("LATTE_PREFETCH_MODE", "ON")
 
 if parallel_strategy not in parallel_strategies:
     logger.warn("Invalid parallel strategy [%s], defaulting to SIMPLE_LOOP", parallel_strategy)
@@ -90,4 +96,8 @@ logger.info("    march             = %s", vec_config)
 logger.info("    parallel_strategy = %s", parallel_strategy)
 logger.info("    nthreads          = %s", nthreads or "unspecified")
 logger.info("    codegen_strategy = %s", codegen_strategy)
+logger.info("    prefetch_option = %s", prefetch_option)
+logger.info("    mode = %s", MODE)
+if "ON" in TIMER:
+  logger.info("    timer = %s", "ON")
 logger.info("===================================")
