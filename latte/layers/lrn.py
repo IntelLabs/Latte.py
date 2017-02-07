@@ -94,6 +94,8 @@ def LRNLayer(net, input_ensemble, n = 5, beta = 0.75 , alpha =0.0001, k = 1.0 ):
 
     if "value" in input_ensemble.tiling_info:
         tiled_dims = input_ensemble.tiling_info["value"]
+        lrn_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+        lrn_ens.simd(phase="forward", loop_var="_neuron_index_3")
         for dim, factor in tiled_dims:
             lrn_ens.tile('inputs', dim=dim, factor=factor)
         lrn_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
