@@ -51,6 +51,36 @@ get_cpu_freq = module.get_callable("get_cpu_freq",
 #     else:
 #         raise NotImplementedError()
 
+
+
+def insert_malloc(body, shape, name, dtype, _global=False):
+    shape_str = "".join("[{}]".format(d) for d in shape[1:])
+    size=1;
+    for d in shape:
+        size *= d  
+
+ 
+    body.insert(0, StringTemplate(
+        "$global$type (* $arg_name0)$shape = ($global$type (*)$cast) $arg_name1;",
+        {
+            "arg_name0":C.SymbolRef(name),
+            "arg_name1": C.FunctionCall(C.SymbolRef('malloc'), [C.Mul(C.Constant(size), C.FunctionCall(C.SymbolRef('sizeof'), [ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(dtype)())]))]),
+            "shape": C.SymbolRef(shape_str),
+            "cast": C.SymbolRef(shape_str),
+            "type": C.SymbolRef(ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(dtype)())),
+            "global": C.SymbolRef("__global " if _global else "")
+        }))
+
+
+
+def insert_free(name):
+ 
+    return(StringTemplate(
+        "$free;", 
+        {
+            "free": C.FunctionCall(C.SymbolRef('free'), [C.SymbolRef(name)]),
+        }))
+
 def insert_cast(body, shape, name, dtype, _global=False):
     shape_str = "".join("[{}]".format(d) for d in shape)
 
