@@ -15,11 +15,11 @@ class ReLUNeuron(Neuron):
 
     def backward(self):
         # self.grad_input = ifelse(self.input > 0.0, self.grad, 0.0)
-        #if self.input > 0.0:
-        #    self.grad_input = self.grad
-        #else:
-        #    self.grad_input = 0.0
-        self.grad_input = max(self.grad, float(0.0))
+        if self.input > 0.0:
+            self.grad_input = self.grad
+        else:
+            self.grad_input = 0.0
+        #self.grad_input = max(self.grad, float(0.0))
     def update_internal(self):
         pass
 
