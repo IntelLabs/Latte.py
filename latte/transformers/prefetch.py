@@ -176,3 +176,59 @@ def insert_strided_prefetches(ast,  prefetch_field, prefetch_type, enclosing_loo
      init_body=[]
      return InitPrefetcher(prefetch_init_loop).visit(HoistPrefetch(prefetch_dest_loop).visit(StridedPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint).visit(ast)))
 
+class SimpleHoistPrefetcher(ast.NodeTransformer):
+    def __init__(self, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint):
+        super().__init__()
+        self.prefetch_field = prefetch_field
+        self.prefetch_type = prefetch_type
+        self.enclosing_loop_var = enclosing_loop_var
+        self.dim = dim
+        self.prefetch_count = prefetch_count
+        self.prefetch_dest_loop = prefetch_loop_var
+        self.prefetch_multiplier = prefetch_multiplier
+        self.prefetch_constant = prefetch_constant
+        self.cacheline_hint= cacheline_hint
+
+    def rewrite_arg(self, arg):
+        if isinstance(arg, C.UnaryOp) and isinstance(arg.op, C.Op.Ref) and isinstance(arg.arg, C.BinaryOp) and isinstance(arg.arg.op, C.Op.ArrayRef):
+          curr_node = arg.arg
+        elif isinstance(arg, C.BinaryOp) and isinstance(arg.op, C.Op.ArrayRef):
+          curr_node = arg
+        else:
+          curr_node = None
+        idx = self.dim
+        while (idx+1 != 0):
+          curr_node.right=C.Constant(0)
+          curr_node = curr_node.left
+          idx+=1
+        old_expr = curr_node.right
+        new_expr = C.Add(old_expr, C.Constant(self.prefetch_constant))
+        curr_node.right = new_expr
+        if isinstance(arg, C.BinaryOp) and isinstance(arg.op, C.Op.ArrayRef):
+          return C.Ref(arg)
+        return arg
+
+    def visit_For(self, node):
+        node.body = util.flatten([self.visit(s) for s in node.body])
+        if node.init.left.name == self.enclosing_loop_var:
+            new_body = []
+            prefetch_count = self.prefetch_count
+            for stmt in node.body:
+                new_body.append(stmt)
+                if prefetch_count > 0 and isinstance(stmt, C.BinaryOp) and isinstance(stmt.op, C.Op.Assign) and \
+                   isinstance(stmt.right, C.FunctionCall) and "_mm" in stmt.right.func.name \
+                   and ("_load_" in stmt.right.func.name or "_set1" in stmt.right.func.name or "_broadcast" in stmt.right.func.name):
+                  ast.dump(stmt.right.args[0])
+                  if check_name(stmt.right.args[0], self.prefetch_field):
+                    array_ref = deepcopy(stmt.right.args[0])
+                    new_array_ref= self.rewrite_arg(array_ref)
+                    prefetch_count -= 1
+                    escape_body.append(C.FunctionCall(C.SymbolRef(prefetch_symbol_table[self.cacheline_hint]), [new_array_ref]))
+            node.body = new_body
+        return node
+
+def insert_simple_hoist_prefetches(ast, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier,  prefetch_constant, cacheline_hint):
+     escape_body = []
+     init_body = []
+     return HoistPrefetch(prefetch_loop_var).visit(SimpleHoistPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant,cacheline_hint).visit(ast))
+
