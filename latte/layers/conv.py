@@ -190,8 +190,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         inner_unroll_factor=1
         if "AVX-512" in latte.config.vec_config:
           #outer_unroll_factor = 16
-          #outer_unroll_factor = 28
-          outer_unroll_factor = 8
+          outer_unroll_factor = 28
+          #outer_unroll_factor = 8
           #factor = 8
           while output_width % outer_unroll_factor != 0:
             outer_unroll_factor -= 1

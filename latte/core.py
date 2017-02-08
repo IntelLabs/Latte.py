@@ -1323,7 +1323,7 @@ class Net:
                         prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
                         prefetcher.insert_simple_hoist_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
           # drop loops that iterate for one iteration only and constant propagate indices and hoist address computations
-          func_def = loopsimplifier.simplify_loops(func_def)
+          #func_def = loopsimplifier.simplify_loops(func_def)
           #func_def = optimizer.propogate_constants(func_def)
 
         else: #GEMM formulation
