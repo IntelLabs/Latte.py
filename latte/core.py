@@ -465,41 +465,6 @@ class Net:
               fn = module.get_callable(direction + _id, type_sig)
               tasks.append(Task(fn, arg_bufs))
 
-            '''
-            elif latte.config.MODE in ["DEV"]:
-              for ensemble in self.ensembles:
-                logger.info("    {} [shape={}]".format(ensemble.name, ensemble.shape))
-                if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
-                  raise NotImplementedError("Ensemble type {} no longer supported".format(type(ensemble)))
-                self._init_buffers(ensemble)
-                if isinstance(ensemble, DataEnsemble):
-                  self.forward_tasks.append(
-                      Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
-                  for field in ["value", "grad"]:
-                      buffer = self.buffers[ensemble.name + field]
-                      if field in ensemble.tiling_info:
-                          buf_shape = compute_tiled_shape(list(buffer.shape), field, ensemble)
-                          buffer = buffer.reshape(buf_shape)
-                          self.buffers[ensemble.name + field] = buffer
-              for direction in ["forward", "backward"]:
-                if direction == "forward":
-                    c_file = C.CFile(direction + _id, [
-                    forward_pre_gen
-                    ], path=".compiled")
-                else:
-                    c_file = C.CFile(direction + _id, [
-                    backward_pre_gen
-                    ], path=".compiled")
- 
-                c_file._ext = "cpp"
-
-              module = util.mpi_compile(ctree.nodes.Project([c_file]))
-              # get_callable(functions_handle, type_signature)
-
-              type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-              fn = module.get_callable(direction + _id, type_sig)
-              tasks.append(Task(fn, arg_bufs))
-            '''
 
         self._collect_value_grad_bufs()
         logger.info("Finished compiling Net")
