@@ -79,10 +79,9 @@ class SimplePrefetcher(ast.NodeTransformer):
 def insert_simple_prefetches(ast, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier,  prefetch_constant, cacheline_hint):
      return SimplePrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant,cacheline_hint).visit(ast)
 
-escape_body=[]
-init_body=[]
 
 class HoistPrefetch(ast.NodeTransformer):
+    escape_body=[]
     def __init__(self, prefetch_dest_loop):
         super().__init__()
         self.prefetch_dest_loop = prefetch_dest_loop
@@ -90,10 +89,11 @@ class HoistPrefetch(ast.NodeTransformer):
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
         if node.init.left.name == self.prefetch_dest_loop:
-          node.body = escape_body + node.body
+          node.body = HoistPrefetch.escape_body + node.body
         return node
 
 class InitPrefetcher(ast.NodeTransformer):
+    init_body=[]
     def __init__(self, prefetch_init_loop):
         super().__init__()
         self.prefetch_init_loop = prefetch_init_loop
@@ -101,7 +101,7 @@ class InitPrefetcher(ast.NodeTransformer):
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
         if node.init.left.name == self.prefetch_init_loop:
-          node.body = init_body + node.body
+          node.body = InitPrefetcher.init_body + node.body
         return node
 
 
@@ -161,19 +161,19 @@ class StridedPrefetcher(ast.NodeTransformer):
                     where_to_add = new_body
                     prefetch_count -= 1
                     if node.init.left.name != self.prefetch_dest_loop:
-                      where_to_add = escape_body
+                      where_to_add = HoistPrefetch.escape_body
                     added_code = True
                     where_to_add.append(C.FunctionCall(C.SymbolRef(prefetch_symbol_table[self.cacheline_hint]), [C.Add(new_array_ref, C.SymbolRef("prefetch_offset_var"))]))
                     where_to_add.append(C.Assign(C.SymbolRef("prefetch_offset_var"), C.Add(C.SymbolRef("prefetch_offset_var"), C.Constant(self.prefetch_offset))))
 
             if added_code: 
-              init_body.append(C.Assign(C.SymbolRef("prefetch_offset_var", ctypes.c_int()), C.Constant(0)))
+              InitPrefetcher.init_body.append(C.Assign(C.SymbolRef("prefetch_offset_var", ctypes.c_int()), C.Constant(0)))
             node.body = new_body
         return node
 
 def insert_strided_prefetches(ast,  prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint):
-     escape_body=[]
-     init_body=[]
+     HoistPrefetch.escape_body=[]
+     InitPrefetcher.init_body=[]
      return InitPrefetcher(prefetch_init_loop).visit(HoistPrefetch(prefetch_dest_loop).visit(StridedPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint).visit(ast)))
 
 class SimpleHoistPrefetcher(ast.NodeTransformer):
@@ -223,12 +223,11 @@ class SimpleHoistPrefetcher(ast.NodeTransformer):
                     array_ref = deepcopy(stmt.right.args[0])
                     new_array_ref= self.rewrite_arg(array_ref)
                     prefetch_count -= 1
-                    escape_body.append(C.FunctionCall(C.SymbolRef(prefetch_symbol_table[self.cacheline_hint]), [new_array_ref]))
+                    HoistPrefetch.escape_body.append(C.FunctionCall(C.SymbolRef(prefetch_symbol_table[self.cacheline_hint]), [new_array_ref]))
             node.body = new_body
         return node
 
 def insert_simple_hoist_prefetches(ast, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier,  prefetch_constant, cacheline_hint):
-     escape_body = []
-     init_body = []
+     HoistPrefetch.escape_body = []
      return HoistPrefetch(prefetch_loop_var).visit(SimpleHoistPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant,cacheline_hint).visit(ast))
 
