@@ -331,139 +331,144 @@ class Net:
         in_place_buffer_map = {}
 
         logger.info("Initializing ensembles and synthesizing functions...")
-          for ensemble in self.ensembles:
-              logger.info("    {} [shape={}]".format(ensemble.name, ensemble.shape))
-              if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
-                  raise NotImplementedError("Ensemble type {} no longer supported".format(type(ensemble)))
-              self._init_buffers(ensemble)
-              if isinstance(ensemble, DataEnsemble):
-                  self.forward_tasks.append(
-                      Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
-                  for field in ["value", "grad"]:
-                      buffer = self.buffers[ensemble.name + field]
-                      if field in ensemble.tiling_info:
-                          buf_shape = compute_tiled_shape(list(buffer.shape), field, ensemble)
-                          buffer = buffer.reshape(buf_shape)
-                          self.buffers[ensemble.name + field] = buffer
-              else:
-                  neuron = ensemble.neurons.flat[0]
+        for ensemble in self.ensembles:
+            logger.info("    {} [shape={}]".format(ensemble.name, ensemble.shape))
+            if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
+                raise NotImplementedError("Ensemble type {} no longer supported".format(type(ensemble)))
+            self._init_buffers(ensemble)
+            if isinstance(ensemble, DataEnsemble):
+                self.forward_tasks.append(
+                    Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
+                for field in ["value", "grad"]:
+                    buffer = self.buffers[ensemble.name + field]
+                    if field in ensemble.tiling_info:
+                        buf_shape = compute_tiled_shape(list(buffer.shape), field, ensemble)
+                        buffer = buffer.reshape(buf_shape)
+                        self.buffers[ensemble.name + field] = buffer
+            else:
+                neuron = ensemble.neurons.flat[0]
 
-                  body, args = self._synthesize_ast(ensemble, neuron, "forward")
-                  forward_args = forward_args.union(args)
-                  forward_body += body
+                body, args = self._synthesize_ast(ensemble, neuron, "forward")
+                forward_args = forward_args.union(args)
+                forward_body += body
 
-                  body, args = self._synthesize_ast(ensemble, neuron, "backward")
-                  backward_args = backward_args.union(args)
-                  backward_body = body + backward_body
+                body, args = self._synthesize_ast(ensemble, neuron, "backward")
+                backward_args = backward_args.union(args)
+                backward_body = body + backward_body
 
-                  body, args = self._synthesize_ast(ensemble, neuron, "update_internal")
-                  backward_args = backward_args.union(args)
-                  backward_body = body + backward_body
+                body, args = self._synthesize_ast(ensemble, neuron, "update_internal")
+                backward_args = backward_args.union(args)
+                backward_body = body + backward_body
 
-              if isinstance(ensemble, ActivationEnsemble):
-                  source = self.connections_map[ensemble][0].source
-                  in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
-          logger.info("Compiling functions...")
-          for args, direction, body, tasks, in zip([forward_args, backward_args], 
-                                                   ["forward", "backward"],
-                                                   [forward_body, backward_body],
-                                                   [self.forward_tasks, self.backward_tasks],
-                                                   ):
-              args = list(args)
-              
-              #if latte.config.MODE in ["DEV"]:
-              args.sort() 
+            if isinstance(ensemble, ActivationEnsemble):
+                source = self.connections_map[ensemble][0].source
+                in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
+        logger.info("Compiling functions...")
+        for args, direction, body, tasks, in zip([forward_args, backward_args], 
+                                                 ["forward", "backward"],
+                                                 [forward_body, backward_body],
+                                                 [self.forward_tasks, self.backward_tasks],
+                                                 ):
+            args = list(args)
+            
+            #if latte.config.MODE in ["DEV"]:
+            args.sort() 
 
-              arg_bufs = [self.buffers[arg] for arg in args]
-              type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
-              params   = [C.SymbolRef("_" + arg, typ()) for arg, typ in zip(args, type_sig)]
-              args2   = [C.SymbolRef(arg, typ()) for arg, typ in zip(args, type_sig)]
+            arg_bufs = [self.buffers[arg] for arg in args]
+            type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
+            params   = [C.SymbolRef("_" + arg, typ()) for arg, typ in zip(args, type_sig)]
+            args2   = [C.SymbolRef(arg, typ()) for arg, typ in zip(args, type_sig)]
 
-              #args_duplicate = 
-              _id = self._uniqueid()
-       
-              c_file = C.CFile(direction + _id, [
-                      include, 
-                      C.FunctionDecl(None, C.SymbolRef(direction + _id), params, body)
-                  ], path=".compiled")
+            #args_duplicate = 
+            _id = self._uniqueid()
+     
+            c_file = C.CFile(direction + _id, [
+                    include, 
+                    C.FunctionDecl(None, C.SymbolRef(direction + _id), params, body)
+                ], path=".compiled")
 
-              c_file._ext = "cpp"
-              
-              c_file = transformers.simple_fusion(c_file)
-              if "ON" in latte.config.TIMER:
-                c_file = transformers.timer(c_file)
-              
-              new_body = []
-              incr = -1
-              kernels = {}
+            c_file._ext = "cpp"
+            
+            c_file = transformers.simple_fusion(c_file)
+            if "ON" in latte.config.TIMER:
+              c_file = transformers.timer(c_file)
+            
+            new_body = []
+            incr = -1
+            kernels = {}
 
-              #for stmt in func_def:
-              for stmt in c_file.body[1].defn:
-   
-                  incr += 1
-                  #stmt = analyzer.type_infer(stmt)
-                  #stmt = optimizer.propogate_constants(stmt)
-                  #stmt = analyzer.type_infer(stmt)
-                  #stmt = optimizer.propogate_constants(stmt)
+            #for stmt in func_def:
+            for stmt in c_file.body[1].defn:
+ 
+                incr += 1
+                #stmt = analyzer.type_infer(stmt)
+                #stmt = optimizer.propogate_constants(stmt)
+                #stmt = analyzer.type_infer(stmt)
+                #stmt = optimizer.propogate_constants(stmt)
 
-                  if isinstance(stmt, C.For): 
-                      if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                          new_body.extend(stmt.pre_trans)
-                      # loopvar1 = C.SymbolRef(stmt.init.left.name)
-                      # looplen1 = stmt.test.right
-                      # body = stmt.body
-                      # new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
-                      stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
-                      new_body.append(stmt)
-                      # if incr > 0:
-                      #     new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
-                      # else:
-                      #     execute_stmt = self._gen_execute_for_loop(stmt, incr)
-                  else:
-                      new_body.append(stmt)
+                if isinstance(stmt, C.For): 
+                    if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                        new_body.extend(stmt.pre_trans)
+                    # loopvar1 = C.SymbolRef(stmt.init.left.name)
+                    # looplen1 = stmt.test.right
+                    # body = stmt.body
+                    # new_body.append(self._gen_graph_nodes_from_loop(stmt, incr))
+                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
+                    new_body.append(stmt)
+                    # if incr > 0:
+                    #     new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
+                    # else:
+                    #     execute_stmt = self._gen_execute_for_loop(stmt, incr)
+                else:
+                    new_body.append(stmt)
 
-              for arg in args:
-                  name = arg
-                  buf = self.buffers[name]
-                  new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+            for arg in args:
+                name = arg
+                buf = self.buffers[name]
+                new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+                generate_malloc = 0
+                if generate_malloc == 1:
+                  util.insert_malloc(new_body, buf.shape, name, buf.dtype)
+                  new_body.append(util.insert_free(name))
+                else :
                   util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
 
-              c_file.body[1].defn = new_body 
+            c_file.body[1].defn = new_body 
 
-              c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-              if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
-                  c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
-                  c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
-              elif "OPENCL" in latte.config.parallel_strategy:
-                  arg_bufs.append(latte.config.cl_queue)
-                  type_sig.append(cl.cl_command_queue)
-                  params.append(C.SymbolRef("queue", cl.cl_command_queue()))
-                  for name, kernel in kernels.items():
-                      arg_bufs.append(kernel)
-                      type_sig.append(cl.cl_kernel)
-                      params.append(C.SymbolRef(name, cl.cl_kernel()))
-              # c_file = transformers.remove_repeated_declarations(c_file)
-             
-              if latte.config.MODE in ["DEV"]:
-   
-                  if direction == "forward":
-                      c_file = C.CFile(direction + _id, [
-                      forward_pre_gen
-                      ], path=".compiled")
-                  else:
-                      c_file = C.CFile(direction + _id, [
-                      backward_pre_gen
-                      ], path=".compiled")
-   
-                  c_file._ext = "cpp"
-   
+            c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
+            if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
+                c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
+                c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
+            elif "OPENCL" in latte.config.parallel_strategy:
+                arg_bufs.append(latte.config.cl_queue)
+                type_sig.append(cl.cl_command_queue)
+                params.append(C.SymbolRef("queue", cl.cl_command_queue()))
+                for name, kernel in kernels.items():
+                    arg_bufs.append(kernel)
+                    type_sig.append(cl.cl_kernel)
+                    params.append(C.SymbolRef(name, cl.cl_kernel()))
+            # c_file = transformers.remove_repeated_declarations(c_file)
+           
+            if latte.config.MODE in ["DEV"]:
+ 
+                if direction == "forward":
+                    c_file = C.CFile(direction + _id, [
+                    forward_pre_gen
+                    ], path=".compiled")
+                else:
+                    c_file = C.CFile(direction + _id, [
+                    backward_pre_gen
+                    ], path=".compiled")
+ 
+                c_file._ext = "cpp"
+ 
 
-              module = util.mpi_compile(ctree.nodes.Project([c_file]))
-              # get_callable(functions_handle, type_signature)
+            module = util.mpi_compile(ctree.nodes.Project([c_file]))
+            # get_callable(functions_handle, type_signature)
 
-              type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-              fn = module.get_callable(direction + _id, type_sig)
-              tasks.append(Task(fn, arg_bufs))
+            type_sig = ctypes.CFUNCTYPE(None, *type_sig)
+            fn = module.get_callable(direction + _id, type_sig)
+            tasks.append(Task(fn, arg_bufs))
 
 
         self._collect_value_grad_bufs()
