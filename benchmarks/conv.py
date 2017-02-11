@@ -27,9 +27,6 @@ def main():
     print("    ofm        = {}".format(ofm))
     data = MemoryDataLayer(net, (channels, height, width))
     conv1 = ConvLayer(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
-    #conv1_7x7_s2 = ConvLayer(net, data, num_filters=64, kernel=7, stride=2, pad=3)
-    conv1_relu = ReLULayer(net, conv1)
-    pool1_3x3_s2 = MaxPoolingLayer(net, conv1, kernel=3, stride=2, pad=0)
 
     net.compile()
 
