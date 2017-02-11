@@ -15,8 +15,8 @@ layer {
     mean_value: 123
   }
   data_param {
-    source: "/home/avenkat/caffe/examples/imagenet/ilsvrc12_train_lmdb"
-    batch_size: 1
+    source: "/scratch/avenkat/imagenet/ilsvrc12_train_lmdb"
+    batch_size: 128
     backend: LMDB
   }
 }

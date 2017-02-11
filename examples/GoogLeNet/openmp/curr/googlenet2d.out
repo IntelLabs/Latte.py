@@ -1,0 +1,15 @@
+INFO:latte:========== Configuration ==========
+INFO:latte:    march             = AVX-512
+INFO:latte:    parallel_strategy = OPENMP
+INFO:latte:    nthreads          = 64
+INFO:latte:    codegen_strategy = AUTOVEC
+INFO:latte:===================================
+Traceback (most recent call last):
+  File "3.py", line 3, in <module>
+    from latte import *
+  File "/data/nfs_home/avenkat/latte/latte/__init__.py", line 1, in <module>
+    from .core import Net
+  File "/data/nfs_home/avenkat/latte/latte/core.py", line 23, in <module>
+    import latte.transformers.loop_simplify as loopsimplifier
+ImportError: No module named 'latte.transformers.loop_simplify'
+srun: error: pcl-knl06: task 0: Exited with exit code 1

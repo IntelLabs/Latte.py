@@ -1,0 +1,11 @@
+srun: interrupt (one more within 1 sec to abort)
+srun: task 0: running
+srun: interrupt (one more within 1 sec to abort)
+srun: task 0: running
+srun: interrupt (one more within 1 sec to abort)
+srun: task 0: running
+incompatible file format (rerun with -v to learn more)srun: forcing job termination
+srun: got SIGCONT
+srun: forcing job termination
+srun: Job step aborted: Waiting up to 32 seconds for job step to finish.
+srun: error: pcl-knl06: task 0: Exited with exit code 255

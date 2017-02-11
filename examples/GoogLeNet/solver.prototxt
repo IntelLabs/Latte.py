@@ -1,0 +1,14 @@
+net: "train_val.prototxt"
+test_initialization: false
+display: 0
+average_loss: 40
+base_lr: 0.01
+lr_policy: "step"
+stepsize: 320000
+gamma: 0.96
+max_iter: 1
+momentum: 0.9
+weight_decay: 0.0002
+snapshot: 40000
+snapshot_prefix: "/nfs_home/avenkat/caffe/models/bvlc_googlenet/bvlc_googlenet"
+solver_mode: CPU

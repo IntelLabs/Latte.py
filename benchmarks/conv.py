@@ -14,7 +14,7 @@ def main():
     args = parser.parse_args()
 
     #batch_size = 64
-    batch_size = 256
+    batch_size = 128
     net = Net(batch_size)
     net.force_backward = True
     channels, height, width, kernel, stride, pad = args.d[1:]
@@ -26,7 +26,10 @@ def main():
     print("    width      = {}".format(width))
     print("    ofm        = {}".format(ofm))
     data = MemoryDataLayer(net, (channels, height, width))
-    conv1 = ConvLayerNoBias(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
+    conv1 = ConvLayer(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
+    #conv1_7x7_s2 = ConvLayer(net, data, num_filters=64, kernel=7, stride=2, pad=3)
+    conv1_relu = ReLULayer(net, conv1)
+    pool1_3x3_s2 = MaxPoolingLayer(net, conv1, kernel=3, stride=2, pad=0)
 
     net.compile()
 
@@ -35,7 +38,7 @@ def main():
     assert(len(net.forward_tasks) == 2)
     assert(len(net.backward_tasks) == 1)
 
-    run_backward = True
+    run_backward = False
     #run_backward = channels%8 == 0 ? True : False
 
     # warmup
@@ -91,7 +94,7 @@ def main():
         #    (backward_flops / ((backward_t_total / num_trials) * freq))
         #))
         print("==============")
-    print("PERFDUMP: ", batch_size, " ", channels, " ", height, " ", width, " ", ofm, " ", kernel, " ", stride, " ", pad, " {}".format((forward_flops * num_trials * 1e-9) / forward_t_total), " {}".format((backward_flops * num_trials * 1e-9) / backward_t_total)) 
+    #print("PERFDUMP: ", batch_size, " ", channels, " ", height, " ", width, " ", ofm, " ", kernel, " ", stride, " ", pad, " {}".format((forward_flops * num_trials * 1e-9) / forward_t_total), " {}".format((backward_flops * num_trials * 1e-9) / backward_t_total)) 
 
 if __name__ == '__main__':
     main()

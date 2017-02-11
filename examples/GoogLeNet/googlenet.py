@@ -8,7 +8,7 @@ import os
 
 
  
-def weight_update_and_check_output(net2,convs, layers, batch_size):
+def weight_update_and_check_output(convs, layers, batch_size):
  
     base_lr = 0.01
     momentum = 0.9
@@ -16,6 +16,8 @@ def weight_update_and_check_output(net2,convs, layers, batch_size):
     lr_w_mult = 1
     lr_b_mult = 1
     momentum_hist = {}
+    
+    '''
     for layer in net2.params:
         m_w = np.zeros_like(net2.params[layer][0].data)
         m_b = np.zeros_like(net2.params[layer][1].data)
@@ -28,15 +30,18 @@ def weight_update_and_check_output(net2,convs, layers, batch_size):
                                                        net2.params[layer][1].data) * base_lr * lr_b_mult
         net2.params[layer][0].data[...] -= momentum_hist[layer][0]
         net2.params[layer][1].data[...] -= momentum_hist[layer][1]
+    '''
+
     for param in convs:
         sgd_update(param[1].get_weights_view(), param[1].get_grad_weights_view(),np.zeros_like(param[1].get_weights_view()), base_lr, momentum, batch_size)
         sgd_update(param[1].get_bias_view(), param[1].get_grad_bias_view(),np.zeros_like(param[1].get_bias_view()), base_lr, momentum, batch_size)
     
+
+    ''' 
     for layer in layers:
         #print(layer[0])
         assert np.allclose(net2.blobs[layer[0]].data, layer[1].get_value(), 1e-7, 1e-1)
         assert np.allclose(net2.blobs[layer[0]].diff, layer[1].get_grad(), 1e-7, 1e-1)
-    
     for conv in convs:
         if not (conv[0] == "conv1/7x7_s2"):
             weights = net2.params[conv[0]][0].data
@@ -62,6 +67,7 @@ def weight_update_and_check_output(net2,convs, layers, batch_size):
                 assert np.allclose(grad_bias, conv[1].get_grad_bias(), 1e-4, 1e-1)
             else:
                 assert np.allclose(grad_bias.reshape(conv[1].get_grad_bias().shape), conv[1].get_grad_bias(), 1e-4, 1e-1)
+    '''
 def copy_weights(net2, convs):
  
     for conv in convs:
@@ -119,13 +125,19 @@ data = MemoryDataLayer(net, (3, 224, 224))
 conv1_7x7_s2 = ConvLayer(net, data, num_filters=64, kernel=7, stride=2, pad=3)
 conv1_relu_7x7 = ReLULayer(net, conv1_7x7_s2)
 pool1_3x3_s2 = MaxPoolingLayer(net, conv1_7x7_s2, kernel=3, stride=2, pad=0)
+
 pool1_norm1 = LRNLayer(net, pool1_3x3_s2, n=5, beta=0.75, alpha=0.0001, k=1.0)
 conv2_3x3_reduce = ConvLayer(net, pool1_norm1, num_filters=64, kernel=1, stride=1, pad=0)
+#conv2_3x3_reduce = ConvLayer(net, pool1_3x3_s2, num_filters=64, kernel=1, stride=1, pad=0)
+
 conv2_relu_3x3_reduce = ReLULayer(net, conv2_3x3_reduce)
 conv2_3x3 = ConvLayer(net, conv2_relu_3x3_reduce, num_filters=192, kernel=3, stride=1, pad=1)
 conv2_relu_3x3 = ReLULayer(net, conv2_3x3)
+
 conv2_norm2 = LRNLayer(net, conv2_relu_3x3, n=5, beta=0.75, alpha=0.0001, k=1.0)
 pool2_3x3_s2 = MaxPoolingLayer(net, conv2_norm2, kernel=3, stride=2, pad=0)
+#pool2_3x3_s2 = MaxPoolingLayer(net, conv2_relu_3x3, kernel=3, stride=2, pad=0)
+
 inception_3a_1x1 = ConvLayer(net, pool2_3x3_s2, num_filters=64, kernel=1, stride=1, pad=0)
 inception_3a_relu_1x1 = ReLULayer(net, inception_3a_1x1)
 inception_3a_3x3_reduce = ConvLayer(net, pool2_3x3_s2, num_filters=96, kernel=1, stride=1, pad=0)
@@ -174,7 +186,7 @@ loss1_conv = ConvLayer(net, loss1_ave_pool, num_filters=128, kernel=1, stride=1,
 loss1_relu_conv = ReLULayer(net, loss1_conv)
 loss1_fc =  FullyConnectedLayer(net, loss1_relu_conv, 1024)
 loss1_relu_fc = ReLULayer(net, loss1_fc)
-loss1_classifier =  FullyConnectedLayer(net, loss1_relu_fc, 1000)#ANAND: Changed from 1000 to 1024 for testing
+loss1_classifier =  FullyConnectedLayer(net, loss1_relu_fc, 1008)#ANAND: Changed from 1000 to 1024 for testing
 #loss1_loss = SoftmaxLossLayer(net, loss1_classifier, label)
 inception_4b_1x1 = ConvLayer(net, inception_4a_output, num_filters=160, kernel=1, stride=1, pad=0)
 inception_4b_relu_1x1 = ReLULayer(net, inception_4b_1x1)
@@ -223,7 +235,7 @@ loss2_conv = ConvLayer(net, loss2_ave_pool, num_filters=128, kernel=1, stride=1,
 loss2_relu_conv = ReLULayer(net, loss2_conv)
 loss2_fc =  FullyConnectedLayer(net, loss2_relu_conv, 1024)
 loss2_relu_fc = ReLULayer(net, loss2_fc)
-loss2_classifier =  FullyConnectedLayer(net, loss2_relu_fc, 1000)#ANAND: Changed from 1000 to 1024 for testing
+loss2_classifier =  FullyConnectedLayer(net, loss2_relu_fc, 1008)#ANAND: Changed from 1000 to 1024 for testing
 
 #loss2_loss = SoftmaxLossLayer(net, loss2_classifier, label)
 inception_4e_1x1 = ConvLayer(net, inception_4d_output, num_filters=256, kernel=1, stride=1, pad=0)
@@ -270,12 +282,12 @@ inception_5b_pool_proj = ConvLayer(net, inception_5b_pool, num_filters=128, kern
 inception_5b_relu_pool_proj = ReLULayer(net, inception_5b_pool_proj)
 inception_5b_output = ConcatLayer(net, [inception_5b_relu_1x1, inception_5b_relu_3x3, inception_5b_relu_5x5, inception_5b_relu_pool_proj])
 pool5_7x7_s1 = MeanPoolingLayer(net, inception_5b_output, kernel=7, stride=1, pad=0)
-loss3_classifier =  FullyConnectedLayer(net, pool5_7x7_s1, 1000)#ANAND: Changed from 1000 to 1024 for testing
+loss3_classifier =  FullyConnectedLayer(net, pool5_7x7_s1, 1008)#ANAND: Changed from 1000 to 1024 for testing
 #loss3_loss3 = SoftmaxLossLayer(net, loss3_classifier, label)
 
 
 layers = [("conv1/7x7_s2",conv1_7x7_s2),("pool1/3x3_s2",pool1_3x3_s2),("pool1/norm1",pool1_norm1),
-("conv2/3x3_reduce",conv2_3x3_reduce),("conv2/3x3",conv2_3x3),("conv2/norm2",conv2_norm2),
+("conv2/3x3_reduce",conv2_3x3_reduce),("conv2/3x3",conv2_3x3), ("conv2/norm2",conv2_norm2),
 ("pool2/3x3_s2",pool2_3x3_s2),("inception_3a/1x1",inception_3a_1x1),("inception_3a/3x3_reduce",inception_3a_3x3_reduce),
 ("inception_3a/3x3",inception_3a_3x3),("inception_3a/5x5_reduce",inception_3a_5x5_reduce),("inception_3a/5x5",inception_3a_5x5),
 ("inception_3a/pool",inception_3a_pool),("inception_3a/pool_proj",inception_3a_pool_proj),("inception_3a/output",inception_3a_output),
@@ -341,7 +353,7 @@ num_train = 1
 #train_batches = [i for i in range(0, num_train, batch_size)]
 total_forward_time = 0.0
 total_backward_time = 0.0
-epoch_size = 10
+epoch_size = 2
 timing_info = True
  
 #train_images = np.random.randint(0, 255, (num_train, 3, 306, 306)).astype(np.float32)
@@ -393,6 +405,8 @@ for epoch in range(epoch_size):
 
         t = time.time()
         net.forward()
+        forward_time += time.time() - t
+
         #forward_time += time.time() - t
  
         # Compute loss
@@ -412,14 +426,14 @@ for epoch in range(epoch_size):
         loss1 = compute_softmax_loss(output1, prob1, label)
         loss2 = compute_softmax_loss(output2, prob2, label)
         loss3 = compute_softmax_loss(output3, prob3, label)
-        forward_time += time.time() - t 
+        #forward_time += time.time() - t 
     
         #acc = compute_seg_accuracy(output, shrink_label.get_value(), ignore_label)
  
         # Initialize gradients
         
 
-        t = time.time()
+       # t = time.time()
 
 
         softmax_loss_backprop(output_grad1, prob1, label)
@@ -443,7 +457,7 @@ for epoch in range(epoch_size):
         loss2_classifier.set_grad(output_grad2)
         loss3_classifier.set_grad(output_grad3)
 
-        #t = time.time()
+        t = time.time()
         
         net.backward()
         
@@ -453,12 +467,12 @@ for epoch in range(epoch_size):
         #for param in params:
         #    sgd_update(param[0], param[1], param[2], lr, mom, batch_size)
         
-        #weight_update_and_check_output(net2,convs, layers, batch_size)
+        #weight_update_and_check_output(convs, layers, batch_size)
 
       
-        net.clear_values()
-        net.clear_grad()
-        net.loss = 0.0
+        #net.clear_values()
+        #net.clear_grad()
+        #net.loss = 0.0
        
         '''
         for layer in layers:
@@ -481,5 +495,6 @@ for epoch in range(epoch_size):
 print("Total FP                   : {0:.3f} ms".format(total_forward_time * 1000))
 print("Total BP+WU                : {0:.3f} ms".format(total_backward_time * 1000))
 print("Total Time                 : {0:.3f} ms".format((total_forward_time+total_backward_time)*1000))
+print("Total Inference Throughput : {0:.3f} images/second".format((num_train * epoch_size*batch_size)/(total_forward_time)))
 print("Total Training Throughput  : {0:.3f} images/second".format((num_train * epoch_size*batch_size)/(total_forward_time + total_backward_time)))
 

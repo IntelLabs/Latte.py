@@ -1,0 +1,284 @@
+INFO:latte:========== Configuration ==========
+INFO:latte:    march             = AVX-512
+INFO:latte:    parallel_strategy = OPENMP
+INFO:latte:    nthreads          = 64
+INFO:latte:    codegen_strategy = AUTOVEC
+INFO:latte:    prefetch_option = ON
+INFO:latte:    mode = RELEASE
+INFO:latte:===================================
+INFO:latte:Initializing ensembles and synthesizing functions...
+INFO:latte:Compiling functions...
+INFO:latte:    ensemble1 [shape=(3, 224, 224)]
+INFO:latte:    ensemble2 [shape=(64, 112, 112)]
+INFO:latte:    ensemble3 [shape=(64, 112, 112)]
+INFO:latte:    ensemble4 [shape=(64, 112, 112)]
+INFO:latte:    ensemble5 [shape=(64, 56, 56)]
+INFO:latte:    ensemble6 [shape=(64, 56, 56)]
+INFO:latte:    ensemble7 [shape=(64, 56, 56)]
+INFO:latte:    ensemble8 [shape=(64, 56, 56)]
+INFO:latte:    ensemble9 [shape=(64, 56, 56)]
+INFO:latte:    ensemble10 [shape=(192, 56, 56)]
+INFO:latte:    ensemble11 [shape=(192, 56, 56)]
+INFO:latte:    ensemble12 [shape=(192, 56, 56)]
+INFO:latte:    ensemble13 [shape=(192, 56, 56)]
+INFO:latte:    ensemble14 [shape=(192, 28, 28)]
+INFO:latte:    ensemble15 [shape=(64, 28, 28)]
+INFO:latte:    ensemble16 [shape=(64, 28, 28)]
+INFO:latte:    ensemble17 [shape=(64, 28, 28)]
+INFO:latte:    ensemble18 [shape=(96, 28, 28)]
+INFO:latte:    ensemble19 [shape=(96, 28, 28)]
+INFO:latte:    ensemble20 [shape=(96, 28, 28)]
+INFO:latte:    ensemble21 [shape=(128, 28, 28)]
+INFO:latte:    ensemble22 [shape=(128, 28, 28)]
+INFO:latte:    ensemble23 [shape=(128, 28, 28)]
+INFO:latte:    ensemble24 [shape=(16, 28, 28)]
+INFO:latte:    ensemble25 [shape=(16, 28, 28)]
+INFO:latte:    ensemble26 [shape=(16, 28, 28)]
+INFO:latte:    ensemble27 [shape=(32, 28, 28)]
+INFO:latte:    ensemble28 [shape=(32, 28, 28)]
+INFO:latte:    ensemble29 [shape=(32, 28, 28)]
+INFO:latte:    ensemble30 [shape=(192, 28, 28)]
+INFO:latte:    ensemble31 [shape=(32, 28, 28)]
+INFO:latte:    ensemble32 [shape=(32, 28, 28)]
+INFO:latte:    ensemble33 [shape=(32, 28, 28)]
+INFO:latte:    ensemble34 [shape=(256, 28, 28)]
+INFO:latte:    ensemble35 [shape=(128, 28, 28)]
+INFO:latte:    ensemble36 [shape=(128, 28, 28)]
+INFO:latte:    ensemble37 [shape=(128, 28, 28)]
+INFO:latte:    ensemble38 [shape=(128, 28, 28)]
+INFO:latte:    ensemble39 [shape=(128, 28, 28)]
+INFO:latte:    ensemble40 [shape=(128, 28, 28)]
+INFO:latte:    ensemble41 [shape=(192, 28, 28)]
+INFO:latte:    ensemble42 [shape=(192, 28, 28)]
+INFO:latte:    ensemble43 [shape=(192, 28, 28)]
+INFO:latte:    ensemble44 [shape=(32, 28, 28)]
+INFO:latte:    ensemble45 [shape=(32, 28, 28)]
+INFO:latte:    ensemble46 [shape=(32, 28, 28)]
+INFO:latte:    ensemble47 [shape=(96, 28, 28)]
+INFO:latte:    ensemble48 [shape=(96, 28, 28)]
+INFO:latte:    ensemble49 [shape=(96, 28, 28)]
+INFO:latte:    ensemble50 [shape=(256, 28, 28)]
+INFO:latte:    ensemble51 [shape=(64, 28, 28)]
+INFO:latte:    ensemble52 [shape=(64, 28, 28)]
+INFO:latte:    ensemble53 [shape=(64, 28, 28)]
+INFO:latte:    ensemble54 [shape=(480, 28, 28)]
+INFO:latte:    ensemble55 [shape=(480, 14, 14)]
+INFO:latte:    ensemble56 [shape=(192, 14, 14)]
+INFO:latte:    ensemble57 [shape=(192, 14, 14)]
+INFO:latte:    ensemble58 [shape=(192, 14, 14)]
+INFO:latte:    ensemble59 [shape=(96, 14, 14)]
+INFO:latte:    ensemble60 [shape=(96, 14, 14)]
+INFO:latte:    ensemble61 [shape=(96, 14, 14)]
+INFO:latte:    ensemble62 [shape=(208, 14, 14)]
+INFO:latte:    ensemble63 [shape=(208, 14, 14)]
+INFO:latte:    ensemble64 [shape=(208, 14, 14)]
+INFO:latte:    ensemble65 [shape=(16, 14, 14)]
+INFO:latte:    ensemble66 [shape=(16, 14, 14)]
+INFO:latte:    ensemble67 [shape=(16, 14, 14)]
+INFO:latte:    ensemble68 [shape=(48, 14, 14)]
+INFO:latte:    ensemble69 [shape=(48, 14, 14)]
+INFO:latte:    ensemble70 [shape=(48, 14, 14)]
+INFO:latte:    ensemble71 [shape=(480, 14, 14)]
+INFO:latte:    ensemble72 [shape=(64, 14, 14)]
+INFO:latte:    ensemble73 [shape=(64, 14, 14)]
+INFO:latte:    ensemble74 [shape=(64, 14, 14)]
+INFO:latte:    ensemble75 [shape=(512, 14, 14)]
+INFO:latte:    ensemble76 [shape=(512, 4, 4)]
+INFO:latte:    ensemble77 [shape=(128, 4, 4)]
+INFO:latte:    ensemble78 [shape=(128, 4, 4)]
+INFO:latte:    ensemble79 [shape=(128, 4, 4)]
+INFO:latte:    ensemble80 [shape=(1024,)]
+INFO:latte:    ensemble81 [shape=(1024,)]
+INFO:latte:    ensemble82 [shape=(1024,)]
+INFO:latte:    ensemble83 [shape=(1008,)]
+INFO:latte:    ensemble84 [shape=(1008,)]
+INFO:latte:    ensemble85 [shape=(160, 14, 14)]
+INFO:latte:    ensemble86 [shape=(160, 14, 14)]
+INFO:latte:    ensemble87 [shape=(160, 14, 14)]
+INFO:latte:    ensemble88 [shape=(112, 14, 14)]
+INFO:latte:    ensemble89 [shape=(112, 14, 14)]
+INFO:latte:    ensemble90 [shape=(112, 14, 14)]
+INFO:latte:    ensemble91 [shape=(224, 14, 14)]
+INFO:latte:    ensemble92 [shape=(224, 14, 14)]
+INFO:latte:    ensemble93 [shape=(224, 14, 14)]
+INFO:latte:    ensemble94 [shape=(32, 14, 14)]
+INFO:latte:    ensemble95 [shape=(32, 14, 14)]
+INFO:latte:    ensemble96 [shape=(32, 14, 14)]
+INFO:latte:    ensemble97 [shape=(64, 14, 14)]
+INFO:latte:    ensemble98 [shape=(64, 14, 14)]
+INFO:latte:    ensemble99 [shape=(64, 14, 14)]
+INFO:latte:    ensemble100 [shape=(512, 14, 14)]
+INFO:latte:    ensemble101 [shape=(64, 14, 14)]
+INFO:latte:    ensemble102 [shape=(64, 14, 14)]
+INFO:latte:    ensemble103 [shape=(64, 14, 14)]
+INFO:latte:    ensemble104 [shape=(512, 14, 14)]
+INFO:latte:    ensemble105 [shape=(128, 14, 14)]
+INFO:latte:    ensemble106 [shape=(128, 14, 14)]
+INFO:latte:    ensemble107 [shape=(128, 14, 14)]
+INFO:latte:    ensemble108 [shape=(128, 14, 14)]
+INFO:latte:    ensemble109 [shape=(128, 14, 14)]
+INFO:latte:    ensemble110 [shape=(128, 14, 14)]
+INFO:latte:    ensemble111 [shape=(256, 14, 14)]
+INFO:latte:    ensemble112 [shape=(256, 14, 14)]
+INFO:latte:    ensemble113 [shape=(256, 14, 14)]
+INFO:latte:    ensemble114 [shape=(32, 14, 14)]
+INFO:latte:    ensemble115 [shape=(32, 14, 14)]
+INFO:latte:    ensemble116 [shape=(32, 14, 14)]
+INFO:latte:    ensemble117 [shape=(64, 14, 14)]
+INFO:latte:    ensemble118 [shape=(64, 14, 14)]
+INFO:latte:    ensemble119 [shape=(64, 14, 14)]
+INFO:latte:    ensemble120 [shape=(512, 14, 14)]
+INFO:latte:    ensemble121 [shape=(64, 14, 14)]
+INFO:latte:    ensemble122 [shape=(64, 14, 14)]
+INFO:latte:    ensemble123 [shape=(64, 14, 14)]
+INFO:latte:    ensemble124 [shape=(512, 14, 14)]
+INFO:latte:    ensemble125 [shape=(112, 14, 14)]
+INFO:latte:    ensemble126 [shape=(112, 14, 14)]
+INFO:latte:    ensemble127 [shape=(112, 14, 14)]
+INFO:latte:    ensemble128 [shape=(144, 14, 14)]
+INFO:latte:    ensemble129 [shape=(144, 14, 14)]
+INFO:latte:    ensemble130 [shape=(144, 14, 14)]
+INFO:latte:    ensemble131 [shape=(288, 14, 14)]
+INFO:latte:    ensemble132 [shape=(288, 14, 14)]
+INFO:latte:    ensemble133 [shape=(288, 14, 14)]
+INFO:latte:    ensemble134 [shape=(32, 14, 14)]
+INFO:latte:    ensemble135 [shape=(32, 14, 14)]
+INFO:latte:    ensemble136 [shape=(32, 14, 14)]
+INFO:latte:    ensemble137 [shape=(64, 14, 14)]
+INFO:latte:    ensemble138 [shape=(64, 14, 14)]
+INFO:latte:    ensemble139 [shape=(64, 14, 14)]
+INFO:latte:    ensemble140 [shape=(512, 14, 14)]
+INFO:latte:    ensemble141 [shape=(64, 14, 14)]
+INFO:latte:    ensemble142 [shape=(64, 14, 14)]
+INFO:latte:    ensemble143 [shape=(64, 14, 14)]
+INFO:latte:    ensemble144 [shape=(528, 14, 14)]
+INFO:latte:    ensemble145 [shape=(528, 4, 4)]
+INFO:latte:    ensemble146 [shape=(128, 4, 4)]
+INFO:latte:    ensemble147 [shape=(128, 4, 4)]
+INFO:latte:    ensemble148 [shape=(128, 4, 4)]
+INFO:latte:    ensemble149 [shape=(1024,)]
+INFO:latte:    ensemble150 [shape=(1024,)]
+INFO:latte:    ensemble151 [shape=(1024,)]
+INFO:latte:    ensemble152 [shape=(1008,)]
+INFO:latte:    ensemble153 [shape=(1008,)]
+INFO:latte:    ensemble154 [shape=(256, 14, 14)]
+INFO:latte:    ensemble155 [shape=(256, 14, 14)]
+INFO:latte:    ensemble156 [shape=(256, 14, 14)]
+INFO:latte:    ensemble157 [shape=(160, 14, 14)]
+INFO:latte:    ensemble158 [shape=(160, 14, 14)]
+INFO:latte:    ensemble159 [shape=(160, 14, 14)]
+INFO:latte:    ensemble160 [shape=(320, 14, 14)]
+INFO:latte:    ensemble161 [shape=(320, 14, 14)]
+INFO:latte:    ensemble162 [shape=(320, 14, 14)]
+INFO:latte:    ensemble163 [shape=(32, 14, 14)]
+INFO:latte:    ensemble164 [shape=(32, 14, 14)]
+INFO:latte:    ensemble165 [shape=(32, 14, 14)]
+INFO:latte:    ensemble166 [shape=(128, 14, 14)]
+INFO:latte:    ensemble167 [shape=(128, 14, 14)]
+INFO:latte:    ensemble168 [shape=(128, 14, 14)]
+INFO:latte:    ensemble169 [shape=(528, 14, 14)]
+INFO:latte:    ensemble170 [shape=(128, 14, 14)]
+INFO:latte:    ensemble171 [shape=(128, 14, 14)]
+INFO:latte:    ensemble172 [shape=(128, 14, 14)]
+INFO:latte:    ensemble173 [shape=(832, 14, 14)]
+INFO:latte:    ensemble174 [shape=(832, 7, 7)]
+INFO:latte:    ensemble175 [shape=(256, 7, 7)]
+INFO:latte:    ensemble176 [shape=(256, 7, 7)]
+INFO:latte:    ensemble177 [shape=(256, 7, 7)]
+INFO:latte:    ensemble178 [shape=(160, 7, 7)]
+INFO:latte:    ensemble179 [shape=(160, 7, 7)]
+INFO:latte:    ensemble180 [shape=(160, 7, 7)]
+INFO:latte:    ensemble181 [shape=(320, 7, 7)]
+INFO:latte:    ensemble182 [shape=(320, 7, 7)]
+INFO:latte:    ensemble183 [shape=(320, 7, 7)]
+INFO:latte:    ensemble184 [shape=(32, 7, 7)]
+INFO:latte:    ensemble185 [shape=(32, 7, 7)]
+INFO:latte:    ensemble186 [shape=(32, 7, 7)]
+INFO:latte:    ensemble187 [shape=(128, 7, 7)]
+INFO:latte:    ensemble188 [shape=(128, 7, 7)]
+INFO:latte:    ensemble189 [shape=(128, 7, 7)]
+INFO:latte:    ensemble190 [shape=(832, 7, 7)]
+INFO:latte:    ensemble191 [shape=(128, 7, 7)]
+INFO:latte:    ensemble192 [shape=(128, 7, 7)]
+INFO:latte:    ensemble193 [shape=(128, 7, 7)]
+INFO:latte:    ensemble194 [shape=(832, 7, 7)]
+INFO:latte:    ensemble195 [shape=(384, 7, 7)]
+INFO:latte:    ensemble196 [shape=(384, 7, 7)]
+INFO:latte:    ensemble197 [shape=(384, 7, 7)]
+INFO:latte:    ensemble198 [shape=(192, 7, 7)]
+INFO:latte:    ensemble199 [shape=(192, 7, 7)]
+INFO:latte:    ensemble200 [shape=(192, 7, 7)]
+INFO:latte:    ensemble201 [shape=(384, 7, 7)]
+INFO:latte:    ensemble202 [shape=(384, 7, 7)]
+INFO:latte:    ensemble203 [shape=(384, 7, 7)]
+INFO:latte:    ensemble204 [shape=(48, 7, 7)]
+INFO:latte:    ensemble205 [shape=(48, 7, 7)]
+INFO:latte:    ensemble206 [shape=(48, 7, 7)]
+INFO:latte:    ensemble207 [shape=(128, 7, 7)]
+INFO:latte:    ensemble208 [shape=(128, 7, 7)]
+INFO:latte:    ensemble209 [shape=(128, 7, 7)]
+INFO:latte:    ensemble210 [shape=(832, 7, 7)]
+INFO:latte:    ensemble211 [shape=(128, 7, 7)]
+INFO:latte:    ensemble212 [shape=(128, 7, 7)]
+INFO:latte:    ensemble213 [shape=(128, 7, 7)]
+INFO:latte:    ensemble214 [shape=(1024, 7, 7)]
+INFO:latte:    ensemble215 [shape=(1024, 1, 1)]
+INFO:latte:    ensemble216 [shape=(1008,)]
+INFO:latte:    ensemble217 [shape=(1008,)]
+INFO:latte:Finished compiling Net
+Training ...
+Iteration 0 -- 
+FP                   : 1756.332 ms
+BP+WU                : 0.001 ms
+Total Time           : 1756.333 ms
+
+Iteration 1 -- 
+FP                   : 420.844 ms
+BP+WU                : 0.001 ms
+Total Time           : 420.845 ms
+
+Iteration 2 -- 
+FP                   : 420.676 ms
+BP+WU                : 0.001 ms
+Total Time           : 420.677 ms
+
+Iteration 3 -- 
+FP                   : 419.155 ms
+BP+WU                : 0.001 ms
+Total Time           : 419.156 ms
+
+Iteration 4 -- 
+FP                   : 421.201 ms
+BP+WU                : 0.001 ms
+Total Time           : 421.202 ms
+
+Iteration 5 -- 
+FP                   : 428.010 ms
+BP+WU                : 0.001 ms
+Total Time           : 428.011 ms
+
+Iteration 6 -- 
+FP                   : 421.668 ms
+BP+WU                : 0.001 ms
+Total Time           : 421.669 ms
+
+Iteration 7 -- 
+FP                   : 419.331 ms
+BP+WU                : 0.001 ms
+Total Time           : 419.332 ms
+
+Iteration 8 -- 
+FP                   : 422.129 ms
+BP+WU                : 0.001 ms
+Total Time           : 422.129 ms
+
+Iteration 9 -- 
+FP                   : 419.410 ms
+BP+WU                : 0.001 ms
+Total Time           : 419.411 ms
+
+Total FP                   : 5548.756 ms
+Total BP+WU                : 0.009 ms
+Total Time                 : 5548.764 ms
+Total Inference Throughput : 230.682 images/second
+Total Training Throughput  : 230.682 images/second

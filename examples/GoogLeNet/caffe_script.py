@@ -6,22 +6,26 @@ import caffe_pb2
 from google.protobuf.text_format import Merge
 
 net = caffe_pb2.NetParameter()
-Merge((open("deploy.prototxt", 'r').read()), net)
+Merge((open("train_val.prototxt", 'r').read()), net)
 s = ''
 for layer in range(len(net.layer)):
     if net.layer[layer].type == "Convolution": #convolution    
-        s += str(net.layer[layer].name) + ' = ConvLayer(net, ' + str(net.layer[layer].bottom[0]) + \
-            ', num_filters=' + str(net.layer[layer].convolution_param.num_output)
-        if len(net.layer[layer].convolution_param.kernel_size) != 0 :
-            s += ', kernel=' + str(net.layer[layer].convolution_param.kernel_size[0])
-        if len(net.layer[layer].convolution_param.stride) != 0:
-            s+= ', stride=' + str(net.layer[layer].convolution_param.stride[0])
-        else:
-            s+= ', stride=1'
-        if len(net.layer[layer].convolution_param.pad) != 0:
-            s+= ', pad=' + str(net.layer[layer].convolution_param.pad[0])
-        else:
-            s+= ', pad=0'
+        if len(net.layer[layer].convolution_param.kernel_size) != 0 and net.layer[layer].convolution_param.kernel_size[0] == 1:
+            s += str(net.layer[layer].name) + ' = FullyConnectedLayer(net, ' + str(net.layer[layer].bottom[0]) +\
+             ', ' + str(net.layer[layer].convolution_param.num_output)
+        else:    
+            s += str(net.layer[layer].name) + ' = ConvLayer(net, ' + str(net.layer[layer].bottom[0]) + \
+                ', num_filters=' + str(net.layer[layer].convolution_param.num_output)
+            if len(net.layer[layer].convolution_param.kernel_size) != 0 :
+                s += ', kernel=' + str(net.layer[layer].convolution_param.kernel_size[0])
+            if len(net.layer[layer].convolution_param.stride) != 0:
+                s+= ', stride=' + str(net.layer[layer].convolution_param.stride[0])
+            else:
+                s+= ', stride=1'
+            if len(net.layer[layer].convolution_param.pad) != 0:
+                s+= ', pad=' + str(net.layer[layer].convolution_param.pad[0])
+            else:
+                s+= ', pad=0'
 
         s += ')\n'
 
@@ -96,7 +100,7 @@ for layer in range(len(net.layer)):
             s+= ', ' + str(net.layer[layer].input_param.shape[0].dim[i])   
         s+=')\n'
 
-    elif net.layer[layer].type != "Accuracy":
+    elif net.layer[layer].type != "Accuracy" and net.layer[layer].type != "Data":
         raise ValueError('layer type:{} unidentified'.format(net.layer[layer].type))        
 
 print(s)

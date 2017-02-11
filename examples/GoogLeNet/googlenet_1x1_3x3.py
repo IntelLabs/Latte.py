@@ -23,17 +23,17 @@ conv1_7x7_s2 = ConvLayer(net, data, num_filters=64, kernel=7, stride=2, pad=3)
 conv1_relu_7x7 = ReLULayer(net, conv1_7x7_s2)
 pool1_3x3_s2 = MaxPoolingLayer(net, conv1_7x7_s2, kernel=3, stride=2, pad=0)
 
-pool1_norm1 = LRNLayer(net, pool1_3x3_s2, n=5, beta=0.75, alpha=0.0001, k=1.0)
-conv2_3x3_reduce = ConvLayer(net, pool1_norm1, num_filters=64, kernel=1, stride=1, pad=0)
-#conv2_3x3_reduce = ConvLayer(net, pool1_3x3_s2, num_filters=64, kernel=1, stride=1, pad=0)
+#pool1_norm1 = LRNLayer(net, pool1_3x3_s2, n=5, beta=0.75, alpha=0.0001, k=1.0)
+#conv2_3x3_reduce = ConvLayer(net, pool1_norm1, num_filters=64, kernel=1, stride=1, pad=0)
+conv2_3x3_reduce = ConvLayer(net, pool1_3x3_s2, num_filters=64, kernel=1, stride=1, pad=0)
 
 conv2_relu_3x3_reduce = ReLULayer(net, conv2_3x3_reduce)
 conv2_3x3 = ConvLayer(net, conv2_relu_3x3_reduce, num_filters=192, kernel=3, stride=1, pad=1)
 conv2_relu_3x3 = ReLULayer(net, conv2_3x3)
 
-conv2_norm2 = LRNLayer(net, conv2_relu_3x3, n=5, beta=0.75, alpha=0.0001, k=1.0)
-pool2_3x3_s2 = MaxPoolingLayer(net, conv2_norm2, kernel=3, stride=2, pad=0)
-#pool2_3x3_s2 = MaxPoolingLayer(net, conv2_relu_3x3, kernel=3, stride=2, pad=0)
+#conv2_norm2 = LRNLayer(net, conv2_relu_3x3, n=5, beta=0.75, alpha=0.0001, k=1.0)
+#pool2_3x3_s2 = MaxPoolingLayer(net, conv2_norm2, kernel=3, stride=2, pad=0)
+pool2_3x3_s2 = MaxPoolingLayer(net, conv2_relu_3x3, kernel=3, stride=2, pad=0)
 
 inception_3a_1x1 = ConvLayer(net, pool2_3x3_s2, num_filters=64, kernel=1, stride=1, pad=0)
 inception_3a_relu_1x1 = ReLULayer(net, inception_3a_1x1)
@@ -48,6 +48,7 @@ inception_3a_relu_5x5 = ReLULayer(net, inception_3a_5x5)
 inception_3a_pool = MaxPoolingLayer(net, pool2_3x3_s2, kernel=3, stride=1, pad=1)
 inception_3a_pool_proj = ConvLayer(net, inception_3a_pool, num_filters=32, kernel=1, stride=1, pad=0)
 inception_3a_relu_pool_proj = ReLULayer(net, inception_3a_pool_proj)
+#inception_3a_output = ConcatLayer(net, [inception_3a_relu_1x1, inception_3a_relu_3x3, inception_3a_relu_5x5, inception_3a_relu_pool_proj])
 
 net.compile() 
 
@@ -110,6 +111,9 @@ for epoch in range(epoch_size):
         t = time.time()
         net.forward()
         forward_time += time.time() - t
+        t = time.time()
+        net.backward()
+        backward_time += time.time() - t
 
         #forward_time += time.time() - t
         if timing_info:
@@ -124,4 +128,5 @@ for epoch in range(epoch_size):
  
 print("Total FP                   : {0:.3f} ms".format(total_forward_time * 1000))
 print("Total Inference Throughput : {0:.3f} images/second".format((num_train * epoch_size*batch_size)/(total_forward_time)))
+print("Total Training Throughput  : {0:.3f} images/second".format((num_train * epoch_size*batch_size)/(total_forward_time + total_backward_time)))
 
