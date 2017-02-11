@@ -591,10 +591,12 @@ class Net:
       conv_desc.S = $kw;
       conv_desc.u = $stride_h;
       conv_desc.v = $stride_w;
-      conv_desc.pad_h_in = 0;
-      conv_desc.pad_w_in = 0;
-      conv_desc.pad_h_out = 0;
-      conv_desc.pad_w_out = 0;
+      conv_desc.pad_h = $pad;
+      conv_desc.pad_w = $pad;
+      conv_desc.pad_h_in = $pad;
+      conv_desc.pad_w_in = $pad;
+      conv_desc.pad_h_out = $pad;
+      conv_desc.pad_w_out = $pad;
       conv_desc.threads = omp_get_max_threads();
       conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
       conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
