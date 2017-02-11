@@ -20,8 +20,6 @@ from latte.connection import Connection
 from latte.task import Task
 import latte.transformers.vectorize as vectorizer
 import latte.transformers.prefetch as prefetcher
-import latte.transformers.loop_simplify as loopsimplifier
-import latte.transformers.copy_propagation as copypropagator
 import latte.transformers.parallelize as parallelizer
 import latte.transformers.code_motion as code_motion
 import latte.transformers.unroll as unroller
@@ -321,266 +319,16 @@ class Net:
         for connection in self.connections:
             self.connections_map[connection.sink].append(connection)
 
-        in_place_buffer_map = {}
         forward_body = []
         forward_args = set()
- 
+
         backward_body = []
         backward_args = set()
 
+
+        in_place_buffer_map = {}
+
         logger.info("Initializing ensembles and synthesizing functions...")
-        #logger.info("Compiling functions...")
-
-        for ensemble in self.ensembles:
-              logger.info("    {} [shape={}]".format(ensemble.name, ensemble.shape))
-              if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
-                  raise NotImplementedError("Ensemble type {} no longer supported".format(type(ensemble)))
-              self._init_buffers(ensemble)
-              if isinstance(ensemble, DataEnsemble):
-                  self.forward_tasks.append(
-                      Task(ensemble.forward, [self.buffers[ensemble.name + "value"]]))
-                  for field in ["value", "grad"]:
-                      buffer = self.buffers[ensemble.name + field]
-                      if field in ensemble.tiling_info:
-                          buf_shape = compute_tiled_shape(list(buffer.shape), field, ensemble)
-                          buffer = buffer.reshape(buf_shape)
-                          self.buffers[ensemble.name + field] = buffer
-              else:
-                  neuron = ensemble.neurons.flat[0]
-                  ''' 
-                  if latte.config.MODE in ["DEV"]:
-
-                       args = self._synthesize_args(ensemble, neuron, "forward")
-                       forward_args = forward_args.union(args)
-                       args = self._synthesize_args(ensemble, neuron, "backward")
-                       backward_args = backward_args.union(args)
- 
-                       args = self._synthesize_args(ensemble, neuron, "update_internal") 
-                       backward_args = backward_args.union(args)
-
- 
-
-
-
-                  else:      
-                  '''  
- 
-
-                  body, args = self._synthesize_ast(ensemble, neuron, "forward")
-                  forward_args = forward_args.union(args)
-                  forward_body += body
-
-                  body, args = self._synthesize_ast(ensemble, neuron, "backward")
-                  backward_args = backward_args.union(args)
-                  backward_body = body + backward_body
-
-                  body, args = self._synthesize_ast(ensemble, neuron, "update_internal")
-                  backward_args = backward_args.union(args)
-                  backward_body = body + backward_body
-
-        if isinstance(ensemble, ActivationEnsemble):
-                                source = self.connections_map[ensemble][0].source
-                                in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
-
-        logger.info("Compiling functions...")
-        for args, direction, body, tasks, in zip([forward_args, backward_args], 
-                                                   ["forward", "backward"],
-                                                   [forward_body, backward_body],
-                                                   [self.forward_tasks, self.backward_tasks],
-                                                   ):
-                           args = list(args)
-              
-                           #if latte.config.MODE in ["DEV"]:
-                           args.sort() 
-    
-
-
-
-
-                           arg_bufs = [self.buffers[arg] for arg in args]
-                           type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
-                           params   = [C.SymbolRef("_" + arg, typ()) for arg, typ in zip(args, type_sig)]
-
-                           _id = self._uniqueid()
-       
-              
-                           if latte.config.MODE in ["RELEASE"]:  
-                               c_file = C.CFile("dummy"+ _id, [
-                               include, 
-                               C.FunctionDecl(None, C.SymbolRef(direction + _id), params, body)
-                               ], path=".compiled")
-
-                           #c_file._ext = "cpp"
-              
-                           c_file = transformers.simple_fusion(c_file)
-                           if "ON" in latte.config.TIMER:
-                               c_file = transformers.timer(c_file)
-              
-                           new_body = []
-                           incr = -1
-                           kernels = {}
-                           '''
-                           for stmt in c_file.body[1].defn:
-   
-                                incr += 1
- 
-                                if isinstance(stmt, C.For): 
-                                    if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                                        new_body.extend(stmt.pre_trans)
-                                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
-                                    new_body.append(stmt)
-                                else:
-                                    new_body.append(stmt)
-                            
-
-                           for arg in args:
-                                name = arg
-                                buf = self.buffers[name]
-                                new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-                                util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
-                           '''
-                           #c_file.body[1].defn = new_body 
-
-                           #c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-
-
-    
-                           outliner = transformers.Outliner(self.buffers, direction)  
-
-                           c_file = outliner.visit(c_file)
-
-                           main_func = C.FunctionDecl(None, C.SymbolRef(direction + _id), params, c_file.body[1].defn)
-
-                           for arg in args:
-                                name = arg
-                                buf = self.buffers[name]
-                                main_func.defn.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-                                util.insert_cast(main_func.defn, buf.shape[1:], name, buf.dtype)
-     
-
-                           all_funcs = [ main_func]+ outliner.new_funcs
-
-                           new_funcs = []
-
-                           for func in all_funcs:
-                              new_body=[]          
-                              for stmt in func.defn:
-                                if isinstance(stmt, C.For): 
-                                    #if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                                    #    new_body.extend(stmt.pre_trans)
-                                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
-                                    new_body.append(stmt)
-                                else:
-                                    new_body.append(stmt)
-
-                              func.defn = new_body       
-                              new_funcs.append(func )   
-                
-                            
-                           '''
-                           for stmt in c_file.body[1].defn:
-   
-                                incr += 1
- 
-                                if isinstance(stmt, C.For): 
-                                    if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                                        new_body.extend(stmt.pre_trans)
-                                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
-                                    new_body.append(stmt)
-                                else:
-                                    new_body.append(stmt)
-                            for arg in args:
-                                name = arg
-                                buf = self.buffers[name]
-                                new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-                                util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
-                            c_file.body[1].defn = new_body 
- 
-                
-                           c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-                            '''
-
-                           if len(args) > 0:
-                                #shape_str = "{}* ".format(self.buffers[args2[0]].dtype) + args2[0].join(", {}* ".format(self.buffers[d].dtype) + "{}".format(d) for d in args2[1:])
-                                shape_str = "{}* ".format(   ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(self.buffers[args[0]].dtype)())) + \
-                                "_"+ args[0].join(", {}* ".format( ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(self.buffers[d].dtype)())) + "_"+ "{}".format(d) for d in args[1:])
- 
-                           else:
-                                shape_str =""
- 
-                           first_func = StringTemplate("void  $func ($args);",
-                            {"func":C.SymbolRef(direction+ _id),
-                            "args":C.SymbolRef(shape_str)
-                            })
-
-
-                           c_file = C.CFile(direction + _id, [
-                               include,first_func,outliner.func_headers,
-                               all_funcs,
-                               ], path=".compiled")
- 
-
-                           c_file._ext = "cpp"
-
-
-
-                            #for stmt in func_def:
-                           '''
-                            for stmt in c_file.body[1].defn:
-   
-                                incr += 1
-
-                                if isinstance(stmt, C.For): 
-                                    if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                                        new_body.extend(stmt.pre_trans)
-                                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
-                                    new_body.append(stmt)
-                                else:
-                                    new_body.append(stmt)
-                            for arg in args:
-                                name = arg
-                                buf = self.buffers[name]
-                                new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-                                util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
-                            c_file.body[1].defn = new_body 
-                           ''' 
-
-
-                           c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-                           if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
-                                c_file.body[1].defn.insert(0, StringTemplate("static FlowGraph graph;"))
-                                c_file.body[1].defn.append(StringTemplate("graph.wait_for_all();"))
-                           elif "OPENCL" in latte.config.parallel_strategy:
-                                arg_bufs.append(latte.config.cl_queue)
-                                type_sig.append(cl.cl_command_queue)
-                                params.append(C.SymbolRef("queue", cl.cl_command_queue()))
-                                for name, kernel in kernels.items():
-                                    arg_bufs.append(kernel)
-                                    type_sig.append(cl.cl_kernel)
-                                    params.append(C.SymbolRef(name, cl.cl_kernel()))
-             
-                           if latte.config.MODE in ["DEV"]:
-   
-                                if direction == "forward":
-                                    c_file = C.CFile(direction + _id, [
-                                    forward_pre_gen
-                                    ], path=".compiled")
-                                else:
-                                    c_file = C.CFile(direction + _id, [
-                                    backward_pre_gen
-                                    ], path=".compiled")
-   
-                                c_file._ext = "cpp"
-   
-
-                           module = util.mpi_compile(ctree.nodes.Project([c_file]))
-                           # get_callable(functions_handle, type_signature)
-
-                           type_sig = ctypes.CFUNCTYPE(None, *type_sig)
-                           fn = module.get_callable(direction + _id, type_sig)
-                           tasks.append(Task(fn, arg_bufs))
-        '''
-        =======
         for ensemble in self.ensembles:
             logger.info("    {} [shape={}]".format(ensemble.name, ensemble.shape))
             if isinstance(ensemble, (LossEnsemble, AccuracyEnsemble)):
@@ -624,6 +372,7 @@ class Net:
             #if latte.config.MODE in ["DEV"]:
             args.sort() 
 
+
             arg_bufs = [self.buffers[arg] for arg in args]
             type_sig = [np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape) for buf in arg_bufs]
             params   = [C.SymbolRef("_" + arg, typ()) for arg, typ in zip(args, type_sig)]
@@ -631,7 +380,25 @@ class Net:
 
             #args_duplicate = 
             _id = self._uniqueid()
+
+            
+
      
+            if latte.config.MODE in ["DEV"]:
+                
+                if direction == "forward":
+                    c_file = C.CFile(direction + _id, [
+                    forward_pre_gen
+                    ], path=".compiled")
+                else:
+                    c_file = C.CFile(direction + _id, [
+                    backward_pre_gen
+                    ], path=".compiled")
+
+                c_file._ext = "cpp"
+           
+
+
             c_file = C.CFile(direction + _id, [
                     include, 
                     C.FunctionDecl(None, C.SymbolRef(direction + _id), params, body)
@@ -640,12 +407,13 @@ class Net:
             c_file._ext = "cpp"
             
             c_file = transformers.simple_fusion(c_file)
-            if "ON" in latte.config.TIMER:
-              c_file = transformers.timer(c_file)
             
             new_body = []
             incr = -1
             kernels = {}
+            
+
+
 
             #for stmt in func_def:
             for stmt in c_file.body[1].defn:
@@ -655,6 +423,8 @@ class Net:
                 #stmt = optimizer.propogate_constants(stmt)
                 #stmt = analyzer.type_infer(stmt)
                 #stmt = optimizer.propogate_constants(stmt)
+                
+             
 
                 if isinstance(stmt, C.For): 
                     if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
@@ -676,12 +446,11 @@ class Net:
                 name = arg
                 buf = self.buffers[name]
                 new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-                generate_malloc = 0
-                if generate_malloc == 1:
-                  util.insert_malloc(new_body, buf.shape, name, buf.dtype)
-                  new_body.append(util.insert_free(name))
-                else :
-                  util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
+                util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
+  
+
+
+
 
             c_file.body[1].defn = new_body 
 
@@ -719,8 +488,6 @@ class Net:
             type_sig = ctypes.CFUNCTYPE(None, *type_sig)
             fn = module.get_callable(direction + _id, type_sig)
             tasks.append(Task(fn, arg_bufs))
-        >>>>>>> b5dd63644aff23a71704523a7f19b60e050d76d2
-        '''
 
         self._collect_value_grad_bufs()
         logger.info("Finished compiling Net")
@@ -842,12 +609,10 @@ class Net:
       conv_desc.S = $kw;
       conv_desc.u = $stride_h;
       conv_desc.v = $stride_w;
-      conv_desc.pad_h = $pad;
-      conv_desc.pad_w = $pad;
-      conv_desc.pad_h_in = $pad;
-      conv_desc.pad_w_in = $pad;
-      conv_desc.pad_h_out = $pad;
-      conv_desc.pad_w_out = $pad;
+      conv_desc.pad_h_in = 0;
+      conv_desc.pad_w_in = 0;
+      conv_desc.pad_h_out = 0;
+      conv_desc.pad_w_out = 0;
       conv_desc.threads = omp_get_max_threads();
       conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
       conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
@@ -1067,111 +832,6 @@ class Net:
                      C.Ref(util.gen_index_expr(C.SymbolRef(buffer_name + "_transposed"), idx))]))
                 pre_trans.append(node)
         return pre_trans, post_trans
-
-
-
-    def _synthesize_args(self, ensemble, neuron, direction):
-       # get_ast returns an ast.Module, grab the first item for the function
-        if direction == "forward":
-            fn_def = util.get_ast(neuron.forward).body[0]
-        elif direction == "update_internal":
-            fn_def = util.get_ast(neuron.update_internal).body[0]
-        else:
-            # Don't backpropogate to DataEnsemble
-            if not isinstance(self.connections_map[ensemble][0].source, DataEnsemble) or \
-                    self.force_backward:
-                fn_def = util.get_ast(neuron.backward).body[0]
-                #if hasattr(neuron, 'update_internal'):
-                #    fn_def.body += util.get_ast(neuron.update_internal).body[0].body
-                #    fn_def = transformers.simple_fusion(fn_def)
-            # elif hasattr(neuron, 'update_internal'):
-            #     fn_def = util.get_ast(neuron.update_internal).body[0]
-            else:
-                # No-op
-                return set()
-        if isinstance(fn_def.body[0], ast.Pass):
-            return set()
- 
-        #util.print_ast(fn_def)
-        # transform domain constructs
-        transformer = transformers.NeuronTransformer(ensemble,
-                self.connections_map[ensemble], self.buffer_dim_info)
-        fn_def = transformer.visit(fn_def)
-        #util.print_ast(fn_def)
-        # Grab seen variables
- 
-        args = [ast.arg(arg, None) for arg in transformer.seen_vars]
-
-        if not isinstance(ensemble, ConcatEnsemble):
-            shape = list(ensemble.shape)
-        else:
-            shape = list(self.connections_map[ensemble][0].source.shape)
-            if direction == "forward":
-                for i in range(1,len(self.connections_map[ensemble])):
-                    source = ensemble.name
-                    args.append(ast.arg(source + "inputs" + str(i), None))
-            elif direction == "backward":
-                for i in range(1,len(self.connections_map[ensemble])):
-                    source = ensemble.name
-                    args.append( ast.arg(source + "grad_inputs" + str(i), None))
-
-        #for arg in args:
-        #   buf = self.buffers[arg.arg]
-        #   arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
-        
-
-        if direction in ensemble.vectorize_info:
-             # RAJ hack here
-
-          loop_vars = ["_neuron_index_{}".format(i) for i in range(ensemble.ndim + 1)]
-
-          if "value" in ensemble.tiling_info:
-             for dim, factor in ensemble.tiling_info["value"]:
-                if shape[dim] % factor != 0:
-                    raise Exception(("Invalid tiling factor of {} on dimension "
-                        + "{} for {}'s value buffer (shape={})").format(factor,
-                            dim, ensemble.name, shape))
- 
-                shape[dim] //= factor
-                shape.append(factor)
-                loop_vars.append(loop_vars[dim + 1] + "_inner")
-                loop_vars[dim + 1] += "_outer"
- 
-           # Reverse ([::-1]) iteration space for row major indexing
-          loop_vars = loop_vars[::-1]
- 
-     
-          loop_ranges = ([self.batch_size] + [d for d in shape])[::-1]
-          body = fn_def.body
- 
- 
-          body = [util.gen_loop_nest(body, loop_vars, loop_ranges)]
-          func_def = ast.FunctionDef('func',
-                ast.arguments(args, None, [], [], None, []), body,
-                [], None)
-      #util.print_ast(func_def)
-          func_def = transformers.convert_tuple_subscripts(func_def)
-          # convert domain ast nodes introduced by the neuron transformer
-          func_def = transformers.convert_enumerate_ranges(func_def, direction, ensemble)
-          # basic python -> C conversion
-          func_def = PyBasicConversions().visit(func_def)
-
-          _, transposed_buffers = vectorizer.vectorize_loop(func_def,
-                    ensemble.vectorize_info[direction][0])
- 
- 
-          for buffer_name, trans_dim in transposed_buffers.items():
-                curr_body = []
-                shape = self.buffers[buffer_name].shape
-                shape_str = "".join("[{}]".format(d) for d in shape)
- 
-                args.append(ast.arg(buffer_name + "_transposed", None))
-                self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-
-
-
-        return [arg.arg for arg in args]
-
 
     def _synthesize_ast(self, ensemble, neuron, direction):
         # get_ast returns an ast.Module, grab the first item for the function
@@ -1601,10 +1261,6 @@ class Net:
             loop1.test, loop2.test = loop2.test, loop1.test
             loop1.incr, loop2.incr = loop2.incr, loop1.incr
 
-          # drop loops that iterate for one iteration only and constant propagate indices and hoist address computations
-          #func_def = loopsimplifier.simplify_loops(func_def)
-          #func_def = optimizer.propogate_constants(func_def)
-
           if direction in ensemble.vectorize_info:
             # RAJ hack here
             func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
@@ -1643,9 +1299,9 @@ class Net:
           if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
             (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
             unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
-          # check for fused code
-          func_def = copypropagator.propagate_copies(func_def)
-          if "ON" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
+          
+          '''  
+          if "PREFETCH" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
               prefetch_dict_list = ensemble.prefetch_info[direction]
               for field, value in prefetch_dict_list.items():
                   if len(value) > 0 :
@@ -1655,13 +1311,7 @@ class Net:
                     elif value[0] == 2:
                         prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
                         prefetcher.insert_strided_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
-                    elif value[0] == 3:
-                        prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
-                        prefetcher.insert_simple_hoist_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
-          # drop loops that iterate for one iteration only and constant propagate indices and hoist address computations
-          func_def = loopsimplifier.simplify_loops(func_def)
-          #func_def = optimizer.propogate_constants(func_def)
-
+          '''
         else: #GEMM formulation
           func_def = transformers.pattern_match_gemm(func_def)
           raise NotImplementedError("GEMM formulation is not complete yet")

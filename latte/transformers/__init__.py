@@ -11,6 +11,7 @@ from .neuron import NeuronTransformer
 import latte.transformers.unroll
 from .pattern_match_math import PatternMatchMath
 from .vectorize import fuse_multiply_adds, vectorize_loop
+from .outline_outer_loops import Outliner
 
 import ast
 import ctree.c.nodes as C

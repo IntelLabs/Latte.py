@@ -1,0 +1,632 @@
+144a145,146
+>             int in_y = _neuron_index_2 * 1;
+>             int _input_offset_2 = in_y;
+146,165c148,178
+<                 int in_y = _neuron_index_2 * 1;
+<                 int _input_offset_2 = in_y;
+<                 int in_x = _neuron_index_3 * 1;
+<                 in_x = (_neuron_index_3 + 1) * 1;
+<                 in_x = (_neuron_index_3 + 2) * 1;
+<                 in_x = (_neuron_index_3 + 3) * 1;
+<                 in_x = (_neuron_index_3 + 4) * 1;
+<                 in_x = (_neuron_index_3 + 5) * 1;
+<                 in_x = (_neuron_index_3 + 6) * 1;
+<                 in_x = (_neuron_index_3 + 7) * 1;
+<                 in_x = (_neuron_index_3 + 8) * 1;
+<                 in_x = (_neuron_index_3 + 9) * 1;
+<                 in_x = (_neuron_index_3 + 10) * 1;
+<                 in_x = (_neuron_index_3 + 11) * 1;
+<                 in_x = (_neuron_index_3 + 12) * 1;
+<                 in_x = (_neuron_index_3 + 13) * 1;
+<                 int _input_offset_3 = in_x;
+<                 __m256 ___x2_0 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 1)][0]);
+<                 __mm_prefetch_t0(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1 + 1)][(_neuron_index_3 + 1)][0]);
+<                 __m256 ___x2_1 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 1 + 1)][0]);
+---
+>                 int in_x_0 = (_neuron_index_3 + 0) * 1;
+>                 int in_x_1 = (_neuron_index_3 + 1) * 1;
+>                 int in_x_2 = (_neuron_index_3 + 2) * 1;
+>                 int in_x_3 = (_neuron_index_3 + 3) * 1;
+>                 int in_x_4 = (_neuron_index_3 + 4) * 1;
+>                 int in_x_5 = (_neuron_index_3 + 5) * 1;
+>                 int in_x_6 = (_neuron_index_3 + 6) * 1;
+>                 int in_x_7 = (_neuron_index_3 + 7) * 1;
+>                 int in_x_8 = (_neuron_index_3 + 8) * 1;
+>                 int in_x_9 = (_neuron_index_3 + 9) * 1;
+>                 int in_x_10 = (_neuron_index_3 + 10) * 1;
+>                 int in_x_11 = (_neuron_index_3 + 11) * 1;
+>                 int in_x_12 = (_neuron_index_3 + 12) * 1;
+>                 int in_x_13 = (_neuron_index_3 + 13) * 1;
+>                 int _input_offset_3_0 = in_x_0;
+>                 int _input_offset_3_1 = in_x_1;
+>                 int _input_offset_3_2 = in_x_2;
+>                 int _input_offset_3_3 = in_x_3;
+>                 int _input_offset_3_4 = in_x_4;
+>                 int _input_offset_3_5 = in_x_5;
+>                 int _input_offset_3_6 = in_x_6;
+>                 int _input_offset_3_7 = in_x_7;
+>                 int _input_offset_3_8 = in_x_8;
+>                 int _input_offset_3_9 = in_x_9;
+>                 int _input_offset_3_10 = in_x_10;
+>                 int _input_offset_3_11 = in_x_11;
+>                 int _input_offset_3_12 = in_x_12;
+>                 int _input_offset_3_13 = in_x_13;
+>                 __m256 ___x1_0 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 0 + 1)][0]);
+>                 __mm_prefetch_t0(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1 + 1)][(_neuron_index_3 + 0 + 1)][0]);
+>                 __m256 ___x1_1 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 1 + 1)][0]);
+167c180
+<                 __m256 ___x2_2 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 2 + 1)][0]);
+---
+>                 __m256 ___x1_2 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 2 + 1)][0]);
+169c182
+<                 __m256 ___x2_3 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 3 + 1)][0]);
+---
+>                 __m256 ___x1_3 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 3 + 1)][0]);
+171c184
+<                 __m256 ___x2_4 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 4 + 1)][0]);
+---
+>                 __m256 ___x1_4 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 4 + 1)][0]);
+173c186
+<                 __m256 ___x2_5 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 5 + 1)][0]);
+---
+>                 __m256 ___x1_5 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 5 + 1)][0]);
+175c188
+<                 __m256 ___x2_6 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 6 + 1)][0]);
+---
+>                 __m256 ___x1_6 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 6 + 1)][0]);
+177c190
+<                 __m256 ___x2_7 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 7 + 1)][0]);
+---
+>                 __m256 ___x1_7 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 7 + 1)][0]);
+179c192
+<                 __m256 ___x2_8 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 8 + 1)][0]);
+---
+>                 __m256 ___x1_8 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 8 + 1)][0]);
+181c194
+<                 __m256 ___x2_9 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 9 + 1)][0]);
+---
+>                 __m256 ___x1_9 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 9 + 1)][0]);
+183c196
+<                 __m256 ___x2_10 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 10 + 1)][0]);
+---
+>                 __m256 ___x1_10 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 10 + 1)][0]);
+185c198
+<                 __m256 ___x2_11 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 11 + 1)][0]);
+---
+>                 __m256 ___x1_11 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 11 + 1)][0]);
+187c200
+<                 __m256 ___x2_12 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 12 + 1)][0]);
+---
+>                 __m256 ___x1_12 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 12 + 1)][0]);
+189c202
+<                 __m256 ___x2_13 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 13 + 1)][0]);
+---
+>                 __m256 ___x1_13 = _mm256_load_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 13 + 1)][0]);
+194,257c207,322
+<                             __m256 ___x0_0 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][i_inner][0]);
+<                             __m256 ___x0_1 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 1)][0]);
+<                             __m256 ___x0_2 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 2)][0]);
+<                             __m256 ___x0_3 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 3)][0]);
+<                             __m256 ___x1_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][i_inner]);
+<                             __m256 ___x1_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][(i_inner + 1)]);
+<                             __m256 ___x1_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][(i_inner + 2)]);
+<                             __m256 ___x1_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][(i_inner + 3)]);
+<                             ___x2_0 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_0);
+<                             ___x2_0 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_0);
+<                             ___x2_0 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_0);
+<                             ___x2_0 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_0);
+<                             ___x2_1 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_1);
+<                             ___x2_1 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_1);
+<                             ___x2_1 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_1);
+<                             ___x2_1 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_1);
+<                             ___x2_2 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_2);
+<                             ___x2_2 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_2);
+<                             ___x2_2 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_2);
+<                             ___x2_2 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_2);
+<                             ___x2_3 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_3);
+<                             ___x2_3 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_3);
+<                             ___x2_3 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_3);
+<                             ___x2_3 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_3);
+<                             ___x2_4 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_4);
+<                             ___x2_4 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_4);
+<                             ___x2_4 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_4);
+<                             ___x2_4 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_4);
+<                             ___x2_5 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_5);
+<                             ___x2_5 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_5);
+<                             ___x2_5 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_5);
+<                             ___x2_5 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_5);
+<                             ___x2_6 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_6);
+<                             ___x2_6 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_6);
+<                             ___x2_6 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_6);
+<                             ___x2_6 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_6);
+<                             ___x2_7 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_7);
+<                             ___x2_7 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_7);
+<                             ___x2_7 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_7);
+<                             ___x2_7 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_7);
+<                             ___x2_8 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_8);
+<                             ___x2_8 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_8);
+<                             ___x2_8 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_8);
+<                             ___x2_8 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_8);
+<                             ___x2_9 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_9);
+<                             ___x2_9 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_9);
+<                             ___x2_9 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_9);
+<                             ___x2_9 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_9);
+<                             ___x2_10 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_10);
+<                             ___x2_10 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_10);
+<                             ___x2_10 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_10);
+<                             ___x2_10 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_10);
+<                             ___x2_11 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_11);
+<                             ___x2_11 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_11);
+<                             ___x2_11 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_11);
+<                             ___x2_11 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_11);
+<                             ___x2_12 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_12);
+<                             ___x2_12 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_12);
+<                             ___x2_12 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_12);
+<                             ___x2_12 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_12);
+<                             ___x2_13 = _mm256_fmadd_ps(___x1_0, ___x0_0, ___x2_13);
+<                             ___x2_13 = _mm256_fmadd_ps(___x1_1, ___x0_1, ___x2_13);
+<                             ___x2_13 = _mm256_fmadd_ps(___x1_2, ___x0_2, ___x2_13);
+<                             ___x2_13 = _mm256_fmadd_ps(___x1_3, ___x0_3, ___x2_13);
+---
+>                             __m256 ___x0_0_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 0)]);
+>                             __m256 ___x0_0_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 1)]);
+>                             __m256 ___x0_0_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 2)]);
+>                             __m256 ___x0_0_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 3)]);
+>                             __m256 ___x0_1_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 0)]);
+>                             __m256 ___x0_1_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 1)]);
+>                             __m256 ___x0_1_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 2)]);
+>                             __m256 ___x0_1_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 3)]);
+>                             __m256 ___x0_2_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 0)]);
+>                             __m256 ___x0_2_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 1)]);
+>                             __m256 ___x0_2_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 2)]);
+>                             __m256 ___x0_2_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 3)]);
+>                             __m256 ___x0_3_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 0)]);
+>                             __m256 ___x0_3_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 1)]);
+>                             __m256 ___x0_3_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 2)]);
+>                             __m256 ___x0_3_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 3)]);
+>                             __m256 ___x0_4_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 0)]);
+>                             __m256 ___x0_4_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 1)]);
+>                             __m256 ___x0_4_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 2)]);
+>                             __m256 ___x0_4_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 3)]);
+>                             __m256 ___x0_5_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 0)]);
+>                             __m256 ___x0_5_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 1)]);
+>                             __m256 ___x0_5_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 2)]);
+>                             __m256 ___x0_5_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 3)]);
+>                             __m256 ___x0_6_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 0)]);
+>                             __m256 ___x0_6_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 1)]);
+>                             __m256 ___x0_6_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 2)]);
+>                             __m256 ___x0_6_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 3)]);
+>                             __m256 ___x0_7_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 0)]);
+>                             __m256 ___x0_7_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 1)]);
+>                             __m256 ___x0_7_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 2)]);
+>                             __m256 ___x0_7_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 3)]);
+>                             __m256 ___x0_8_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 0)]);
+>                             __m256 ___x0_8_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 1)]);
+>                             __m256 ___x0_8_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 2)]);
+>                             __m256 ___x0_8_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 3)]);
+>                             __m256 ___x0_9_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 0)]);
+>                             __m256 ___x0_9_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 1)]);
+>                             __m256 ___x0_9_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 2)]);
+>                             __m256 ___x0_9_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 3)]);
+>                             __m256 ___x0_10_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 0)]);
+>                             __m256 ___x0_10_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 1)]);
+>                             __m256 ___x0_10_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 2)]);
+>                             __m256 ___x0_10_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 3)]);
+>                             __m256 ___x0_11_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 0)]);
+>                             __m256 ___x0_11_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 1)]);
+>                             __m256 ___x0_11_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 2)]);
+>                             __m256 ___x0_11_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 3)]);
+>                             __m256 ___x0_12_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 0)]);
+>                             __m256 ___x0_12_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 1)]);
+>                             __m256 ___x0_12_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 2)]);
+>                             __m256 ___x0_12_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 3)]);
+>                             __m256 ___x0_13_0 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 0)]);
+>                             __m256 ___x0_13_1 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 1)]);
+>                             __m256 ___x0_13_2 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 2)]);
+>                             __m256 ___x0_13_3 = _mm256_broadcast_ss(& ensemble2inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 3)]);
+>                             __m256 ___x2_0 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 0)][0]);
+>                             __m256 ___x2_1 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 1)][0]);
+>                             __m256 ___x2_2 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 2)][0]);
+>                             __m256 ___x2_3 = _mm256_load_ps(& ensemble2weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 3)][0]);
+>                             ___x1_0 = _mm256_fmadd_ps(___x0_0_0, ___x2_0, ___x1_0);
+>                             ___x1_0 = _mm256_fmadd_ps(___x0_0_1, ___x2_1, ___x1_0);
+>                             ___x1_0 = _mm256_fmadd_ps(___x0_0_2, ___x2_2, ___x1_0);
+>                             ___x1_0 = _mm256_fmadd_ps(___x0_0_3, ___x2_3, ___x1_0);
+>                             ___x1_1 = _mm256_fmadd_ps(___x0_1_0, ___x2_0, ___x1_1);
+>                             ___x1_1 = _mm256_fmadd_ps(___x0_1_1, ___x2_1, ___x1_1);
+>                             ___x1_1 = _mm256_fmadd_ps(___x0_1_2, ___x2_2, ___x1_1);
+>                             ___x1_1 = _mm256_fmadd_ps(___x0_1_3, ___x2_3, ___x1_1);
+>                             ___x1_2 = _mm256_fmadd_ps(___x0_2_0, ___x2_0, ___x1_2);
+>                             ___x1_2 = _mm256_fmadd_ps(___x0_2_1, ___x2_1, ___x1_2);
+>                             ___x1_2 = _mm256_fmadd_ps(___x0_2_2, ___x2_2, ___x1_2);
+>                             ___x1_2 = _mm256_fmadd_ps(___x0_2_3, ___x2_3, ___x1_2);
+>                             ___x1_3 = _mm256_fmadd_ps(___x0_3_0, ___x2_0, ___x1_3);
+>                             ___x1_3 = _mm256_fmadd_ps(___x0_3_1, ___x2_1, ___x1_3);
+>                             ___x1_3 = _mm256_fmadd_ps(___x0_3_2, ___x2_2, ___x1_3);
+>                             ___x1_3 = _mm256_fmadd_ps(___x0_3_3, ___x2_3, ___x1_3);
+>                             ___x1_4 = _mm256_fmadd_ps(___x0_4_0, ___x2_0, ___x1_4);
+>                             ___x1_4 = _mm256_fmadd_ps(___x0_4_1, ___x2_1, ___x1_4);
+>                             ___x1_4 = _mm256_fmadd_ps(___x0_4_2, ___x2_2, ___x1_4);
+>                             ___x1_4 = _mm256_fmadd_ps(___x0_4_3, ___x2_3, ___x1_4);
+>                             ___x1_5 = _mm256_fmadd_ps(___x0_5_0, ___x2_0, ___x1_5);
+>                             ___x1_5 = _mm256_fmadd_ps(___x0_5_1, ___x2_1, ___x1_5);
+>                             ___x1_5 = _mm256_fmadd_ps(___x0_5_2, ___x2_2, ___x1_5);
+>                             ___x1_5 = _mm256_fmadd_ps(___x0_5_3, ___x2_3, ___x1_5);
+>                             ___x1_6 = _mm256_fmadd_ps(___x0_6_0, ___x2_0, ___x1_6);
+>                             ___x1_6 = _mm256_fmadd_ps(___x0_6_1, ___x2_1, ___x1_6);
+>                             ___x1_6 = _mm256_fmadd_ps(___x0_6_2, ___x2_2, ___x1_6);
+>                             ___x1_6 = _mm256_fmadd_ps(___x0_6_3, ___x2_3, ___x1_6);
+>                             ___x1_7 = _mm256_fmadd_ps(___x0_7_0, ___x2_0, ___x1_7);
+>                             ___x1_7 = _mm256_fmadd_ps(___x0_7_1, ___x2_1, ___x1_7);
+>                             ___x1_7 = _mm256_fmadd_ps(___x0_7_2, ___x2_2, ___x1_7);
+>                             ___x1_7 = _mm256_fmadd_ps(___x0_7_3, ___x2_3, ___x1_7);
+>                             ___x1_8 = _mm256_fmadd_ps(___x0_8_0, ___x2_0, ___x1_8);
+>                             ___x1_8 = _mm256_fmadd_ps(___x0_8_1, ___x2_1, ___x1_8);
+>                             ___x1_8 = _mm256_fmadd_ps(___x0_8_2, ___x2_2, ___x1_8);
+>                             ___x1_8 = _mm256_fmadd_ps(___x0_8_3, ___x2_3, ___x1_8);
+>                             ___x1_9 = _mm256_fmadd_ps(___x0_9_0, ___x2_0, ___x1_9);
+>                             ___x1_9 = _mm256_fmadd_ps(___x0_9_1, ___x2_1, ___x1_9);
+>                             ___x1_9 = _mm256_fmadd_ps(___x0_9_2, ___x2_2, ___x1_9);
+>                             ___x1_9 = _mm256_fmadd_ps(___x0_9_3, ___x2_3, ___x1_9);
+>                             ___x1_10 = _mm256_fmadd_ps(___x0_10_0, ___x2_0, ___x1_10);
+>                             ___x1_10 = _mm256_fmadd_ps(___x0_10_1, ___x2_1, ___x1_10);
+>                             ___x1_10 = _mm256_fmadd_ps(___x0_10_2, ___x2_2, ___x1_10);
+>                             ___x1_10 = _mm256_fmadd_ps(___x0_10_3, ___x2_3, ___x1_10);
+>                             ___x1_11 = _mm256_fmadd_ps(___x0_11_0, ___x2_0, ___x1_11);
+>                             ___x1_11 = _mm256_fmadd_ps(___x0_11_1, ___x2_1, ___x1_11);
+>                             ___x1_11 = _mm256_fmadd_ps(___x0_11_2, ___x2_2, ___x1_11);
+>                             ___x1_11 = _mm256_fmadd_ps(___x0_11_3, ___x2_3, ___x1_11);
+>                             ___x1_12 = _mm256_fmadd_ps(___x0_12_0, ___x2_0, ___x1_12);
+>                             ___x1_12 = _mm256_fmadd_ps(___x0_12_1, ___x2_1, ___x1_12);
+>                             ___x1_12 = _mm256_fmadd_ps(___x0_12_2, ___x2_2, ___x1_12);
+>                             ___x1_12 = _mm256_fmadd_ps(___x0_12_3, ___x2_3, ___x1_12);
+>                             ___x1_13 = _mm256_fmadd_ps(___x0_13_0, ___x2_0, ___x1_13);
+>                             ___x1_13 = _mm256_fmadd_ps(___x0_13_1, ___x2_1, ___x1_13);
+>                             ___x1_13 = _mm256_fmadd_ps(___x0_13_2, ___x2_2, ___x1_13);
+>                             ___x1_13 = _mm256_fmadd_ps(___x0_13_3, ___x2_3, ___x1_13);
+261,274c326,339
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 1)][0], ___x2_0);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 1 + 1)][0], ___x2_1);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 2 + 1)][0], ___x2_2);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 3 + 1)][0], ___x2_3);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 4 + 1)][0], ___x2_4);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 5 + 1)][0], ___x2_5);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 6 + 1)][0], ___x2_6);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 7 + 1)][0], ___x2_7);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 8 + 1)][0], ___x2_8);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 9 + 1)][0], ___x2_9);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 10 + 1)][0], ___x2_10);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 11 + 1)][0], ___x2_11);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 12 + 1)][0], ___x2_12);
+<                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 13 + 1)][0], ___x2_13);
+---
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 0 + 1)][0], ___x1_0);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 1 + 1)][0], ___x1_1);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 2 + 1)][0], ___x1_2);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 3 + 1)][0], ___x1_3);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 4 + 1)][0], ___x1_4);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 5 + 1)][0], ___x1_5);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 6 + 1)][0], ___x1_6);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 7 + 1)][0], ___x1_7);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 8 + 1)][0], ___x1_8);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 9 + 1)][0], ___x1_9);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 10 + 1)][0], ___x1_10);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 11 + 1)][0], ___x1_11);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 12 + 1)][0], ___x1_12);
+>                 _mm256_store_ps(& ensemble2value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 13 + 1)][0], ___x1_13);
+332a398,399
+>             int in_y = _neuron_index_2 * 1;
+>             int _input_offset_2 = in_y;
+334,353c401,431
+<                 int in_y = _neuron_index_2 * 1;
+<                 int _input_offset_2 = in_y;
+<                 int in_x = _neuron_index_3 * 1;
+<                 in_x = (_neuron_index_3 + 1) * 1;
+<                 in_x = (_neuron_index_3 + 2) * 1;
+<                 in_x = (_neuron_index_3 + 3) * 1;
+<                 in_x = (_neuron_index_3 + 4) * 1;
+<                 in_x = (_neuron_index_3 + 5) * 1;
+<                 in_x = (_neuron_index_3 + 6) * 1;
+<                 in_x = (_neuron_index_3 + 7) * 1;
+<                 in_x = (_neuron_index_3 + 8) * 1;
+<                 in_x = (_neuron_index_3 + 9) * 1;
+<                 in_x = (_neuron_index_3 + 10) * 1;
+<                 in_x = (_neuron_index_3 + 11) * 1;
+<                 in_x = (_neuron_index_3 + 12) * 1;
+<                 in_x = (_neuron_index_3 + 13) * 1;
+<                 int _input_offset_3 = in_x;
+<                 __m256 ___x6_0 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][_neuron_index_3][0]);
+<                 __mm_prefetch_t0(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][_neuron_index_3][0]);
+<                 __m256 ___x6_1 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 1)][0]);
+---
+>                 int in_x_0 = (_neuron_index_3 + 0) * 1;
+>                 int in_x_1 = (_neuron_index_3 + 1) * 1;
+>                 int in_x_2 = (_neuron_index_3 + 2) * 1;
+>                 int in_x_3 = (_neuron_index_3 + 3) * 1;
+>                 int in_x_4 = (_neuron_index_3 + 4) * 1;
+>                 int in_x_5 = (_neuron_index_3 + 5) * 1;
+>                 int in_x_6 = (_neuron_index_3 + 6) * 1;
+>                 int in_x_7 = (_neuron_index_3 + 7) * 1;
+>                 int in_x_8 = (_neuron_index_3 + 8) * 1;
+>                 int in_x_9 = (_neuron_index_3 + 9) * 1;
+>                 int in_x_10 = (_neuron_index_3 + 10) * 1;
+>                 int in_x_11 = (_neuron_index_3 + 11) * 1;
+>                 int in_x_12 = (_neuron_index_3 + 12) * 1;
+>                 int in_x_13 = (_neuron_index_3 + 13) * 1;
+>                 int _input_offset_3_0 = in_x_0;
+>                 int _input_offset_3_1 = in_x_1;
+>                 int _input_offset_3_2 = in_x_2;
+>                 int _input_offset_3_3 = in_x_3;
+>                 int _input_offset_3_4 = in_x_4;
+>                 int _input_offset_3_5 = in_x_5;
+>                 int _input_offset_3_6 = in_x_6;
+>                 int _input_offset_3_7 = in_x_7;
+>                 int _input_offset_3_8 = in_x_8;
+>                 int _input_offset_3_9 = in_x_9;
+>                 int _input_offset_3_10 = in_x_10;
+>                 int _input_offset_3_11 = in_x_11;
+>                 int _input_offset_3_12 = in_x_12;
+>                 int _input_offset_3_13 = in_x_13;
+>                 __m256 ___x7_0 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 0)][0]);
+>                 __mm_prefetch_t0(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][(_neuron_index_2 + 1)][(_neuron_index_3 + 0)][0]);
+>                 __m256 ___x7_1 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 1)][0]);
+355c433
+<                 __m256 ___x6_2 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 2)][0]);
+---
+>                 __m256 ___x7_2 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 2)][0]);
+357c435
+<                 __m256 ___x6_3 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 3)][0]);
+---
+>                 __m256 ___x7_3 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 3)][0]);
+359c437
+<                 __m256 ___x6_4 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 4)][0]);
+---
+>                 __m256 ___x7_4 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 4)][0]);
+361c439
+<                 __m256 ___x6_5 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 5)][0]);
+---
+>                 __m256 ___x7_5 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 5)][0]);
+363c441
+<                 __m256 ___x6_6 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 6)][0]);
+---
+>                 __m256 ___x7_6 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 6)][0]);
+365c443
+<                 __m256 ___x6_7 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 7)][0]);
+---
+>                 __m256 ___x7_7 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 7)][0]);
+367c445
+<                 __m256 ___x6_8 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 8)][0]);
+---
+>                 __m256 ___x7_8 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 8)][0]);
+369c447
+<                 __m256 ___x6_9 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 9)][0]);
+---
+>                 __m256 ___x7_9 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 9)][0]);
+371c449
+<                 __m256 ___x6_10 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 10)][0]);
+---
+>                 __m256 ___x7_10 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 10)][0]);
+373c451
+<                 __m256 ___x6_11 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 11)][0]);
+---
+>                 __m256 ___x7_11 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 11)][0]);
+375c453
+<                 __m256 ___x6_12 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 12)][0]);
+---
+>                 __m256 ___x7_12 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 12)][0]);
+377c455
+<                 __m256 ___x6_13 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 13)][0]);
+---
+>                 __m256 ___x7_13 = _mm256_load_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 13)][0]);
+382,445c460,575
+<                             __m256 ___x7_0 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][i_inner][0]);
+<                             __m256 ___x7_1 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 1)][0]);
+<                             __m256 ___x7_2 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 2)][0]);
+<                             __m256 ___x7_3 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 3)][0]);
+<                             __m256 ___x8_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][i_inner]);
+<                             __m256 ___x8_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][(i_inner + 1)]);
+<                             __m256 ___x8_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][(i_inner + 2)]);
+<                             __m256 ___x8_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3)][(i_inner + 3)]);
+<                             ___x6_0 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_0);
+<                             ___x6_0 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_0);
+<                             ___x6_0 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_0);
+<                             ___x6_0 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_0);
+<                             ___x6_1 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_1);
+<                             ___x6_1 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_1);
+<                             ___x6_1 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_1);
+<                             ___x6_1 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_1);
+<                             ___x6_2 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_2);
+<                             ___x6_2 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_2);
+<                             ___x6_2 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_2);
+<                             ___x6_2 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_2);
+<                             ___x6_3 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_3);
+<                             ___x6_3 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_3);
+<                             ___x6_3 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_3);
+<                             ___x6_3 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_3);
+<                             ___x6_4 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_4);
+<                             ___x6_4 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_4);
+<                             ___x6_4 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_4);
+<                             ___x6_4 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_4);
+<                             ___x6_5 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_5);
+<                             ___x6_5 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_5);
+<                             ___x6_5 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_5);
+<                             ___x6_5 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_5);
+<                             ___x6_6 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_6);
+<                             ___x6_6 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_6);
+<                             ___x6_6 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_6);
+<                             ___x6_6 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_6);
+<                             ___x6_7 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_7);
+<                             ___x6_7 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_7);
+<                             ___x6_7 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_7);
+<                             ___x6_7 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_7);
+<                             ___x6_8 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_8);
+<                             ___x6_8 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_8);
+<                             ___x6_8 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_8);
+<                             ___x6_8 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_8);
+<                             ___x6_9 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_9);
+<                             ___x6_9 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_9);
+<                             ___x6_9 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_9);
+<                             ___x6_9 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_9);
+<                             ___x6_10 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_10);
+<                             ___x6_10 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_10);
+<                             ___x6_10 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_10);
+<                             ___x6_10 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_10);
+<                             ___x6_11 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_11);
+<                             ___x6_11 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_11);
+<                             ___x6_11 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_11);
+<                             ___x6_11 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_11);
+<                             ___x6_12 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_12);
+<                             ___x6_12 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_12);
+<                             ___x6_12 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_12);
+<                             ___x6_12 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_12);
+<                             ___x6_13 = _mm256_fmadd_ps(___x8_0, ___x7_0, ___x6_13);
+<                             ___x6_13 = _mm256_fmadd_ps(___x8_1, ___x7_1, ___x6_13);
+<                             ___x6_13 = _mm256_fmadd_ps(___x8_2, ___x7_2, ___x6_13);
+<                             ___x6_13 = _mm256_fmadd_ps(___x8_3, ___x7_3, ___x6_13);
+---
+>                             __m256 ___x6_0_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 0)]);
+>                             __m256 ___x6_0_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 1)]);
+>                             __m256 ___x6_0_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 2)]);
+>                             __m256 ___x6_0_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_0)][(i_inner + 3)]);
+>                             __m256 ___x6_1_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 0)]);
+>                             __m256 ___x6_1_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 1)]);
+>                             __m256 ___x6_1_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 2)]);
+>                             __m256 ___x6_1_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_1)][(i_inner + 3)]);
+>                             __m256 ___x6_2_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 0)]);
+>                             __m256 ___x6_2_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 1)]);
+>                             __m256 ___x6_2_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 2)]);
+>                             __m256 ___x6_2_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_2)][(i_inner + 3)]);
+>                             __m256 ___x6_3_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 0)]);
+>                             __m256 ___x6_3_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 1)]);
+>                             __m256 ___x6_3_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 2)]);
+>                             __m256 ___x6_3_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_3)][(i_inner + 3)]);
+>                             __m256 ___x6_4_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 0)]);
+>                             __m256 ___x6_4_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 1)]);
+>                             __m256 ___x6_4_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 2)]);
+>                             __m256 ___x6_4_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_4)][(i_inner + 3)]);
+>                             __m256 ___x6_5_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 0)]);
+>                             __m256 ___x6_5_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 1)]);
+>                             __m256 ___x6_5_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 2)]);
+>                             __m256 ___x6_5_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_5)][(i_inner + 3)]);
+>                             __m256 ___x6_6_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 0)]);
+>                             __m256 ___x6_6_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 1)]);
+>                             __m256 ___x6_6_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 2)]);
+>                             __m256 ___x6_6_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_6)][(i_inner + 3)]);
+>                             __m256 ___x6_7_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 0)]);
+>                             __m256 ___x6_7_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 1)]);
+>                             __m256 ___x6_7_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 2)]);
+>                             __m256 ___x6_7_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_7)][(i_inner + 3)]);
+>                             __m256 ___x6_8_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 0)]);
+>                             __m256 ___x6_8_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 1)]);
+>                             __m256 ___x6_8_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 2)]);
+>                             __m256 ___x6_8_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_8)][(i_inner + 3)]);
+>                             __m256 ___x6_9_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 0)]);
+>                             __m256 ___x6_9_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 1)]);
+>                             __m256 ___x6_9_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 2)]);
+>                             __m256 ___x6_9_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_9)][(i_inner + 3)]);
+>                             __m256 ___x6_10_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 0)]);
+>                             __m256 ___x6_10_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 1)]);
+>                             __m256 ___x6_10_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 2)]);
+>                             __m256 ___x6_10_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_10)][(i_inner + 3)]);
+>                             __m256 ___x6_11_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 0)]);
+>                             __m256 ___x6_11_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 1)]);
+>                             __m256 ___x6_11_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 2)]);
+>                             __m256 ___x6_11_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_11)][(i_inner + 3)]);
+>                             __m256 ___x6_12_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 0)]);
+>                             __m256 ___x6_12_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 1)]);
+>                             __m256 ___x6_12_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 2)]);
+>                             __m256 ___x6_12_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_12)][(i_inner + 3)]);
+>                             __m256 ___x6_13_0 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 0)]);
+>                             __m256 ___x6_13_1 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 1)]);
+>                             __m256 ___x6_13_2 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 2)]);
+>                             __m256 ___x6_13_3 = _mm256_broadcast_ss(& ensemble4inputs[_neuron_index_0][i_outer][(j * 1 + _input_offset_2)][(k * 1 + _input_offset_3_13)][(i_inner + 3)]);
+>                             __m256 ___x8_0 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 0)][0]);
+>                             __m256 ___x8_1 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 1)][0]);
+>                             __m256 ___x8_2 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 2)][0]);
+>                             __m256 ___x8_3 = _mm256_load_ps(& ensemble4weights_transposed[_neuron_index_1_outer][i_outer][j][k][(i_inner + 3)][0]);
+>                             ___x7_0 = _mm256_fmadd_ps(___x6_0_0, ___x8_0, ___x7_0);
+>                             ___x7_0 = _mm256_fmadd_ps(___x6_0_1, ___x8_1, ___x7_0);
+>                             ___x7_0 = _mm256_fmadd_ps(___x6_0_2, ___x8_2, ___x7_0);
+>                             ___x7_0 = _mm256_fmadd_ps(___x6_0_3, ___x8_3, ___x7_0);
+>                             ___x7_1 = _mm256_fmadd_ps(___x6_1_0, ___x8_0, ___x7_1);
+>                             ___x7_1 = _mm256_fmadd_ps(___x6_1_1, ___x8_1, ___x7_1);
+>                             ___x7_1 = _mm256_fmadd_ps(___x6_1_2, ___x8_2, ___x7_1);
+>                             ___x7_1 = _mm256_fmadd_ps(___x6_1_3, ___x8_3, ___x7_1);
+>                             ___x7_2 = _mm256_fmadd_ps(___x6_2_0, ___x8_0, ___x7_2);
+>                             ___x7_2 = _mm256_fmadd_ps(___x6_2_1, ___x8_1, ___x7_2);
+>                             ___x7_2 = _mm256_fmadd_ps(___x6_2_2, ___x8_2, ___x7_2);
+>                             ___x7_2 = _mm256_fmadd_ps(___x6_2_3, ___x8_3, ___x7_2);
+>                             ___x7_3 = _mm256_fmadd_ps(___x6_3_0, ___x8_0, ___x7_3);
+>                             ___x7_3 = _mm256_fmadd_ps(___x6_3_1, ___x8_1, ___x7_3);
+>                             ___x7_3 = _mm256_fmadd_ps(___x6_3_2, ___x8_2, ___x7_3);
+>                             ___x7_3 = _mm256_fmadd_ps(___x6_3_3, ___x8_3, ___x7_3);
+>                             ___x7_4 = _mm256_fmadd_ps(___x6_4_0, ___x8_0, ___x7_4);
+>                             ___x7_4 = _mm256_fmadd_ps(___x6_4_1, ___x8_1, ___x7_4);
+>                             ___x7_4 = _mm256_fmadd_ps(___x6_4_2, ___x8_2, ___x7_4);
+>                             ___x7_4 = _mm256_fmadd_ps(___x6_4_3, ___x8_3, ___x7_4);
+>                             ___x7_5 = _mm256_fmadd_ps(___x6_5_0, ___x8_0, ___x7_5);
+>                             ___x7_5 = _mm256_fmadd_ps(___x6_5_1, ___x8_1, ___x7_5);
+>                             ___x7_5 = _mm256_fmadd_ps(___x6_5_2, ___x8_2, ___x7_5);
+>                             ___x7_5 = _mm256_fmadd_ps(___x6_5_3, ___x8_3, ___x7_5);
+>                             ___x7_6 = _mm256_fmadd_ps(___x6_6_0, ___x8_0, ___x7_6);
+>                             ___x7_6 = _mm256_fmadd_ps(___x6_6_1, ___x8_1, ___x7_6);
+>                             ___x7_6 = _mm256_fmadd_ps(___x6_6_2, ___x8_2, ___x7_6);
+>                             ___x7_6 = _mm256_fmadd_ps(___x6_6_3, ___x8_3, ___x7_6);
+>                             ___x7_7 = _mm256_fmadd_ps(___x6_7_0, ___x8_0, ___x7_7);
+>                             ___x7_7 = _mm256_fmadd_ps(___x6_7_1, ___x8_1, ___x7_7);
+>                             ___x7_7 = _mm256_fmadd_ps(___x6_7_2, ___x8_2, ___x7_7);
+>                             ___x7_7 = _mm256_fmadd_ps(___x6_7_3, ___x8_3, ___x7_7);
+>                             ___x7_8 = _mm256_fmadd_ps(___x6_8_0, ___x8_0, ___x7_8);
+>                             ___x7_8 = _mm256_fmadd_ps(___x6_8_1, ___x8_1, ___x7_8);
+>                             ___x7_8 = _mm256_fmadd_ps(___x6_8_2, ___x8_2, ___x7_8);
+>                             ___x7_8 = _mm256_fmadd_ps(___x6_8_3, ___x8_3, ___x7_8);
+>                             ___x7_9 = _mm256_fmadd_ps(___x6_9_0, ___x8_0, ___x7_9);
+>                             ___x7_9 = _mm256_fmadd_ps(___x6_9_1, ___x8_1, ___x7_9);
+>                             ___x7_9 = _mm256_fmadd_ps(___x6_9_2, ___x8_2, ___x7_9);
+>                             ___x7_9 = _mm256_fmadd_ps(___x6_9_3, ___x8_3, ___x7_9);
+>                             ___x7_10 = _mm256_fmadd_ps(___x6_10_0, ___x8_0, ___x7_10);
+>                             ___x7_10 = _mm256_fmadd_ps(___x6_10_1, ___x8_1, ___x7_10);
+>                             ___x7_10 = _mm256_fmadd_ps(___x6_10_2, ___x8_2, ___x7_10);
+>                             ___x7_10 = _mm256_fmadd_ps(___x6_10_3, ___x8_3, ___x7_10);
+>                             ___x7_11 = _mm256_fmadd_ps(___x6_11_0, ___x8_0, ___x7_11);
+>                             ___x7_11 = _mm256_fmadd_ps(___x6_11_1, ___x8_1, ___x7_11);
+>                             ___x7_11 = _mm256_fmadd_ps(___x6_11_2, ___x8_2, ___x7_11);
+>                             ___x7_11 = _mm256_fmadd_ps(___x6_11_3, ___x8_3, ___x7_11);
+>                             ___x7_12 = _mm256_fmadd_ps(___x6_12_0, ___x8_0, ___x7_12);
+>                             ___x7_12 = _mm256_fmadd_ps(___x6_12_1, ___x8_1, ___x7_12);
+>                             ___x7_12 = _mm256_fmadd_ps(___x6_12_2, ___x8_2, ___x7_12);
+>                             ___x7_12 = _mm256_fmadd_ps(___x6_12_3, ___x8_3, ___x7_12);
+>                             ___x7_13 = _mm256_fmadd_ps(___x6_13_0, ___x8_0, ___x7_13);
+>                             ___x7_13 = _mm256_fmadd_ps(___x6_13_1, ___x8_1, ___x7_13);
+>                             ___x7_13 = _mm256_fmadd_ps(___x6_13_2, ___x8_2, ___x7_13);
+>                             ___x7_13 = _mm256_fmadd_ps(___x6_13_3, ___x8_3, ___x7_13);
+449,462c579,592
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][_neuron_index_3][0], ___x6_0);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 1)][0], ___x6_1);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 2)][0], ___x6_2);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 3)][0], ___x6_3);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 4)][0], ___x6_4);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 5)][0], ___x6_5);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 6)][0], ___x6_6);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 7)][0], ___x6_7);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 8)][0], ___x6_8);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 9)][0], ___x6_9);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 10)][0], ___x6_10);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 11)][0], ___x6_11);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 12)][0], ___x6_12);
+<                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 13)][0], ___x6_13);
+---
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 0)][0], ___x7_0);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 1)][0], ___x7_1);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 2)][0], ___x7_2);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 3)][0], ___x7_3);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 4)][0], ___x7_4);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 5)][0], ___x7_5);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 6)][0], ___x7_6);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 7)][0], ___x7_7);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 8)][0], ___x7_8);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 9)][0], ___x7_9);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 10)][0], ___x7_10);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 11)][0], ___x7_11);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 12)][0], ___x7_12);
+>                 _mm256_store_ps(& ensemble4value[_neuron_index_0][_neuron_index_1_outer][_neuron_index_2][(_neuron_index_3 + 13)][0], ___x7_13);
