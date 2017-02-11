@@ -216,7 +216,6 @@ def check_caffe_forward(batch_size=3, input_shape=(16, 14, 14), ofm1=16, ofm2=32
 
 def test_padding():
     check_forward_backward(input_shape=(3, 14, 14), pad=1)
-'''
 def test_medium():
     check_forward_backward(input_shape=(16, 14, 14), pad=1)
 
@@ -234,4 +233,3 @@ def test_pad_kernel_dilation():
 
 def test_caffe_forward():
     check_caffe_forward(batch_size=1, input_shape=(3,16,16), pad=1)
-'''
