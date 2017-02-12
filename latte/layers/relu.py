@@ -36,6 +36,7 @@ def ReLULayer(net, input_ensemble):
     if "value" in input_ensemble.tiling_info:
         relu_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
         relu_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
+        relu_ens.simd(phase="forward", loop_var="_neuron_index_1_inner")
     else:
         relu_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
         relu_ens.parallelize(phase="backward", loop_var="_neuron_index_1")

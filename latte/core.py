@@ -471,8 +471,8 @@ class Net:
                                         else:
                                             new_body.append(stmt)
 
-                                func.defn = new_body       
-                                new_funcs.append(func )   
+                                    func.defn = new_body       
+                                    new_funcs.append(func )   
                 
                             
 
@@ -493,7 +493,7 @@ class Net:
 
                                 c_file = C.CFile(direction + _id, [
                                 include,first_func,outliner.func_headers,
-                                all_funcs,
+                                new_funcs,
                                 ], path=".compiled")
  
 
