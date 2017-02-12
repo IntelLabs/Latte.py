@@ -790,19 +790,19 @@ class Net:
       unsigned int kind;
       conv_desc.N = $nImg;
       conv_desc.C = $nIfm;
-      conv_desc.H = $ifh;
-      conv_desc.W = $ifw;
+      conv_desc.H = $ifh + $pad_in_0 + $pad_in_1 ;
+      conv_desc.W = $ifw + $pad_in_0 + $pad_in_1 ;
       conv_desc.K = $nOfm;
       conv_desc.R = $kh;
       conv_desc.S = $kw;
       conv_desc.u = $stride_h;
       conv_desc.v = $stride_w;
-      conv_desc.pad_h = $pad;
-      conv_desc.pad_w = $pad;
-      conv_desc.pad_h_in = $pad;
-      conv_desc.pad_w_in = $pad;
-      conv_desc.pad_h_out = $pad;
-      conv_desc.pad_w_out = $pad;
+      conv_desc.pad_h = $pad_in_0;
+      conv_desc.pad_w = $pad_in_0;
+      conv_desc.pad_h_in = $pad_in_0;
+      conv_desc.pad_w_in = $pad_in_0;
+      conv_desc.pad_h_out = $pad_out_0;
+      conv_desc.pad_w_out = $pad_out_0;
       conv_desc.threads = omp_get_max_threads();
       conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
       conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
@@ -838,6 +838,9 @@ class Net:
       , 'kw': C.Constant(neuron.weights.shape[2])
       , 'stride_h': C.Constant(ensemble.stride)
       , 'stride_w': C.Constant(ensemble.stride)
+      , 'pad_in_0' : self.connections_map[ensemble][0].source.pad[0]
+      , 'pad_in_1' : self.connections_map[ensemble][0].source.pad[1]
+      , 'pad_out_0' : ensemble.pad[0]
       , 'input': C.SymbolRef(ensemble.name + "inputs")
       , 'output': C.SymbolRef(ensemble.name+"value")
       , 'filter': C.SymbolRef(ensemble.name+"weights")})
@@ -853,17 +856,19 @@ class Net:
       libxsmm_dnn_err_t status; 
       conv_desc.N = $nImg;
       conv_desc.C = $nIfm;
-      conv_desc.H = $ifh;
-      conv_desc.W = $ifw;
+      conv_desc.H = $ifh + $pad_in_0 + $pad_in_1 ;
+      conv_desc.W = $ifw + $pad_in_0 + $pad_in_1 ;
       conv_desc.K = $nOfm;
       conv_desc.R = $kh;
       conv_desc.S = $kw;
       conv_desc.u = $stride_h;
       conv_desc.v = $stride_w;
-      conv_desc.pad_h_in = 0;
-      conv_desc.pad_w_in = 0;
-      conv_desc.pad_h_out = 0;
-      conv_desc.pad_w_out = 0;
+      conv_desc.pad_h = $pad_in_0;
+      conv_desc.pad_w = $pad_in_0;
+      conv_desc.pad_h_in = $pad_in_0;
+      conv_desc.pad_w_in = $pad_in_0;
+      conv_desc.pad_h_out = $pad_out_0;
+      conv_desc.pad_w_out = $pad_out_0;
       conv_desc.threads = omp_get_max_threads();
       conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
       conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
@@ -900,6 +905,9 @@ class Net:
       , 'kw': C.Constant(neuron.weights.shape[2])
       , 'stride_h': C.Constant(ensemble.stride)
       , 'stride_w': C.Constant(ensemble.stride)
+      , 'pad_in_0' : self.connections_map[ensemble][0].source.pad[0]
+      , 'pad_in_1' : self.connections_map[ensemble][0].source.pad[1]
+      , 'pad_out_0' : ensemble.pad[0]
       , 'input': C.SymbolRef(ensemble.name + "grad_inputs")
       , 'output': C.SymbolRef(ensemble.name+"grad")
       , 'filter': C.SymbolRef(ensemble.name+"weights")})
@@ -915,17 +923,19 @@ class Net:
     libxsmm_dnn_err_t status; 
     conv_desc.N = $nImg;
     conv_desc.C = $nIfm;
-    conv_desc.H = $ifh;
-    conv_desc.W = $ifw;
+    conv_desc.H = $ifh + $pad_in_0 + $pad_in_1 ;
+    conv_desc.W = $ifw + $pad_in_0 + $pad_in_1 ;
     conv_desc.K = $nOfm;
     conv_desc.R = $kh;
     conv_desc.S = $kw;
     conv_desc.u = $stride_h;
     conv_desc.v = $stride_w;
-    conv_desc.pad_h_in = 0;
-    conv_desc.pad_w_in = 0;
-    conv_desc.pad_h_out = 0;
-    conv_desc.pad_w_out = 0;
+    conv_desc.pad_h = $pad_in_0;
+    conv_desc.pad_w = $pad_in_0;
+    conv_desc.pad_h_in = $pad_in_0;
+    conv_desc.pad_w_in = $pad_in_0;
+    conv_desc.pad_h_out = $pad_out_0;
+    conv_desc.pad_w_out = $pad_out_0;
     conv_desc.threads = omp_get_max_threads();
     conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
     conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
@@ -961,6 +971,9 @@ class Net:
       , 'kw': C.Constant(neuron.weights.shape[2])
       , 'stride_h': C.Constant(ensemble.stride)
       , 'stride_w': C.Constant(ensemble.stride)
+      , 'pad_in_0' : self.connections_map[ensemble][0].source.pad[0]
+      , 'pad_in_1' : self.connections_map[ensemble][0].source.pad[1]
+      , 'pad_out_0' : ensemble.pad[0]
       , 'input': C.SymbolRef(ensemble.name + "inputs")
       , 'output': C.SymbolRef(ensemble.name+"grad")
       , 'filter': C.SymbolRef(ensemble.name+"grad_weights")})
