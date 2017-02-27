@@ -419,29 +419,46 @@ class Net:
             '''
             #c_file.body[1].defn = new_body 
             #c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
-            outliner = transformers.Outliner(self.buffers, direction)  
-            c_file = outliner.visit(c_file)
-            main_func = C.FunctionDecl(None, C.SymbolRef(direction + _id), params, c_file.body[1].defn)
-            for arg in args:
-              name = arg
-              buf = self.buffers[name]
-              main_func.defn.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
-              util.insert_cast(main_func.defn, buf.shape[1:], name, buf.dtype)
-            all_funcs = [ main_func]+ outliner.new_funcs
-            new_funcs = []
-            for func in all_funcs:
-                   new_body=[]          
-                   for stmt in func.defn:
-                       if isinstance(stmt, C.For): 
-                            #if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                            #    new_body.extend(stmt.pre_trans)
-                           stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
-                           new_body.append(stmt)
-                       else:
-                           new_body.append(stmt)
+            if latte.config.parallel_strategy == "OPENMP": # or latte.config.parallel_strategy == "LIBXSMMOPENMP":
+              outliner = transformers.Outliner(self.buffers, direction)  
+              c_file = outliner.visit(c_file)
+              main_func = C.FunctionDecl(None, C.SymbolRef(direction + _id), params, c_file.body[1].defn)
+              for arg in args:
+                name = arg
+                buf = self.buffers[name]
+                main_func.defn.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+                util.insert_cast(main_func.defn, buf.shape[1:], name, buf.dtype)
+              all_funcs = [ main_func]+ outliner.new_funcs
+              new_funcs = []
+              for func in all_funcs:
+                new_body=[]          
+                for stmt in func.defn:
+                  if isinstance(stmt, C.For): 
+                    #if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                    #    new_body.extend(stmt.pre_trans)
+                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
+                    new_body.append(stmt)
+                  else:
+                    new_body.append(stmt)
 
-                   func.defn = new_body       
-                   new_funcs.append(func )   
+                func.defn = new_body       
+                new_funcs.append(func)   
+            else: #no outliner for tbb, and other cases..
+              for stmt in c_file.body[1].defn:
+                incr += 1
+                if isinstance(stmt, C.For): 
+                               if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                                   new_body.extend(stmt.pre_trans)
+                               stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
+                               new_body.append(stmt)
+                else:
+                            new_body.append(stmt)
+              for arg in args:
+                name = arg
+                buf = self.buffers[name]
+                new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
+                util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
+
             if len(args) > 0:
                    #shape_str = "{}* ".format(self.buffers[args2[0]].dtype) + args2[0].join(", {}* ".format(self.buffers[d].dtype) + "{}".format(d) for d in args2[1:])
                    shape_str = "{}* ".format(   ctree.types.codegen_type(ctree.types.get_c_type_from_numpy_dtype(self.buffers[args[0]].dtype)())) + \
