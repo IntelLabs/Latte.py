@@ -444,15 +444,17 @@ class Net:
                 func.defn = new_body       
                 new_funcs.append(func)   
             else: #no outliner for tbb, and other cases..
+              prologue=[]
               for stmt in c_file.body[1].defn:
                 incr += 1
                 if isinstance(stmt, C.For): 
-                               if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                                   new_body.extend(stmt.pre_trans)
-                               stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
-                               new_body.append(stmt)
+                  if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                    prolog.append(stmt.pre_trans)  #new_body.extend(stmt.pre_trans)
+                    stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
+                    new_body.append(stmt)
                 else:
-                            new_body.append(stmt)
+                    new_body.append(stmt)
+              new_body = prologue + new_body  
               for arg in args:
                 name = arg
                 buf = self.buffers[name]
