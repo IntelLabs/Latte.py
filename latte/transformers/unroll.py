@@ -25,7 +25,7 @@ class UnrollStatements(ast.NodeTransformer):
             check = [util.contains_symbol(node.right, var) for var in list(self.unrolled_vars)+ [self.target_var]]
             if any(check):
                 body = []
-                if node.left.type is not None:
+                if hasattr(node.left, 'type') and node.left.type is not None:
                     self.unrolled_vars.add(node.left.name)
                 for i in range(self.factor):
                     stmt = deepcopy(node)

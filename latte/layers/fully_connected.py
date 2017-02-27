@@ -57,7 +57,9 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
         factor = 16
         while net.batch_size % factor != 0:
             factor -= 1
-        ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
+            
+        if latte.config.parallel_strategy != "FLOWGRAPH_LOOP":
+          ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
     ens.parallelize(phase="forward", loop_var="_neuron_index_0")
     ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
     ens.parallelize(phase="backward", loop_var="_neuron_index_0")
