@@ -42,6 +42,7 @@ class Outliner(ast.NodeTransformer):
 
     def visit_FunctionDecl(self, node):
         new_body = []
+        pre=[]
         count = 0
         _id = 2
         for statement in node.defn:
@@ -56,7 +57,7 @@ class Outliner(ast.NodeTransformer):
 
                if hasattr(statement, 'pre_trans') and statement.pre_trans is not None:
                     #new_body.extend(stmt.pre_trans)
-                    new_body.extend(statement.pre_trans)   
+                    pre.extend(statement.pre_trans)   
                    # self.visit(temp)
 
                #self.seen = set();
@@ -124,7 +125,7 @@ class Outliner(ast.NodeTransformer):
 
             else:
                 new_body.append(statement)
- 
+        new_body = pre + new_body
         node.defn = new_body
         return node
 
