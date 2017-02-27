@@ -40,5 +40,8 @@ def ReLULayer(net, input_ensemble):
     else:
         relu_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
         relu_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
+    if relu_ens.shape[1] % 2 == 0 and relu_ens.shape[2] % 2 == 0:
+      relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=2)
+      relu_ens.unroll_2(phase="forward", loop_var="_neuron_index_3", factor=2)
 
     return relu_ens

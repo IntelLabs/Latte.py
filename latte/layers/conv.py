@@ -73,6 +73,10 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     bias_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_0", "_neuron_index_1_outer"))
     bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
     bias_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
+
+    if bias_ens.shape[1] % 2 == 0 and bias_ens.shape[2] % 2 == 0:
+      bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=2)
+      bias_ens.unroll_2(phase="forward", loop_var="_neuron_index_3", factor=2)
     # End Optimizations
 
     return EnsembleGroup(conv_ens, bias_ens)
@@ -198,7 +202,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
             outer_unroll_factor -= 1
           conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
           if (kernel_h == 1 and kernel_w == 1) or (stride_h >1): 
-            inner_unroll_factor = 1
+            inner_unroll_factor = 2
           else:
             inner_unroll_factor = 4
           if inner_unroll_factor > 1:
