@@ -480,7 +480,7 @@ class Net:
                 backward_pre_gen
                 ], path=".compiled")
 
-               c_file._ext = "cpp"
+            c_file._ext = "cpp"
           module = util.mpi_compile(ctree.nodes.Project([c_file]))
                            # get_callable(functions_handle, type_signature)
           type_sig = ctypes.CFUNCTYPE(None, *type_sig)
