@@ -1,3 +1,19 @@
+import numpy as np
+from latte import *
+#import caffe
+from latte.math import compute_softmax_loss
+import os
+import time
+ 
+batch_size = 128
+net = Net(batch_size)
+channels=3
+height=224
+width=224
+ 
+data = MemoryDataLayer(net, (3, 224, 224))
+
+
 conv_conv2d = ConvLayer(net, data, num_filters=32, kernel=3, stride=2, pad=0)
 conv_relu = ReLULayer(net, conv_conv2d_bn)
 conv_1_1_conv2d = ConvLayer(net, conv_conv2d_relu, num_filters=32, kernel=3, stride=1, pad=0)
@@ -211,7 +227,45 @@ mixed_10_tower_2_conv_conv2d = FullyConnectedLayer(net, MAX_pool_mixed_10_pool, 
 mixed_10_tower_2_conv_relu = ReLULayer(net, mixed_10_tower_2_conv_conv2d_bn)
 ch_concat_mixed_10_chconcat = ConcatLayer(net, [mixed_10_conv_conv2d_relu, mixed_10_tower_mixed_conv_conv2d_relu, mixed_10_tower_mixed_conv_1_conv2d_relu, mixed_10_tower_1_mixed_conv_conv2d_relu, mixed_10_tower_1_mixed_conv_1_conv2d_relu, mixed_10_tower_2_conv_conv2d_relu])
 global_pool = MeanPoolingLayer(net, ch_concat_mixed_10_chconcat, kernel=8, stride=1, pad=0)
-drop = DropoutLayer(net, global_pool, ratio=0.8)
-fc1 =  FullyConnectedLayer(net, flatten, 1000)
-loss = SoftmaxLossLayer(net, fc1, label)
+#drop = DropoutLayer(net, global_pool, ratio=0.8)
+#fc1 =  FullyConnectedLayer(net, flatten, 1000)
+#loss = SoftmaxLossLayer(net, fc1, label)
+
+
+
+net.compile()
+ 
+ 
+data_value = np.random.rand(batch_size, channels, height, width)
+ 
+data.set_value(data_value)
+#print("Finished Copying\n")
+net.forward()
+net.forward()
+net.forward()
+#print("Finished forward computation\n") 
+ 
+total_forward_time=0.0
+timing_info = False
+for epoch in range(10):
+ 
+ 
+    for i in range(1):
+        forward_time = 0.0
+        backward_time = 0.0
+ 
+ 
+        t = time.time()
+        net.forward()
+        forward_time += time.time() - t
+ 
+        if timing_info:
+            print("Iteration {} -- ".format(epoch))
+            print("FP                   : {0:.3f} ms".format(forward_time * 1000))
+ 
+        total_forward_time += forward_time
+ 
+print("Total FP                   : {0:.3f} ms".format(total_forward_time * 1000))
+print("Total Inference Throughput : {0:.3f} images/second".format((10*batch_size)/(total_forward_time)))
+
 
