@@ -1715,8 +1715,8 @@ class Net:
                 func_def = transformers.insert_pragma_simd(func_def, loopvar)
 
           if direction in ensemble.unroll_info:
-            unroll_var, unroll_factor = ensemble.unroll_info[direction]
-            unroller.unroll_loop(func_def, unroll_var, unroll_factor)
+            unroll_var, unroll_factor, unroll_type = ensemble.unroll_info[direction]
+            unroller.unroll_loop(func_def, unroll_var, unroll_factor, unroll_type)
           self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
           type_sig = []
@@ -1737,8 +1737,8 @@ class Net:
             post_trans = []
 
           if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
-            (unroll_var_2, unroll_factor_2) = ensemble.unroll_2_info[direction]
-            unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2)
+            (unroll_var_2, unroll_factor_2, unroll_type) = ensemble.unroll_2_info[direction]
+            unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
           # check for fused code
           func_def = copypropagator.propagate_copies(func_def)
           if "ON" in latte.config.prefetch_option and direction in ensemble.prefetch_info:

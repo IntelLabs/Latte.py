@@ -90,11 +90,11 @@ class Ensemble:
     def vectorize(self, phase, loop_var, factor):
         self._vectorize_info[phase] = (loop_var, factor)
 
-    def unroll(self, phase, loop_var, factor):
-        self._unroll_info[phase] = (loop_var, factor)
-
-    def unroll_2(self, phase, loop_var, factor):
-        self._unroll_2_info[phase] = (loop_var, factor)
+    def unroll(self, phase, loop_var, factor,unroll_type=0):
+        self._unroll_info[phase] = (loop_var, factor, unroll_type)
+ 
+    def unroll_2(self, phase, loop_var, factor, unroll_type =0):
+        self._unroll_2_info[phase] = (loop_var, factor, unroll_type)
 
     def parallelize(self, phase, loop_var):
         self._parallel_info[phase].append(loop_var)

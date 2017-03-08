@@ -4,11 +4,12 @@ import ctree.c.nodes as C
 from copy import deepcopy
 
 class UnrollStatements(ast.NodeTransformer):
-    def __init__(self, target_var, factor):
+    def __init__(self, target_var, factor, unroll_type):
         super().__init__()
         self.target_var = target_var
         self.factor = factor
         self.unrolled_vars = set()
+        self.unroll_type = unroll_type
 
     def visit(self, node):
         """
@@ -31,7 +32,12 @@ class UnrollStatements(ast.NodeTransformer):
                     stmt = deepcopy(node)
                     for var in self.unrolled_vars:
                         stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
-                    body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                    if self.unroll_type == 0:
+                        body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                    elif self.unroll_type == 1 :
+                        body.append(util.replace_symbol(self.target_var, C.Add(C.Mul(C.Constant(self.factor),C.SymbolRef(self.target_var)), C.Constant(i)), stmt))
+                    else:
+                       assert(false)
                 return body
         return node
 
@@ -45,7 +51,15 @@ class UnrollStatements(ast.NodeTransformer):
                     stmt = deepcopy(node)
                     for var in self.unrolled_vars:
                         stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
-                    body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                    #body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                    if self.unroll_type == 0:
+                        body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                    elif self.unroll_type == 1 :
+                        body.append(util.replace_symbol(self.target_var, C.Add(C.Mul(C.Constant(self.factor),C.SymbolRef(self.target_var)), C.Constant(i)), stmt))
+                    else:
+                       assert(false)
+
+
                 return body
             elif isinstance(node.target, C.BinaryOp) and isinstance(node.target.op, C.Op.ArrayRef):
                 assert False
@@ -53,7 +67,15 @@ class UnrollStatements(ast.NodeTransformer):
                     stmt = deepcopy(node)
                     for var in self.unrolled_vars:
                         stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
-                    body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                    #body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+
+                    if self.unroll_type == 0:
+                        body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                    elif self.unroll_type == 1 :
+                        body.append(util.replace_symbol(self.target_var, C.Add(C.Mul(C.Constant(self.factor),C.SymbolRef(self.target_var)), C.Constant(i)), stmt))
+                    else:
+                       assert(false)
+
                 return body
             else:
                 raise NotImplementedError()
@@ -67,15 +89,23 @@ class UnrollStatements(ast.NodeTransformer):
                 stmt = deepcopy(node)
                 for var in self.unrolled_vars:
                     stmt = util.replace_symbol(var, C.SymbolRef(var + "_" + str(i)), stmt)
-                stmt = util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt)
-                body.append(stmt)
+                #stmt = util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt)
+                #body.append(stmt)
+                if self.unroll_type == 0:
+                    body.append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
+                elif self.unroll_type == 1 :
+                    body.append(util.replace_symbol(self.target_var, C.Add(C.Mul(C.Constant(self.factor),C.SymbolRef(self.target_var)), C.Constant(i)), stmt))
+                else:
+                    assert(false)
+
             return body
         return node
 
 class LoopUnroller(ast.NodeTransformer):
-    def __init__(self, target_var, factor):
+    def __init__(self, target_var, factor, unroll_type):
         super().__init__()
         self.target_var = target_var
+        self.unroll_type = unroll_type
         self.factor = factor
     if False:
         def visit(self, node):
@@ -108,11 +138,18 @@ class LoopUnroller(ast.NodeTransformer):
         def visit_For(self, node):
             node.body = [self.visit(s) for s in node.body]
             if node.init.left.name == self.target_var:
-                node.incr = C.AddAssign(C.SymbolRef(self.target_var), C.Constant(self.factor))
-                visitor = UnrollStatements(self.target_var, self.factor)
+                if self.unroll_type == 0:
+                    node.incr = C.AddAssign(C.SymbolRef(self.target_var), C.Constant(self.factor))
+                    node.incr = C.AddAssign(C.SymbolRef(self.target_var), C.Constant(self.factor))
+                elif self.unroll_type == 1:
+                    assert(node.test.right.value%self.factor == 0)
+                    node.test.right.value = node.test.right.value//self.factor
+                else:
+                    assert(0)   
+                visitor = UnrollStatements(self.target_var, self.factor, self.unroll_type)
                 node.body = util.flatten([visitor.visit(s) for s in node.body])
             return node
 
 
-def unroll_loop(ast, target_var, factor):
-    return LoopUnroller(target_var, factor).visit(ast)
+def unroll_loop(ast, target_var, factor, unroll_type=0):
+    return LoopUnroller(target_var, factor, unroll_type).visit(ast)
