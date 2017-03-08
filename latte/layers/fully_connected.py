@@ -77,8 +77,9 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
             factor = 16
             while net.batch_size % factor != 0:
                 factor -= 1
-            ens.unroll(phase="backward", loop_var="_neuron_index_0", factor=factor)
-            ens.unroll(phase="update_internal", loop_var="_neuron_index_0", factor=factor)
+            if latte.config.parallel_strategy != "FLOWGRAPH_LOOP":
+              ens.unroll(phase="backward", loop_var="_neuron_index_0", factor=factor)
+              ens.unroll(phase="update_internal", loop_var="_neuron_index_0", factor=factor)
             ens.vectorize(phase="update_internal", loop_var="__unique_loopvar0_inner", factor=latte.config.SIMDWIDTH)
     # Added by Raj/Anand
     #ens.use_libxsmm(1)
@@ -104,5 +105,11 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
     bias_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
     bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_0")
     bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
+    if "OPENCL" not in latte.config.parallel_strategy:
+        factor = 16
+        while net.batch_size % factor != 0:
+            factor -= 1
+        if latte.config.parallel_strategy != "FLOWGRAPH_LOOP":
+          ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
 
     return EnsembleGroup(ens, bias_ens)
