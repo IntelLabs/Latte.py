@@ -56,6 +56,9 @@ if parallel_strategy not in parallel_strategies:
     parallel_strategy = "SIMPLE_LOOP"
 
 nthreads = os.getenv("LATTE_NUM_THREADS", None)
+img_block_size = os.getenv("LATTE_IMG_BLOCK_SIZE", None)
+if img_block_size is None:
+  img_block_size = 16
 
 if parallel_strategy == "OPENCL_SIMPLE_LOOP":
     import pycl as cl

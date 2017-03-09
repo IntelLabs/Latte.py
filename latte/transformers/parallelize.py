@@ -71,6 +71,68 @@ class LatteRuntimeLoopParallel(ast.NodeTransformer):
             return to_return
         return node
 
+class LatteTBBLoopParallel(ast.NodeTransformer):
+    def __init__(self, buffers, batch_size):
+        self.buffers = buffers
+        self.batch_size = batch_size
+
+    def _gen_reduce_for_loop(self, loop, var, size):
+        looplen1 = loop.test.right
+        loopincr = loop.incr.value.value
+        return StringTemplate("""
+            //{
+            //  ContinueNode *$reduce_node = new ContinueNode(&graph, [=]() {
+              parallel_for(0,$size,
+                [=](int low, int high) {
+                  #pragma simd
+                  for (int x = low; x < high; ++x) {
+                    float sum = _$arr[x];
+                    #pragma unroll
+                    for (int i = 1; i < $batch_size; ++ i) {
+                      sum += _$arr[i * $size + x];
+                    }
+                    _$arr[x] = sum;
+                  }
+                });
+            //  });
+            //  for (int i = 0; i < $looplen1; i+=$loopincr) {
+            //    make_edge($node_list[i], $reduce_node);
+            //  }
+            //};
+            """, {'size': C.Constant(size),
+                  'batch_size': C.Constant(self.batch_size),
+                  'arr': C.SymbolRef(var),
+                  'node_list': C.SymbolRef("node_list_"),
+                  'reduce_node': C.SymbolRef("reduce_node_"),
+                  'looplen1': C.Constant(looplen1.value),  
+                  'loopincr': C.Constant(loopincr)
+                  })
+
+    def visit_For(self, node):
+        node.body = [self.visit(s) for s in node.body]
+        if hasattr(node, 'parallel') and node.parallel:
+            to_return = [StringTemplate("""
+                parallel_for(0,$looplen / $loopincr,
+                  [=](int low, int high) {
+                    for (int tmp_$loopvar = low; tmp_$loopvar < high; tmp_$loopvar++) {
+                      int $loopvar = tmp_$loopvar * $loopincr;
+                      $body;
+                    }
+                  }
+                );
+                """, {
+                    "looplen": node.test.right,
+                    "loopvar": node.test.left,
+                    "loopincr": node.incr.value,
+                    "body": node.body
+                })]
+            if hasattr(node, 'reduce_vars') and len(node.reduce_vars) > 0:
+                for var in node.reduce_vars:
+                    size = np.prod(self.buffers[var].shape[1:])
+                    to_return.append(self._gen_reduce_for_loop(node, var, size))
+            return to_return
+        return node
+
 class LatteOpenMPParallel(ast.NodeTransformer):
     def __init__(self, buffers, batch_size):
         self.buffers = buffers
@@ -278,7 +340,7 @@ class LatteOpenCLSimpleLoopParallel(ast.NodeTransformer):
 
 def parallelize(tree, buffers, cl_buffers, kernels, batch_size):
     if latte.config.parallel_strategy == "SIMPLE_LOOP":
-        return LatteRuntimeLoopParallel(buffers, batch_size).visit(tree)
+        return LatteTBBLoopParallel(buffers, batch_size).visit(tree)
     elif latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
         raise NotImplementedError()
     elif latte.config.parallel_strategy == "OPENMP" or latte.config.parallel_strategy == "LIBXSMMOPENMP":
@@ -287,3 +349,7 @@ def parallelize(tree, buffers, cl_buffers, kernels, batch_size):
         return LatteOpenCLSimpleLoopParallel(buffers, cl_buffers, kernels, batch_size).visit(tree)
     else:
         raise NotImplementedError()
+
+def tbb_parallelize(tree, buffers, cl_buffers, kernels, batch_size):
+    return LatteTBBLoopParallel(buffers, batch_size).visit(tree)
+    

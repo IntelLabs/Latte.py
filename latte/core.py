@@ -52,7 +52,7 @@ transpose = FileTemplate(package_path + transpose_path)
 
 include = FileTemplate(package_path + "/templates/includes.tmpl.c", {
     "LATTE_PACKAGE_PATH": StringTemplate(package_path),
-    "INCLUDE_RUNTIME": C.SymbolRef("1" if latte.config.parallel_strategy in ["SIMPLE_LOOP"] else "0"),
+    "INCLUDE_RUNTIME": C.SymbolRef("1" if latte.config.parallel_strategy in ["SIMPLE_LOOP", "FLOWGRAPH_LOOP"] else "0"),
     "TRANSPOSE": transpose,
     "SIMDWIDTH": C.Constant(latte.config.SIMDWIDTH),
     "INCLUDE_OPENCL": C.SymbolRef("1" if "OPENCL" in latte.config.parallel_strategy else "0"),
@@ -445,21 +445,46 @@ class Net:
                 new_funcs.append(func)   
             else: #no outliner for tbb, and other cases..
               prologue=[]
+              incr = -1
+              reduce_incr = -1
+              execute_stmts=[]
               for stmt in c_file.body[1].defn:
                 incr += 1
+                reduce_incr +=1
                 if isinstance(stmt, C.For): 
-                  if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
-                    prolog.append(stmt.pre_trans)  #new_body.extend(stmt.pre_trans)
+                  if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":#flow_graph model
+                    if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                      prologue.append(stmt.pre_trans)  #new_body.extend(stmt.pre_trans)
+                    if direction == "forward":
+                      new_body.append(self._gen_graph_nodes_from_loop(stmt, incr, reduce_incr))
+                      if incr > 0:
+                        if "index_0" in stmt.init.left.name: #weight_update code needs reduction -- TODO
+                          new_body.append(self._gen_graph_edges_for_loop(stmt, incr-1, incr))
+                        else:
+                          new_body.append(self._gen_graph_edges_reduce_loop(stmt, incr, reduce_incr-1))
+                      else: 
+                        execute_stmts.append(self._gen_execute_for_loop(stmt, incr))
+                    else: #for backward and update use tbb code generation
+                      stmt = parallelizer.tbb_parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
+                      new_body.append(stmt)
+                  else: 
+                    if hasattr(stmt, 'pre_trans') and stmt.pre_trans is not None:
+                      new_body.append(stmt.pre_trans)  #new_body.extend(stmt.pre_trans)
                     stmt = parallelizer.parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
                     new_body.append(stmt)
+                  '''
+                  stmt = parallelizer.tbb_parallelize(stmt, self.buffers, self.cl_buffers, kernels, self.batch_size)
+                  new_body.append(stmt)
+                  '''
                 else:
-                    new_body.append(stmt)
-              new_body = prologue + new_body  
+                  new_body.append(stmt)
+              new_body = prologue + new_body + execute_stmts  
               for arg in args:
                 name = arg
                 buf = self.buffers[name]
                 new_body.insert(0, StringTemplate("__assume_aligned({}, 64);\n".format(name)))
                 util.insert_cast(new_body, buf.shape[1:], name, buf.dtype)
+              c_file.body[1].defn = new_body
 
             if len(args) > 0:
                    #shape_str = "{}* ".format(self.buffers[args2[0]].dtype) + args2[0].join(", {}* ".format(self.buffers[d].dtype) + "{}".format(d) for d in args2[1:])
@@ -472,10 +497,16 @@ class Net:
               {"func":C.SymbolRef(direction+ _id),
                "args":C.SymbolRef(shape_str)
               })
-            c_file = C.CFile(direction + _id, [
-            include,first_func,outliner.func_headers,
-            new_funcs,
-            ], path=".compiled")
+            if latte.config.parallel_strategy == "OPENMP": # or latte.config.parallel_strategy == "LIBXSMMOPENMP":
+              c_file = C.CFile(direction + _id, [
+                  include,first_func,outliner.func_headers,
+                  new_funcs,
+                  ], path=".compiled")
+            else:
+              c_file = C.CFile(direction + _id, [
+                  include,c_file.body[1],
+                  ], path=".compiled")
+
             c_file._ext = "cpp"
             c_file = transformers.promote_in_place_load_stores(c_file, in_place_buffer_map)
             if latte.config.parallel_strategy == "FLOWGRAPH_LOOP":
@@ -697,43 +728,163 @@ class Net:
                     self.reshaped_buffers[name] = buf_shape
                     self.buffers[name] = buf.reshape(buf_shape)
 
-    def _gen_graph_nodes_from_loop(self, loop, id):
+    def _gen_graph_nodes_from_loop(self, loop, id, reduce_id):
         loopvar1 = C.SymbolRef(loop.init.left.name)
         looplen1 = loop.test.right
         loopincr = loop.incr.value
+        #if direction == "forward" :
+        #  body = parallelizer.tbb_parallelize_inner(loop.body, self.buffers, self.batch_size)
+        #else:
         body = loop.body
-        return StringTemplate("""
-        std::vector<ContinueNode *> $node_list;
-        for (int __z = 0; __z < $looplen1 / $loopincr; __z++) {
-          ContinueNode *node = new ContinueNode(&graph, [=]() {
-            int $loopvar1 = __z * $loopincr;
-            $body;
-          });
-          for (int i = 0; i < $loopincr; i++)
-            $node_list.push_back(node);
-        }
-        """, {'loopvar1': loopvar1, 'looplen1': looplen1, 'loopincr': loopincr,
-              'body': body, 
-              'node_list': C.SymbolRef("node_list_" + str(id))
-        })
+        to_return = []
+        if all(isinstance(s, C.For) and hasattr(s, 'parallel') and s.parallel for s in loop.body):
+            for s in loop.body:
+              if isinstance(s, C.For):
+                loopvar2 = C.SymbolRef(s.init.left.name)
+                looplen2 = s.test.right
+                loopincr2 = s.incr.value
+                inner_body = s.body
+                '''
+                if loopincr == 1:
+                '''
+                to_return.append(StringTemplate("""
+                  std::vector<ContinueNode *> $node_list;
+                  for (int __z = 0; __z < $looplen1 / $loopincr; __z+=$block) {
+                    ContinueNode *node = new ContinueNode(&graph, [=]() {
+                      for (int ___z=__z; ___z<__z+$block; ___z++) {
+                        int $loopvar1 = ___z * $loopincr;
+                        parallel_for(0,$looplen2 / $loopincr2,
+                          [=](int low, int high) {
+                          for (int tmp_$loopvar2 = low; tmp_$loopvar2 < high; tmp_$loopvar2++) {
+                            int $loopvar2 = tmp_$loopvar2 * $loopincr2;
+                            $body;
+                          }
+                        }
+                        );
+                      }
+                    });
+                    for (int i = 0; i < $loopincr; i++)
+                      $node_list.push_back(node);
+                  }
+                  """, {'loopvar1': loopvar1, 'looplen1': looplen1, 'loopincr': loopincr,
+                  'loopvar2': loopvar2, 'looplen2': looplen2, 'loopincr2': loopincr2,
+                  'body': inner_body, 
+                  'node_list': C.SymbolRef("node_list_" + str(id)),
+                  'block': latte.config.img_block_size,
+                }));
+                '''
+                else:
+                  to_return.append(StringTemplate("""
+                    std::vector<ContinueNode *> $node_list;
+                    for (int __z = 0; __z < $looplen1 / $loopincr; __z++) {
+                      ContinueNode *node = new ContinueNode(&graph, [=]() {
+                        int $loopvar1 = __z * $loopincr;
+                        parallel_for(0,$looplen2 / $loopincr2,
+                          [=](int low, int high) {
+                          for (int tmp_$loopvar2 = low; tmp_$loopvar2 < high; tmp_$loopvar2++) {
+                            int $loopvar2 = tmp_$loopvar2 * $loopincr2;
+                            $body;
+                          }
+                        }
+                        );
+                      });
+                      for (int i = 0; i < $loopincr; i++)
+                        $node_list.push_back(node);
+                    }
+                    """, {'loopvar1': loopvar1, 'looplen1': looplen1, 'loopincr': loopincr,
+                    'loopvar2': loopvar2, 'looplen2': looplen2, 'loopincr2': loopincr2,
+                    'body': inner_body, 
+                    'node_list': C.SymbolRef("node_list_" + str(id))
+                }));
+                '''
+        else:
+            to_return = [StringTemplate("""
+            std::vector<ContinueNode *> $node_list;
+            for (int __z = 0; __z < $looplen1 / $loopincr; __z++) {
+              ContinueNode *node = new ContinueNode(&graph, [=]() {
+                int $loopvar1 = __z * $loopincr;
+                $body;
+              });
+              for (int i = 0; i < $loopincr; i++)
+                $node_list.push_back(node);
+            }
+            """, {'loopvar1': loopvar1, 'looplen1': looplen1, 'loopincr': loopincr,
+                'body': body, 
+                'node_list': C.SymbolRef("node_list_" + str(id))
+            })]
+        if hasattr(loop, 'reduce_vars') and len(loop.reduce_vars) > 0:
+          for var in loop.reduce_vars:
+            size = np.prod(self.buffers[var].shape[1:])
+            to_return.append(StringTemplate("""
+              ContinueNode *$reduce_node = new ContinueNode(&graph, [=]() {
+              parallel_for(0,$size,
+                [=](int low, int high) {
+                  #pragma simd
+                  for (int x = low; x < high; ++x) {
+                    float sum = _$arr[x];
+                    #pragma unroll
+                    for (int i = 1; i < $batch_size; ++ i) {
+                      sum += _$arr[i * $size + x];
+                    }
+                    _$arr[x] = sum;
+                  }
+              });
+              });
+              for (int i = 0; i < $looplen1; i+=$loopincr) {
+                make_edge($node_list[i], $reduce_node);
+              };
+            """, {'size': C.Constant(size),
+                  'batch_size': C.Constant(self.batch_size),
+                  'arr': C.SymbolRef(var),
+                  'node_list': C.SymbolRef("node_list_"+str(id)),
+                  'reduce_node': C.SymbolRef("reduce_node_"+str(reduce_id)),
+                  'looplen1': C.Constant(looplen1.value),  
+                  'loopincr': C.Constant(loopincr)
+          }))
+        return to_return
 
     def _gen_graph_edges_for_loop(self, loop, source_id, sink_id):
         loopvar1 = C.SymbolRef(loop.init.left.name)
         looplen1 = loop.test.right
         loopincr = loop.incr.value.value
         return StringTemplate("""
-          for (int i = 0; i < $looplen1; ++i) {
+          for (int i = 0; i < $looplen1; i+=$block) {
             make_edge($prev_node_list[i], $node_list[i]);
           }
         """, {
             'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr),
             'node_list': C.SymbolRef("node_list_" + str(sink_id)),
             'prev_node_list': C.SymbolRef("node_list_" + str(source_id)),
+            'block': latte.config.img_block_size,
+        })
+
+    def _gen_graph_edges_reduce_loop(self, loop, source_id, sink_id):
+        loopvar1 = C.SymbolRef(loop.init.left.name)
+        looplen1 = loop.test.right
+        loopincr = loop.incr.value.value
+        return StringTemplate("""
+          for (int i = 0; i < $looplen1; ++i) {
+            make_edge($prev_node_list[i], $node_list);
+          }
+        """, {
+            'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr),
+            'node_list': C.SymbolRef("reduce_node_" + str(sink_id)),
+            'prev_node_list': C.SymbolRef("node_list_" + str(source_id)),
         })
 
     def _gen_execute_for_loop(self, loop, id):
         looplen1 = loop.test.right
         loopincr = loop.incr.value.value
+        return StringTemplate("""
+           for (int __z = 0; __z < $looplen1 / $loopincr; __z+=$block) {
+            $node_list[__z]->execute();
+          }
+        """, {
+            'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr), 
+            'node_list': C.SymbolRef("node_list_" + str(id)),
+            'block': latte.config.img_block_size
+        })
+        '''
         return StringTemplate("""
           for (int i = 0; i < $looplen1; i+=$loopincr) {
             $node_list[i]->execute();
@@ -742,6 +893,7 @@ class Net:
             'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr), 
             'node_list': C.SymbolRef("node_list_" + str(id)),
         })
+        '''
 
     def _gen_libxsmm_function(self, ensemble, neuron, direction):
       print("weights:" , neuron.weights.shape)
