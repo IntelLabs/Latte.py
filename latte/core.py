@@ -770,7 +770,7 @@ class Net:
                   'loopvar2': loopvar2, 'looplen2': looplen2, 'loopincr2': loopincr2,
                   'body': inner_body, 
                   'node_list': C.SymbolRef("node_list_" + str(id)),
-                  'block': latte.config.img_block_size,
+                  'block': C.Constant(latte.config.img_block_size)
                 }));
                 '''
                 else:
@@ -848,14 +848,14 @@ class Net:
         looplen1 = loop.test.right
         loopincr = loop.incr.value.value
         return StringTemplate("""
-          for (int i = 0; i < $looplen1; i+=$block) {
+          for (int i = 0; i < $looplen1/$block; i+=1) {
             make_edge($prev_node_list[i], $node_list[i]);
           }
         """, {
             'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr),
             'node_list': C.SymbolRef("node_list_" + str(sink_id)),
             'prev_node_list': C.SymbolRef("node_list_" + str(source_id)),
-            'block': latte.config.img_block_size,
+            'block': C.Constant(latte.config.img_block_size)
         })
 
     def _gen_graph_edges_reduce_loop(self, loop, source_id, sink_id):
@@ -876,13 +876,13 @@ class Net:
         looplen1 = loop.test.right
         loopincr = loop.incr.value.value
         return StringTemplate("""
-           for (int __z = 0; __z < $looplen1 / $loopincr; __z+=$block) {
+           for (int __z = 0; __z < $looplen1 / $loopincr / $block; __z+=1) {
             $node_list[__z]->execute();
           }
         """, {
             'looplen1': C.Constant(looplen1.value), 'loopincr': C.Constant(loopincr), 
             'node_list': C.SymbolRef("node_list_" + str(id)),
-            'block': latte.config.img_block_size
+            'block': C.Constant(latte.config.img_block_size)
         })
         '''
         return StringTemplate("""
@@ -1738,7 +1738,7 @@ class Net:
 
           if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
             (unroll_var_2, unroll_factor_2, unroll_type) = ensemble.unroll_2_info[direction]
-            unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
+            unroller.unroll_no_jam_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
           # check for fused code
           func_def = copypropagator.propagate_copies(func_def)
           if "ON" in latte.config.prefetch_option and direction in ensemble.prefetch_info:

@@ -52,19 +52,15 @@ prefetch_options = [
 prefetch_option = os.getenv("LATTE_PREFETCH_MODE", "ON")
 
 if parallel_strategy not in parallel_strategies:
-    logger.warn("Invalid parallel strategy [%s], defaulting to SIMPLE_LOOP", parallel_strategy)
-    parallel_strategy = "SIMPLE_LOOP"
+    logger.warn("Invalid parallel strategy [%s], defaulting to OPENMP", parallel_strategy)
+    parallel_strategy = "OPENMP"
 
 nthreads = os.getenv("LATTE_NUM_THREADS", None)
-img_block_size = os.getenv("LATTE_IMG_BLOCK_SIZE", None)
-if img_block_size is None:
-  img_block_size = 16
-
 if parallel_strategy == "OPENCL_SIMPLE_LOOP":
     import pycl as cl
     cl_ctx = cl.clCreateContext()
     cl_queue = cl.clCreateCommandQueue(cl_ctx)
-elif parallel_strategy in ["SIMPLE_LOOP"]:
+elif parallel_strategy in ["SIMPLE_LOOP"] or parallel_strategy in ["FLOWGRAPH_LOOP"]:
     package_path = os.path.dirname(os.path.abspath(__file__))
     _file = FileTemplate(os.path.dirname(os.path.abspath(__file__)) +
             "/runtime/runtime.cpp",
@@ -78,6 +74,9 @@ elif parallel_strategy in ["SIMPLE_LOOP"]:
         init_nthreads(int(nthreads))
     else:
         init_default()
+    if parallel_strategy in ["FLOWGRAPH_LOOP"]:
+      img_block_size = os.getenv("LATTE_PIPELINE_BLOCK_SIZE", 16)
+      img_block_size = int(img_block_size)
 elif parallel_strategy == "OPENMP":
     if nthreads is not None:
         os.environ["OMP_NUM_THREADS"] = nthreads
@@ -103,4 +102,6 @@ logger.info("    prefetch_option = %s", prefetch_option)
 logger.info("    mode = %s", MODE)
 if "ON" in TIMER:
   logger.info("    timer = %s", "ON")
+if parallel_strategy in ["FLOWGRAPH_LOOP"]:
+  logger.info("    pipeline_block = %s", img_block_size)
 logger.info("===================================")
