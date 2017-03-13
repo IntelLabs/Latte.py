@@ -27,6 +27,7 @@ import latte.transformers.code_motion as code_motion
 import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
 import latte.optimizations as optimizer
+import latte.type_converter as type_converter
 
 if "OPENCL" in latte.config.parallel_strategy:
     import pycl as cl
@@ -1665,16 +1666,16 @@ class Net:
 
         #ANAND-- IN PROGRESS 1/5/2017
         if isinstance(ensemble, ConcatEnsemble):
-                
-            for loop in func_def.defn:
+             func_def = type_converter.loop_init_long_to_int(func_def)    
+                ##for loop in func_def.defn:
                 #loop.init.left.type = ctypes.c_int()
-                inner = loop.body[0]
-                inner.init.left.type = ctypes.c_int()
-                inner = inner.body[0]   
-                inner.init.left.type = ctypes.c_int()
-                inner = inner.body[0]
-                inner.init.left.type = ctypes.c_int() 
-
+                #inner = loop.body[0]
+                #inner.init.left.type = ctypes.c_int()
+                #inner = inner.body[0]   
+                #inner.init.left.type = ctypes.c_int()
+                #inner = inner.body[0]
+                #inner.init.left.type = ctypes.c_int() 
+                #util.loop_init_long_to_int
 
         # Seed the argument types as pointers for type inference
         for arg in func_def.params:

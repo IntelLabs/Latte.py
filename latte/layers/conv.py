@@ -75,8 +75,8 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     bias_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
 
     if bias_ens.shape[1] % 2 == 0 and bias_ens.shape[2] % 2 == 0:
-      bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=2)
-      bias_ens.unroll_2(phase="forward", loop_var="_neuron_index_3", factor=2)
+      bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=2, unroll_type = 1)
+      bias_ens.unroll_2(phase="forward", loop_var="_neuron_index_3", factor=2, unroll_type =1)
     # End Optimizations
 
     return EnsembleGroup(conv_ens, bias_ens)
