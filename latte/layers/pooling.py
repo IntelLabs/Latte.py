@@ -90,6 +90,13 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
+        '''
+        unroll_factor = 4
+        if pooling_ens.shape[1] % unroll_factor == 0 and pooling_ens.shape[2] % unroll_factor == 0:
+          pooling_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=unroll_factor, unroll_type= 1)
+          pooling_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=unroll_factor, unroll_type=1)
+        '''
+
     else:
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1")

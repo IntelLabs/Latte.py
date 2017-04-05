@@ -207,7 +207,7 @@ class UnrollStatementsNoJam(ast.NodeTransformer):
                     if self.unroll_type == 0:
                         UnrollStatementsNoJam.new_body[var].append(util.replace_symbol(self.target_var, C.Add(C.SymbolRef(self.target_var), C.Constant(i)), stmt))
                     elif self.unroll_type == 1 :
-                        UnrollStatementsNoJam.new_body[var]..append(util.replace_symbol(self.target_var, C.Add(C.Mul(C.Constant(self.factor),C.SymbolRef(self.target_var)), C.Constant(i)), stmt))
+                        UnrollStatementsNoJam.new_body[var].append(util.replace_symbol(self.target_var, C.Add(C.Mul(C.Constant(self.factor),C.SymbolRef(self.target_var)), C.Constant(i)), stmt))
                     else:
                        assert(false)
 

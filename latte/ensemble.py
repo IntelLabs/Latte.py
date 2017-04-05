@@ -26,8 +26,10 @@ class Ensemble:
         self._tiling_info = {}
         self._transpose_info = {}
         self._vectorize_info = {}
-        self._unroll_info = {}
-        self._unroll_2_info = {}
+        #self._unroll_info = {}
+        self._unroll_info = {"forward": [], "backward": [], "update_internal": []}
+        self._unroll_and_jam_info = {"forward": [], "backward": [], "update_internal": []}
+        #self._unroll_2_info = {}
         self._private_info = set()
         self._parallel_info = {"forward": [], "backward": [], "update_internal": []}
         self._prefetch_info = {"forward": {}, "backward": {}, "update_internal": {}}
@@ -63,8 +65,14 @@ class Ensemble:
         return self._unroll_info
 
     @property
+    def unroll_and_jam_info(self):
+        return self._unroll_and_jam_info
+
+    '''
+    @property
     def unroll_2_info(self):
         return self._unroll_2_info
+    '''
 
     @property
     def parallel_info(self):
@@ -91,10 +99,13 @@ class Ensemble:
         self._vectorize_info[phase] = (loop_var, factor)
 
     def unroll(self, phase, loop_var, factor,unroll_type=0):
-        self._unroll_info[phase] = (loop_var, factor, unroll_type)
+        self._unroll_info[phase].append((loop_var, factor, unroll_type))
  
-    def unroll_2(self, phase, loop_var, factor, unroll_type =0):
-        self._unroll_2_info[phase] = (loop_var, factor, unroll_type)
+    def unroll_and_jam(self, phase, loop_var, factor,unroll_type=0):
+        self._unroll_and_jam_info[phase].append((loop_var, factor, unroll_type))
+
+    #def unroll_2(self, phase, loop_var, factor, unroll_type =0):
+    #    self._unroll_2_info[phase] = (loop_var, factor, unroll_type)
 
     def parallelize(self, phase, loop_var):
         self._parallel_info[phase].append(loop_var)
@@ -320,8 +331,8 @@ class ActivationEnsemble(Ensemble):
         return self._unroll_info
 
     @property
-    def unroll_2_info(self):
-        return self._unroll_2_info
+    def unroll_and_jam_info(self):
+        return self._unroll_and_jam_info
 
     @property
     def tiling_info(self):

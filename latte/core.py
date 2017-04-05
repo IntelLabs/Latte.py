@@ -1716,8 +1716,9 @@ class Net:
                 func_def = transformers.insert_pragma_simd(func_def, loopvar)
 
           if direction in ensemble.unroll_info:
-            unroll_var, unroll_factor, unroll_type = ensemble.unroll_info[direction]
-            unroller.unroll_loop(func_def, unroll_var, unroll_factor, unroll_type)
+            for (unroll_var, unroll_factor, unroll_type) in ensemble.unroll_info[direction]:
+              #unroll_var, unroll_factor, unroll_type = ensemble.unroll_info[direction]
+              unroller.unroll_loop(func_def, unroll_var, unroll_factor, unroll_type)
           self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
           type_sig = []
@@ -1737,9 +1738,10 @@ class Net:
             pre_trans = []
             post_trans = []
 
-          if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
-            (unroll_var_2, unroll_factor_2, unroll_type) = ensemble.unroll_2_info[direction]
-            unroller.unroll_no_jam_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
+          #if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
+            #(unroll_var_2, unroll_factor_2, unroll_type) = ensemble.unroll_2_info[direction]
+            #unroller.unroll_no_jam_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
+            #unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
           # check for fused code
           func_def = copypropagator.propagate_copies(func_def)
           if "ON" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
@@ -1756,7 +1758,7 @@ class Net:
                         prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
                         prefetcher.insert_simple_hoist_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
           # drop loops that iterate for one iteration only and constant propagate indices and hoist address computations
-          func_def = loopsimplifier.simplify_loops(func_def)
+          #func_def = loopsimplifier.simplify_loops(func_def)
           #func_def = optimizer.propogate_constants(func_def)
 
         else: #GEMM formulation
