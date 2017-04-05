@@ -911,11 +911,12 @@ class Net:
         return StringTemplate("""
       {
       libxsmm_dnn_conv_desc conv_desc;
-      libxsmm_dnn_conv_handle* libxsmm_handle;
+      libxsmm_dnn_layer*  libxsmm_handle;
       libxsmm_dnn_buffer* libxsmm_input;
       libxsmm_dnn_buffer* libxsmm_output;
       libxsmm_dnn_filter* libxsmm_filter;
       libxsmm_dnn_err_t status; 
+      void* scratch;
       unsigned int kind;
       conv_desc.N = $nImg;
       conv_desc.C = $nIfm;
@@ -933,30 +934,38 @@ class Net:
       conv_desc.pad_h_out = $pad_out_0;
       conv_desc.pad_w_out = $pad_out_0;
       conv_desc.threads = omp_get_max_threads();
-      conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
-      conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
-      conv_desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+      conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;//ANAND: changed from AUTO
+      conv_desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
+      conv_desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
       conv_desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
       conv_desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-      conv_desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-      conv_desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
-
-      libxsmm_handle = libxsmm_dnn_create_conv_handle_check( conv_desc, &status );
-
+      conv_desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
+      libxsmm_handle = libxsmm_dnn_create_conv_layer( conv_desc, &status );
       /* setup LIBXSMM buffers and filter */
-      libxsmm_input = libxsmm_dnn_link_input_buffer_check( libxsmm_handle,  $input, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
-      libxsmm_output = libxsmm_dnn_link_output_buffer_check( libxsmm_handle,  $output, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
-      libxsmm_filter = libxsmm_dnn_link_filter_check( libxsmm_handle,  $filter, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
-
-      /* bind buffers and filter to handle */
-       libxsmm_dnn_bind_input_buffer( libxsmm_handle, libxsmm_input ) ;
-       libxsmm_dnn_bind_output_buffer( libxsmm_handle, libxsmm_output ) ;
-       libxsmm_dnn_bind_filter( libxsmm_handle, libxsmm_filter );
+      libxsmm_input = libxsmm_dnn_link_buffer(libxsmm_handle, LIBXSMM_DNN_INPUT, $input, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+      libxsmm_output = libxsmm_dnn_link_buffer(libxsmm_handle, LIBXSMM_DNN_OUTPUT, $output, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+      libxsmm_filter = libxsmm_dnn_link_filter(libxsmm_handle, LIBXSMM_DNN_FILTER, $filter, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+      libxsmm_dnn_zero_buffer(libxsmm_output);
+      libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_REGULAR_INPUT);
+      libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_output, LIBXSMM_DNN_REGULAR_OUTPUT);
+      libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_REGULAR_FILTER);
+      scratch = (void*)libxsmm_aligned_scratch( libxsmm_dnn_get_scratch_size( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, &status ), 2097152);
+      libxsmm_dnn_bind_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, scratch );
       # pragma omp parallel
       {
         const int tid = omp_get_thread_num();
-        libxsmm_dnn_convolve_st( libxsmm_handle, LIBXSMM_DNN_CONV_KIND_FWD, 0, tid ) ;
+        libxsmm_dnn_execute_st( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_FWD, 0, tid ) ;
       }
+      /* clean up */
+      libxsmm_dnn_release_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL ); 
+      libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_INPUT ); 
+      libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_OUTPUT ); 
+      libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_REGULAR_FILTER ); 
+      libxsmm_dnn_destroy_buffer(libxsmm_input); 
+      libxsmm_dnn_destroy_buffer(libxsmm_output); 
+      libxsmm_dnn_destroy_filter(libxsmm_filter); 
+      libxsmm_dnn_destroy_conv_layer(libxsmm_handle); 
+      libxsmm_free(scratch); 
       }
       """, {'nImg': C.Constant(self.batch_size)
       , 'nIfm': C.Constant(self.connections_map[ensemble][0].source.shape[0]) 
@@ -967,9 +976,9 @@ class Net:
       , 'kw': C.Constant(neuron.weights.shape[2])
       , 'stride_h': C.Constant(ensemble.stride)
       , 'stride_w': C.Constant(ensemble.stride)
-      , 'pad_in_0' : self.connections_map[ensemble][0].source.pad[0]
-      , 'pad_in_1' : self.connections_map[ensemble][0].source.pad[1]
-      , 'pad_out_0' : ensemble.pad[0]
+      , 'pad_in_0' : C.Constant(self.connections_map[ensemble][0].source.pad[0][0])
+      , 'pad_in_1' : C.Constant(self.connections_map[ensemble][0].source.pad[1][0])
+      , 'pad_out_0' : C.Constant(ensemble.pad[0][0])
       , 'input': C.SymbolRef(input_name)
       , 'output': C.SymbolRef(output_name)
       , 'filter': C.SymbolRef(filter_name)})
@@ -978,11 +987,13 @@ class Net:
         return StringTemplate("""
       {
       libxsmm_dnn_conv_desc conv_desc;
-      libxsmm_dnn_conv_handle* libxsmm_handle;
+      libxsmm_dnn_layer*  libxsmm_handle;
       libxsmm_dnn_buffer* libxsmm_input;
       libxsmm_dnn_buffer* libxsmm_output;
       libxsmm_dnn_filter* libxsmm_filter;
       libxsmm_dnn_err_t status; 
+      void* scratch;
+
       conv_desc.N = $nImg;
       conv_desc.C = $nIfm;
       conv_desc.H = $ifh + $pad_in_0 + $pad_in_1 ;
@@ -999,31 +1010,58 @@ class Net:
       conv_desc.pad_h_out = $pad_out_0;
       conv_desc.pad_w_out = $pad_out_0;
       conv_desc.threads = omp_get_max_threads();
-      conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
-      conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
-      conv_desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+      conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
+      conv_desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
+      conv_desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
       conv_desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
       conv_desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-      conv_desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-      conv_desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+      conv_desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
 
-      libxsmm_handle = libxsmm_dnn_create_conv_handle_check( conv_desc, &status );
+      libxsmm_handle = libxsmm_dnn_create_conv_layer( conv_desc, &status );
 
-      /* setup LIBXSMM buffers and filter */
+      libxsmm_input = libxsmm_dnn_link_buffer(libxsmm_handle, LIBXSMM_DNN_INPUT, $input, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+      libxsmm_output = libxsmm_dnn_link_buffer(libxsmm_handle, LIBXSMM_DNN_OUTPUT, $output, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+      libxsmm_filter = libxsmm_dnn_link_filter(libxsmm_handle, LIBXSMM_DNN_FILTER, $filter, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+ 
+      libxsmm_dnn_zero_buffer(libxsmm_input);
+      libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_GRADIENT_INPUT);
+      libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_output, LIBXSMM_DNN_GRADIENT_OUTPUT);
+      libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_REGULAR_FILTER),
+
+      scratch = (void*)libxsmm_aligned_scratch( libxsmm_dnn_get_scratch_size( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, &status ), 2097152);
+      libxsmm_dnn_bind_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, scratch );
+      libxsmm_dnn_transpose_filter(libxsmm_handle, LIBXSMM_DNN_FILTER);
+
+      /* setup LIBXSMM buffers and filter
       libxsmm_input = libxsmm_dnn_link_input_buffer_check( libxsmm_handle,  $input, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
       libxsmm_output = libxsmm_dnn_link_output_buffer_check( libxsmm_handle,  $output, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
       libxsmm_filter = libxsmm_dnn_link_filter_check( libxsmm_handle,  $filter, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
 
-      /* bind buffers and filter to handle */
       libxsmm_dnn_bind_input_buffer( libxsmm_handle, libxsmm_input ) ;
       libxsmm_dnn_bind_output_buffer( libxsmm_handle, libxsmm_output ) ;
       libxsmm_dnn_bind_filter( libxsmm_handle, libxsmm_filter ) ;
-
+      */
     # pragma omp parallel
       {
         const int tid = omp_get_thread_num();
-        libxsmm_dnn_convolve_st( libxsmm_handle, LIBXSMM_DNN_CONV_KIND_BWD, 0, tid ) ;
+        libxsmm_dnn_execute_st( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_BWD, 0, tid ) ;
       }
+      
+    /* clean up */
+    libxsmm_dnn_release_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL );
+    libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_INPUT );
+    libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_OUTPUT );
+    libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_REGULAR_FILTER );
+    libxsmm_dnn_destroy_buffer(libxsmm_input);
+    libxsmm_dnn_destroy_buffer(libxsmm_output);
+    libxsmm_dnn_destroy_filter(libxsmm_filter);
+ 
+    libxsmm_dnn_destroy_conv_layer(libxsmm_handle);
+    libxsmm_free(scratch);
+ 
+
+
+
       }
       """, {'nImg': C.Constant(self.batch_size)
       , 'nIfm': C.Constant(self.connections_map[ensemble][0].source.shape[0]) 
@@ -1034,9 +1072,9 @@ class Net:
       , 'kw': C.Constant(neuron.weights.shape[2])
       , 'stride_h': C.Constant(ensemble.stride)
       , 'stride_w': C.Constant(ensemble.stride)
-      , 'pad_in_0' : self.connections_map[ensemble][0].source.pad[0]
-      , 'pad_in_1' : self.connections_map[ensemble][0].source.pad[1]
-      , 'pad_out_0' : ensemble.pad[0]
+      , 'pad_in_0' : C.Constant(self.connections_map[ensemble][0].source.pad[0][0])# may need revsision:ANAND
+      , 'pad_in_1' : C.Constant(self.connections_map[ensemble][0].source.pad[1][0])#''
+      , 'pad_out_0' : C.Constant(ensemble.pad[0][0])
       , 'input': C.SymbolRef(ensemble.name + "inputs")
       , 'output': C.SymbolRef(ensemble.name+"grad")
       , 'filter': C.SymbolRef(ensemble.name+"grad_weights")})
@@ -1045,11 +1083,13 @@ class Net:
         return StringTemplate("""
     {
     libxsmm_dnn_conv_desc conv_desc;
-    libxsmm_dnn_conv_handle* libxsmm_handle;
+    libxsmm_dnn_layer*  libxsmm_handle;
     libxsmm_dnn_buffer* libxsmm_input;
     libxsmm_dnn_buffer* libxsmm_output;
     libxsmm_dnn_filter* libxsmm_filter;
     libxsmm_dnn_err_t status; 
+    void* scratch;
+
     conv_desc.N = $nImg;
     conv_desc.C = $nIfm;
     conv_desc.H = $ifh + $pad_in_0 + $pad_in_1 ;
@@ -1066,31 +1106,65 @@ class Net:
     conv_desc.pad_h_out = $pad_out_0;
     conv_desc.pad_w_out = $pad_out_0;
     conv_desc.threads = omp_get_max_threads();
-    conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_AUTO;
-    conv_desc.buffer_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
-    conv_desc.filter_format = LIBXSMM_DNN_CONV_FORMAT_LIBXSMM;
+    conv_desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
+    conv_desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
+    conv_desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
     conv_desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    conv_desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-    conv_desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-    conv_desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    //conv_desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
+    conv_desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE;
 
-    libxsmm_handle = libxsmm_dnn_create_conv_handle_check( conv_desc, &status );
+    conv_desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
 
-    /* setup LIBXSMM buffers and filter */
+    libxsmm_handle = libxsmm_dnn_create_conv_layer( conv_desc, &status );
+
+    /* setup LIBXSMM buffers and filter*/
+
+      libxsmm_input = libxsmm_dnn_link_buffer(libxsmm_handle, LIBXSMM_DNN_INPUT, $input, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+      libxsmm_output = libxsmm_dnn_link_buffer(libxsmm_handle, LIBXSMM_DNN_OUTPUT, $output, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+      libxsmm_filter = libxsmm_dnn_link_filter(libxsmm_handle, LIBXSMM_DNN_FILTER, $filter, LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM_PTR, &status);
+
+
+    libxsmm_dnn_zero_filter(libxsmm_filter);
+    libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_input, LIBXSMM_DNN_REGULAR_INPUT);
+    libxsmm_dnn_bind_buffer(libxsmm_handle, libxsmm_output, LIBXSMM_DNN_GRADIENT_OUTPUT);
+    libxsmm_dnn_bind_filter(libxsmm_handle, libxsmm_filter, LIBXSMM_DNN_GRADIENT_FILTER);
+
+    /* setup LIBXSMM buffers and filter 
     libxsmm_input = libxsmm_dnn_link_input_buffer_check( libxsmm_handle,  $input, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
     libxsmm_output = libxsmm_dnn_link_output_buffer_check( libxsmm_handle,  $output, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
     libxsmm_filter = libxsmm_dnn_link_filter_check( libxsmm_handle,  $filter, LIBXSMM_DNN_CONV_FORMAT_LIBXSMM_PTR, &status );
 
-    /* bind buffers and filter to handle */
     libxsmm_dnn_bind_input_buffer( libxsmm_handle, libxsmm_input ) ;
     libxsmm_dnn_bind_output_buffer( libxsmm_handle, libxsmm_output ) ;
     libxsmm_dnn_bind_filter( libxsmm_handle, libxsmm_filter ) ;
-  # pragma omp parallel
+    */
+    scratch = (void*)libxsmm_aligned_scratch( libxsmm_dnn_get_scratch_size( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, &status ), 2097152);
+    libxsmm_dnn_bind_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL, scratch );
+
+    # pragma omp parallel
     {
       const int tid = omp_get_thread_num();
-      libxsmm_dnn_convolve_st( libxsmm_handle, LIBXSMM_DNN_CONV_KIND_UPD, 0, tid );
+      libxsmm_dnn_execute_st( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_UPD, 0, tid );
     }
-    }
+    
+      libxsmm_dnn_reduce_wu_filters( libxsmm_handle, LIBXSMM_DNN_GRADIENT_FILTER );
+
+    /* clean up */
+    libxsmm_dnn_release_scratch( libxsmm_handle, LIBXSMM_DNN_COMPUTE_KIND_ALL ); 
+    libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_REGULAR_INPUT ); 
+    libxsmm_dnn_release_buffer( libxsmm_handle, LIBXSMM_DNN_GRADIENT_OUTPUT ); 
+    libxsmm_dnn_release_filter( libxsmm_handle, LIBXSMM_DNN_GRADIENT_FILTER ); 
+    libxsmm_dnn_destroy_buffer(libxsmm_input); 
+    libxsmm_dnn_destroy_buffer(libxsmm_output); 
+    libxsmm_dnn_destroy_filter(libxsmm_filter); 
+ 
+    libxsmm_dnn_destroy_conv_layer(libxsmm_handle); 
+    libxsmm_free(scratch); 
+
+
+
+
+     }
       """, {'nImg': C.Constant(self.batch_size)
       , 'nIfm': C.Constant(self.connections_map[ensemble][0].source.shape[0]) 
       , 'ifh': C.Constant(self.connections_map[ensemble][0].source.shape[1])
@@ -1100,9 +1174,9 @@ class Net:
       , 'kw': C.Constant(neuron.weights.shape[2])
       , 'stride_h': C.Constant(ensemble.stride)
       , 'stride_w': C.Constant(ensemble.stride)
-      , 'pad_in_0' : self.connections_map[ensemble][0].source.pad[0]
-      , 'pad_in_1' : self.connections_map[ensemble][0].source.pad[1]
-      , 'pad_out_0' : ensemble.pad[0]
+      , 'pad_in_0' : C.Constant(self.connections_map[ensemble][0].source.pad[0])#may need revision # ANAND two-sided padding, padding on each side may not be identical
+      , 'pad_in_1' : C.Constant(self.connections_map[ensemble][0].source.pad[1])
+      , 'pad_out_0' : C.Constant(ensemble.pad[0])
       , 'input': C.SymbolRef(ensemble.name + "inputs")
       , 'output': C.SymbolRef(ensemble.name+"grad")
       , 'filter': C.SymbolRef(ensemble.name+"grad_weights")})
@@ -1337,6 +1411,10 @@ class Net:
           #print("body:", body)
           self._reshape_buffer(args, ensemble)
 
+          args.append(ast.arg(ensemble.name + "weights_transposed", None))
+              
+          self.buffers[ensemble.name + "weights_transposed"] = util.zeros(shape, np.float32)
+
           func_def = ast.FunctionDef('func',
                 ast.arguments(args, None, [], [], None, []), body,
                 [], None)
@@ -1353,21 +1431,10 @@ class Net:
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
           # Basic type inference and constant propogation
           func_def = analyzer.type_infer(func_def)
-          #if direction in ensemble.vectorize_info:
-            # RAJ hack here
-          #  func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
-          #          ensemble.vectorize_info[direction][0])
-          #  pre_trans, post_trans = self._gen_transposes(transposed_buffers)
-
-          #  for buffer_name, trans_dim in transposed_buffers.items():
-          #      curr_body = []
-          #      shape = self.buffers[buffer_name].shape
-          #      shape_str = "".join("[{}]".format(d) for d in shape)
-
-          #      args.append(ast.arg(buffer_name + "_transposed", None))
-          #      self.buffers[buffer_name + "_transposed"] = util.zeros(shape, np.float32)
-          #func_def.defn[0].pre_trans = pre_trans
           # func_def = optimizer.propogate_constants(func_def) [], None)
+          
+
+          print(args[2])
           return func_def.defn, [arg.arg for arg in args]
 
         else:
