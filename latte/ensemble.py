@@ -26,14 +26,11 @@ class Ensemble:
         self._tiling_info = {}
         self._transpose_info = {}
         self._vectorize_info = {}
-        #self._unroll_info = {}
-        self._unroll_info = {"forward": [], "backward": [], "update_internal": []}
-        self._unroll_and_jam_info = {"forward": [], "backward": [], "update_internal": []}
-        #self._unroll_2_info = {}
+        self._unroll_info = {"forward": {}, "backward": {}, "update_internal": {}}
+        self._unroll_and_jam_info = {"forward": {}, "backward": {}, "update_internal": {}}
         self._private_info = set()
         self._parallel_info = {"forward": [], "backward": [], "update_internal": []}
         self._prefetch_info = {"forward": {}, "backward": {}, "update_internal": {}}
-        #self._prefetch_info = {}
         self.loops_to_swap = {'forward': [], 'backward': [], "update_internal": []}
         self.simd_info = {'forward': [], 'backward': [], "update_internal": []}
 
@@ -68,12 +65,6 @@ class Ensemble:
     def unroll_and_jam_info(self):
         return self._unroll_and_jam_info
 
-    '''
-    @property
-    def unroll_2_info(self):
-        return self._unroll_2_info
-    '''
-
     @property
     def parallel_info(self):
         return self._parallel_info
@@ -99,24 +90,22 @@ class Ensemble:
         self._vectorize_info[phase] = (loop_var, factor)
 
     def unroll(self, phase, loop_var, factor,unroll_type=0):
-        self._unroll_info[phase].append((loop_var, factor, unroll_type))
+        dict = self._unroll_info[phase]
+        dict[loop_var] =  (factor, unroll_type)
  
     def unroll_and_jam(self, phase, loop_var, factor,unroll_type=0):
-        self._unroll_and_jam_info[phase].append((loop_var, factor, unroll_type))
+        dict = self._unroll_and_jam_info[phase]
+        dict[loop_var] =  (factor, unroll_type)
 
-    #def unroll_2(self, phase, loop_var, factor, unroll_type =0):
-    #    self._unroll_2_info[phase] = (loop_var, factor, unroll_type)
 
     def parallelize(self, phase, loop_var):
         self._parallel_info[phase].append(loop_var)
 
-    #def prefetch(self, field, phase, loop_var, dim, distance, prefetch_once, cacheline):
-    #    if field not in self.prefetch_info:
-    #        self.prefetch_info[field] = []
-    #    if (phase, loop_var, dim, distance, prefetch_once, cacheline) not in self.prefetch_info[field]:
-    #        self.prefetch_info[field].append((phase, loop_var, dim, distance, prefetch_once, cacheline))
     def prefetch(self, phase, prefetch_dict_list):
         self._prefetch_info[phase]=prefetch_dict_list
+
+    def reset_prefetch(self, phase):
+        self._prefetch_info[phase]={}
 
     def swap_loops(self, phase, loop_vars):
         assert isinstance(loop_vars, tuple) and len(loop_vars) == 2

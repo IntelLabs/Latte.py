@@ -74,11 +74,13 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
     bias_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
 
+    '''
     h_unroll_factor = 7
     w_unroll_factor = 4
     if bias_ens.shape[1] % h_unroll_factor == 0 and bias_ens.shape[2] % w_unroll_factor == 0:
       bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
       bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
+    '''
     # End Optimizations
 
     return EnsembleGroup(conv_ens, bias_ens)
@@ -174,6 +176,12 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad', dim=0, factor=SIMDWIDTH)
 
+    # Added by Raj/Anand
+    if "LIBXSMM" in latte.config.codegen_strategy:
+      conv_ens.use_libxsmm(1)
+      conv_ens.stride = stride
+      return conv_ens
+
     if "OPENCL" not in latte.config.parallel_strategy:
         conv_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
     conv_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
@@ -194,6 +202,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
 
     
     if "OPENCL" not in latte.config.parallel_strategy:
+      '''
       h_unroll_factor = 7
       w_unroll_factor = 4
       if conv_ens.shape[1] % h_unroll_factor == 0 and conv_ens.shape[2] % w_unroll_factor == 0:
@@ -216,100 +225,99 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         #update-internal
         conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=outer_unroll_factor)
       else:
-        inner_unroll_factor=1
-        if "AVX-512" in latte.config.vec_config:
-          #outer_unroll_factor = 16
-          outer_unroll_factor = 28
-          #outer_unroll_factor = 8
-          #factor = 8
-          while output_width % outer_unroll_factor != 0:
-            outer_unroll_factor -= 1
-          conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
-          if (kernel_h == 1 and kernel_w == 1) or (stride_h >1): 
-            inner_unroll_factor = 2
+      '''
+      inner_unroll_factor=1
+      if "AVX-512" in latte.config.vec_config:
+        #outer_unroll_factor = 16
+        outer_unroll_factor = 28
+        #outer_unroll_factor = 8
+        #factor = 8
+        while output_width % outer_unroll_factor != 0:
+          outer_unroll_factor -= 1
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        if (kernel_h == 1 and kernel_w == 1) or (stride_h >1): 
+          inner_unroll_factor = 2
+        else:
+          inner_unroll_factor = 4
+        if inner_unroll_factor > 1:
+          conv_ens.unroll(phase="forward", loop_var="i_inner", factor=inner_unroll_factor)
+
+        # a new approach is
+        cache_line = 64
+        fp_cache_line = int(cache_line/4)
+        l1_size = 32768
+        half_l1_size = 0.5 * l1_size
+        data_needed_by_each_ifh = (output_width*cache_line) + (kernel_h*input_width*cache_line) + (kernel_h*kernel_w*SIMDWIDTH*cache_line)
+        #syntax [prefetch_type=1, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint]
+        #syntax [prefetch_type=2, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint]
+        #print("data=", data_needed_by_each_ifh, " half_li=", half_l1_size)
+        if data_needed_by_each_ifh < l1_size:
+          fp_pf_factor = ((kernel_h*(input_width))/((output_width/outer_unroll_factor) * kernel_h*kernel_w*(SIMDWIDTH/inner_unroll_factor)))
+          #print ("fp_pf_factor=", fp_pf_factor)
+          if fp_pf_factor > 1.0:
+            fp_pf_factor = math.ceil(fp_pf_factor)
+            fp_pf_loop = "i_inner"
           else:
-            inner_unroll_factor = 4
-          if inner_unroll_factor > 1:
-            conv_ens.unroll(phase="forward", loop_var="i_inner", factor=inner_unroll_factor)
-
-          # a new approach is
-            cache_line = 64
-            fp_cache_line = int(cache_line/4)
-            l1_size = 32768
-            half_l1_size = 0.5 * l1_size
-            data_needed_by_each_ifh = (output_width*cache_line) + (kernel_h*input_width*cache_line) + (kernel_h*kernel_w*SIMDWIDTH*cache_line)
-            #syntax [prefetch_type=1, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint]
-            #syntax [prefetch_type=2, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop, prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint]
-            #print("data=", data_needed_by_each_ifh, " half_li=", half_l1_size)
-            if data_needed_by_each_ifh < l1_size:
-              fp_pf_factor = ((kernel_h*(input_width))/((output_width/outer_unroll_factor) * kernel_h*kernel_w*(SIMDWIDTH/inner_unroll_factor)))
+            fp_pf_factor = ((kernel_h*(input_width))/((output_width/outer_unroll_factor) * kernel_h*kernel_w))
+            #print ("fp_pf_factor=", fp_pf_factor)
+            if fp_pf_factor > 1.0:
+              fp_pf_factor = math.ceil(fp_pf_factor)
+              fp_pf_loop = "k"
+            else:
+              fp_pf_factor = math.ceil((kernel_h*(input_width))/((output_width/outer_unroll_factor) * kernel_h))
               #print ("fp_pf_factor=", fp_pf_factor)
-              if fp_pf_factor > 1.0:
-                fp_pf_factor = math.ceil(fp_pf_factor)
-                fp_pf_loop = "i_inner"
-              else:
-                fp_pf_factor = ((kernel_h*(input_width))/((output_width/outer_unroll_factor) * kernel_h*kernel_w))
-                #print ("fp_pf_factor=", fp_pf_factor)
-                if fp_pf_factor > 1.0:
-                  fp_pf_factor = math.ceil(fp_pf_factor)
-                  fp_pf_loop = "k"
-                else:
-                  fp_pf_factor = math.ceil((kernel_h*(input_width))/((output_width/outer_unroll_factor) * kernel_h))
-                  #print ("fp_pf_factor=", fp_pf_factor)
-                  fp_pf_loop = "j"
-              #print("input_pf_factor:", fp_pf_factor, "input_pf_loop:", fp_pf_loop)
-              if kernel_h == 1 and kernel_w == 1:
-                #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0],'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
-                if outer_unroll_factor == output_width:
-                  conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-                else:
-                  conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-              elif outer_unroll_factor == output_width:
-                #3563GF
-                conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
-                #3400
-                #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-              #elif input_channels <= SIMDWIDTH: 
-              #  conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-              else:
-                #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-                conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-                #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
-              #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
-            else: # huge data can not fit into L1 cache
-              # Wrong, needs fixing
-              #print ("WARNING!!!!!  Disable prefetch as data does not fit L1 ")
-              #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
-              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [3, "i_inner", -2, outer_unroll_factor, "k", 1, stride_w * outer_unroll_factor, 0]})
+              fp_pf_loop = "j"
+          #print("input_pf_factor:", fp_pf_factor, "input_pf_loop:", fp_pf_loop)
+          if kernel_h == 1 and kernel_w == 1:
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0],'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
+            if outer_unroll_factor == output_width:
+              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+            else:
+              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+          elif outer_unroll_factor == output_width:
+            #3563GF
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
+            #3400
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+          #elif input_channels <= SIMDWIDTH: 
+          #  conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+          else:
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+            #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
+          #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0], 'weight':[1, "i_inner", -5, inner_unroll_factor, "i_outer", 1, 1, 1]})
+        else: # huge data can not fit into L1 cache
+          # Wrong, needs fixing
+          #print ("WARNING!!!!!  Disable prefetch as data does not fit L1 ")
+          #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 0]})
+          conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [3, "i_inner", -2, outer_unroll_factor, "k", 1, stride_w * outer_unroll_factor, 0]})
 
 
-            #backward
-            conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
-            conv_ens.unroll(phase="backward", loop_var="_neuron_index_1_inner", factor=inner_unroll_factor)
-            if data_needed_by_each_ifh < l1_size:
-              if outer_unroll_factor == output_width:
-                conv_ens.prefetch(phase="backward", prefetch_dict_list={'grad_inputs': [1, "k", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
-              else:
-                conv_ens.prefetch(phase="backward", prefetch_dict_list={'grad_inputs': [1, "k", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0]})
-            else: # huge data can not fit into L1 cache
-              # Wrong, needs fixing
-              #print ("WARNING!!!!!  Disable prefetch as data does not fit L1 ")
-              conv_ens.prefetch(phase="backward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [3, "i_inner", -2, outer_unroll_factor, "k", 1, stride_w * outer_unroll_factor, 0]})
-        else: #AVX 2 code
-          outer_unroll_factor = 16
-          while output_width % outer_unroll_factor != 0:
-            outer_unroll_factor -= 1
-          conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
-          #backward  
-          conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
-          conv_ens.unroll(phase="backward", loop_var="_neuron_index_1_inner", factor=inner_unroll_factor)
-        #update-internal
-        conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        #backward
+        conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        conv_ens.unroll(phase="backward", loop_var="_neuron_index_1_inner", factor=inner_unroll_factor)
+        '''
+        if data_needed_by_each_ifh < l1_size:
+          if outer_unroll_factor == output_width:
+            conv_ens.prefetch(phase="backward", prefetch_dict_list={'grad_inputs': [1, "k", -3, outer_unroll_factor, "_neuron_index_2", 1, 1, 0]})
+          else:
+            conv_ens.prefetch(phase="backward", prefetch_dict_list={'grad_inputs': [1, "k", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0]})
+        else: # huge data can not fit into L1 cache
+          # Wrong, needs fixing
+          #print ("WARNING!!!!!  Disable prefetch as data does not fit L1 ")
+          conv_ens.prefetch(phase="backward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [3, "i_inner", -2, outer_unroll_factor, "k", 1, stride_w * outer_unroll_factor, 0]})
+        '''
+      else: #AVX 2 code
+        outer_unroll_factor = 16
+        while output_width % outer_unroll_factor != 0:
+          outer_unroll_factor -= 1
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        #backward  
+        conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        conv_ens.unroll(phase="backward", loop_var="_neuron_index_1_inner", factor=inner_unroll_factor)
+      #update-internal
+      conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=outer_unroll_factor)
          
     # End Optimizations
-    # Added by Raj/Anand
-    if "LIBXSMM" in latte.config.codegen_strategy:
-      conv_ens.use_libxsmm(1)
-      conv_ens.stride = stride
 
     return conv_ens

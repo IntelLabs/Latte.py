@@ -13,12 +13,17 @@ def main():
     batch_size = 128
     args = parser.parse_args()
 
+    #fusion_recipe = FusionRecipe() 
+
     net = Net(batch_size)
     net.force_backward = True
+    net.fuse_pattern_cbr()
+
     data = MemoryDataLayer(net, (3, 224, 224))
     conv1_7x7_s2 = ConvLayer(net, data, num_filters=64, kernel=7, stride=2, pad=3)
     conv1_relu_7x7 = ReLULayer(net, conv1_7x7_s2)
     pool1_3x3_s2 = MaxPoolingLayer(net, conv1_relu_7x7, kernel=3, stride=2, pad=0)
+    #fusion_recipe.pattern_cbr(net, "forward", conv1_7x7_s2, conv1_relu_7x7)
 
     net.compile()
 

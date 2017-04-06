@@ -42,7 +42,7 @@ def main():
 
     fc6     = FullyConnectedLayer(net, pool5, 4096)
     fc7     = FullyConnectedLayer(net, fc6, 4096)
-    fc8     = FullyConnectedLayer(net, fc7, 1000)
+    fc8     = FullyConnectedLayer(net, fc7, 1008)
 
 
     print("Compiling...")

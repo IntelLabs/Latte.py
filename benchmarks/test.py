@@ -13,16 +13,18 @@ def main():
     # overfeat
     #parser.add_argument("-d", nargs=7, type=int, default=[512, 256, 14, 14, 3, 1, 1])
     #batch_size = 256
+    #batch_size = 1
 
     #googlenet 1x1
-    parser.add_argument("-d", nargs=7, type=int, default=[64, 64, 56, 56, 1, 1, 0])
-    batch_size = 128
+    #parser.add_argument("-d", nargs=7, type=int, default=[64, 64, 56, 56, 1, 1, 0])
+    #parser.add_argument("-d", nargs=7, type=int, default=[64, 64, 14, 14, 1, 1, 0])
+    #batch_size = 128
     #googlenet first layer
     #parser.add_argument("-d", nargs=7, type=int, default=[64, 3, 224, 224, 7, 2, 3])
     #batch_size = 128
     #googlenet 3rd layer
-    #parser.add_argument("-d", nargs=7, type=int, default=[192, 64, 56, 56, 3, 1, 1])
-    #batch_size = 128
+    parser.add_argument("-d", nargs=7, type=int, default=[192, 64, 56, 56, 3, 1, 1])
+    batch_size = 128
     args = parser.parse_args()
 
     net = Net(batch_size)
@@ -37,6 +39,7 @@ def main():
     print("    ofm        = {}".format(ofm))
     data = MemoryDataLayer(net, (channels, height, width))
     conv1 = ConvLayerNoBias(net, data, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
+    #conv2 = ConvLayerNoBias(net, conv1, num_filters=ofm, kernel=kernel, stride=stride, pad=pad)
 
     net.compile()
 
@@ -57,20 +60,18 @@ def main():
 
     forward_t_total = 0.0
     backward_t_total = 0.0
-    num_trials = 1000
-    #num_trials = 100
+    #num_trials = 1000
+    num_trials = 100
     print("Running {} trials".format(num_trials))
     #print(net.forward_tasks[1])
     for _ in range(num_trials):
         t = time.time()
         net.forward_tasks[1]()
         forward_t_total += time.time() - t 
-        ''' 
         if run_backward:
             t = time.time()
             net.backward_tasks[0]()
             backward_t_total += time.time() - t 
-        '''
     print("Done")
 
     oh = int(np.ceil((height-kernel+1+2*pad)/stride))
@@ -94,7 +95,6 @@ def main():
     #    (forward_flops / ((forward_t_total / num_trials) * freq))
     #))
     print("==============")
-    '''
     if run_backward:
         print("==== BP+WU ===")
         print(" BP+WU   {} ms".format(backward_t_total / num_trials * 1000))
@@ -105,7 +105,6 @@ def main():
         #))
         print("==============")
     print("PERFDUMP: ", batch_size, " ", channels, " ", height, " ", width, " ", ofm, " ", kernel, " ", stride, " ", pad, " {}".format((forward_flops * num_trials * 1e-9) / forward_t_total), " {}".format((backward_flops * num_trials * 1e-9) / backward_t_total)) 
-    '''
 
 if __name__ == '__main__':
     main()

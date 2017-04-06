@@ -29,7 +29,7 @@ def main():
 
     fc6bias = FullyConnectedLayer(net, pool5, 4096)
     fc7bias = FullyConnectedLayer(net, fc6bias, 4096)
-    i#fc8bias = FullyConnectedLayer(net, fc7bias, 1000)
+    #fc8bias = FullyConnectedLayer(net, fc7bias, 1000)
     #changed by raj to 1008
     fc8bias = FullyConnectedLayer(net, fc7bias, 1008)
 

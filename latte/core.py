@@ -101,6 +101,7 @@ class Net:
         self.accuracy = 0.0
         self.value_buffers = []
         self.grad_buffers = []
+        self.cbr_fusion = False
 
     def add_ensemble(self, ensemble):
         self.ensembles.append(ensemble)
@@ -1783,8 +1784,10 @@ class Net:
                 func_def = transformers.insert_pragma_simd(func_def, loopvar)
 
           if direction in ensemble.unroll_info:
-            for (unroll_var, unroll_factor, unroll_type) in ensemble.unroll_info[direction]:
-              #unroll_var, unroll_factor, unroll_type = ensemble.unroll_info[direction]
+            unroll_dict_list = ensemble.unroll_info[direction]
+            for field, value in unroll_dict_list.items():
+              unroll_var = field
+              unroll_factor, unroll_type = value
               unroller.unroll_loop(func_def, unroll_var, unroll_factor, unroll_type)
           self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
@@ -1805,10 +1808,6 @@ class Net:
             pre_trans = []
             post_trans = []
 
-          #if direction == "forward" and direction in ensemble.unroll_2_info and ensemble.unroll_2_info[direction]:
-            #(unroll_var_2, unroll_factor_2, unroll_type) = ensemble.unroll_2_info[direction]
-            #unroller.unroll_no_jam_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
-            #unroller.unroll_loop(func_def, unroll_var_2, unroll_factor_2, unroll_type)
           # check for fused code
           func_def = copypropagator.propagate_copies(func_def)
           if "ON" in latte.config.prefetch_option and direction in ensemble.prefetch_info:
@@ -1825,7 +1824,7 @@ class Net:
                         prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint = value
                         prefetcher.insert_simple_hoist_prefetches(func_def, field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint)
           # drop loops that iterate for one iteration only and constant propagate indices and hoist address computations
-          #func_def = loopsimplifier.simplify_loops(func_def)
+          func_def = loopsimplifier.simplify_loops(func_def)
           #func_def = optimizer.propogate_constants(func_def)
 
         else: #GEMM formulation
@@ -1852,4 +1851,53 @@ class Net:
     def backward(self):
         for task in self.backward_tasks:
             task()
+
+    def fuse_pattern_cbr(self):
+      self.cbr_fusion = True
+
+    def fuse_cbr(self, conv_bias_ens, relu_ens):
+      if isinstance(conv_bias_ens, EnsembleGroup): 
+        bias_ens = conv_bias_ens.ensembles[-1]
+        conv_ens = conv_bias_ens.ensembles[-2]
+      else:
+        conv_ens = conv_bias_ens
+
+      IFM_BLOCK_THRESHOLD = 4
+      HEIGHT_THRESHOLD = 7
+      WIDTH_THRESHOLD = 7
+
+      #print (net.connections_map[bias_ens][0].source)
+      #First try to fuse CBR
+      #if bias_ens is not None and net.connections_map[bias_ens][0].source.shape[0] < IFM_BLOCK_THRESHOLD and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
+      if bias_ens is not None and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
+
+        conv_ens.reset_prefetch(phase="forward")
+        #bring ifm inside
+        conv_ens.swap_loops(phase="forward", loop_vars=("i_outer", "_neuron_index_2"))
+        conv_ens.swap_loops(phase="forward", loop_vars=("i_outer", "_neuron_index_3"))
+        
+        #perform register blocking on h and w
+        #determine h_unroll_factor, w_unroll_factor
+        h_unroll_factor = 7
+        while conv_ens.shape[1] % h_unroll_factor != 0:
+          h_unroll_factor -= 1
+        w_unroll_factor = int(28/h_unroll_factor)
+        while conv_ens.shape[2] % w_unroll_factor != 0:
+          w_unroll_factor -= 1
+
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
+        relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
+        relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
+        bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
+        bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
+      else: #try fusing B and R
+        h_unroll_factor = 2
+        w_unroll_factor = 2
+        if bias_ens.shape[1] % h_unroll_factor == 0 and bias_ens.shape[2] % w_unroll_factor == 0 and relu_ens.shape[1] % h_unroll_factor == 0 and relu_ens.shape[2] % w_unroll_factor == 0:
+          relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
+          relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
+          bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
+          bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
+
 
