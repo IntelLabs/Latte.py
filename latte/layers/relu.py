@@ -47,7 +47,6 @@ def ReLULayer(net, input_ensemble):
       relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
       relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
     '''
-    print("AUTO_FUSION", latte.config.AUTO_FUSION)
     if net.cbr_fusion or "ON" in latte.config.AUTO_FUSION:
       print("FUSION ENABLED")
       net.fuse_cbr(input_ensemble, relu_ens)
