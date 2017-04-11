@@ -397,9 +397,12 @@ class Net:
             #c_file._ext = "cpp"
               
             c_file = transformers.simple_fusion(c_file)
-            c_file = code_motion.lift_intermediate_loads(c_file)
-            c_file = transformers.simple_fusion(c_file)
-            c_file = copy_to_register.register_copy(c_file, self.fuse_map)
+          
+            if net.cbr_fusion or "ON" in latte.config.AUTO_FUSION:
+                print("FUSION ENABLED")
+                c_file = code_motion.lift_intermediate_loads(c_file)
+                c_file = transformers.simple_fusion(c_file)
+                c_file = copy_to_register.register_copy(c_file, self.fuse_map)
             if "ON" in latte.config.TIMER:
                 c_file = transformers.timer(c_file)
         
