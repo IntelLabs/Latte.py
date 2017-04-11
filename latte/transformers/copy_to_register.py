@@ -269,27 +269,19 @@ class RegisterCopy(ast.NodeTransformer):
     def __init__(self, map_):
         super().__init__()
         self.replace_map = map_
-        self.seen = {}
+    
+
     def visit_SymbolRef(self, node):
-        
+       
 
-        if node.name in sym_map:
-          return sym_map[node.name]
-        
-        
-        if node.type is not None:
-            self.seen[node.name] = node.type
-        return node
  
-    def visit(self, node):
-        if hasattr(node, 'body'):
-            #raise NotImplementedError(ast.dump(node))
-            curr = copy.deepcopy(self.seen)
-        node = super().visit(node)
-        if hasattr(node, 'body'):
-            self.seen = curr
-        return node
 
+       if node.name in sym_map:
+            return sym_map[node.name]
+        
+        
+       return node
+ 
 
 
 
@@ -314,11 +306,7 @@ class RegisterCopy(ast.NodeTransformer):
                     sym_arr_ref = construct_arr_reference(source, deepcopy(stmt.right.args))
                     if in_du_map(sym_arr_ref):
                        reg = get_register(sym_arr_ref)
-                       #print(reg)       
-                       if reg.name in self.seen:
-                          sym_map[stmt.left.name] = reg
-                       else:
-                          new_body.append(stmt)  
+                       sym_map[stmt.left.name] = reg
                     else:
                        new_body.append(stmt)    
                   else:
