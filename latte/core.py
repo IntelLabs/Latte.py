@@ -398,7 +398,7 @@ class Net:
               
             c_file = transformers.simple_fusion(c_file)
           
-            if net.cbr_fusion or "ON" in latte.config.AUTO_FUSION:
+            if self.cbr_fusion or "ON" in latte.config.AUTO_FUSION:
                 print("FUSION ENABLED")
                 c_file = code_motion.lift_intermediate_loads(c_file)
                 c_file = transformers.simple_fusion(c_file)

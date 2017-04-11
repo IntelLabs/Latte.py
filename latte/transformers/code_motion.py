@@ -9,14 +9,16 @@ class SymbolChecker(ast.NodeVisitor):
         self.sym = sym
 
     def visit_BinaryOp(self, node):  
-        if isinstance(node.op, C.Op.ArrayRef):
-           self.visit(node.right)   
+        a = node
+        while isinstance(a, C.BinaryOp):
             
+            self.visit(a.right)   
+            a = a.left  
 
     def visit_SymbolRef(self, node):
         if node.name != self.sym:
-            print (self.sym)
-            print (node.name)
+            #print (self.sym)
+            #print (node.name)
             self.flag = False
 
 
@@ -44,9 +46,9 @@ class hoist_intermediate_invariants(ast.NodeTransformer):
 
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
-        if node.init.left.name == "_neuron_index_0":
-            # Don't lift out of outer most loop
-            return node
+        #if node.init.left.name == "_neuron_index_0":
+        # Don't lift out of outer most loop
+        #    return node
         pre_stmts = []
         new_body = []
         loop_var = node.init.left.name
@@ -82,8 +84,8 @@ class InvariantLoadStoreLifter(ast.NodeTransformer):
     def visit_For(self, node):
         node.body = util.flatten([self.visit(s) for s in node.body])
         if node.init.left.name == "_neuron_index_0":
-            # Don't lift out of outer most loop
-            return node
+          #Don't lift out of outer most loop
+          return node
         pre_stmts = []
         new_body = []
         post_stmts = []
