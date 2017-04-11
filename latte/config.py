@@ -45,6 +45,17 @@ TIMERS = [
 ]
 TIMER = os.getenv("LATTE_TIMER", "OFF")
  
+AUTO_FUSION_OPTION = [
+    "ON",
+    "OFF"
+]
+AUTO_FUSION = os.getenv("LATTE_AUTO_FUSION", "OFF")
+
+prefetch_options = [
+    "ON",
+    "OFF"
+]
+ 
 prefetch_options = [
     "ON",
     "OFF"
