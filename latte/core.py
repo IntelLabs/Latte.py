@@ -28,7 +28,7 @@ import latte.transformers.unroll as unroller
 import latte.analysis as analyzer
 import latte.optimizations as optimizer
 import latte.type_converter as type_converter
-
+import latte.transformers.copy_to_register as  copy_to_register
 if "OPENCL" in latte.config.parallel_strategy:
     import pycl as cl
 
@@ -86,7 +86,7 @@ class Net:
         self.connections = []
         self.buffers = {}
         self.cl_buffers = {}
-
+        self.fuse_map ={}
         self.forward_tasks = []
         self.backward_tasks = []
 
@@ -399,6 +399,7 @@ class Net:
             c_file = transformers.simple_fusion(c_file)
             c_file = code_motion.lift_intermediate_loads(c_file)
             c_file = transformers.simple_fusion(c_file)
+            c_file = copy_to_register.register_copy(c_file, self.fuse_map)
             if "ON" in latte.config.TIMER:
                 c_file = transformers.timer(c_file)
         
@@ -1861,13 +1862,17 @@ class Net:
       if isinstance(conv_bias_ens, EnsembleGroup): 
         bias_ens = conv_bias_ens.ensembles[-1]
         conv_ens = conv_bias_ens.ensembles[-2]
+        self.fuse_map[bias_ens.name + "inputs"] = conv_ens.name + "value" 
+        self.fuse_map[relu_ens.name + "inputs"] = bias_ens.name + "value"
       else:
         conv_ens = conv_bias_ens
-
+        self.fuse_map[relu_ens.name + "inputs"] = conv_ens.name + "value"
+    
       IFM_BLOCK_THRESHOLD = 4
       HEIGHT_THRESHOLD = 7
       WIDTH_THRESHOLD = 7
-
+      
+       
       #print (net.connections_map[bias_ens][0].source)
       #First try to fuse CBR
       #if bias_ens is not None and net.connections_map[bias_ens][0].source.shape[0] < IFM_BLOCK_THRESHOLD and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
