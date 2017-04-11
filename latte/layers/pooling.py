@@ -8,13 +8,13 @@ class MaxNeuron(Neuron):
     batch_fields     = Neuron.batch_fields + ["mask_j", "mask_k"]
     zero_init_fields = Neuron.zero_init_fields + ["mask_j", "mask_k"]
 
-    def __init__(self):
+    def __init__(self, j,k):
         super().__init__()
         self.inputs = []
         self.grad_inputs = []
 
-        self.mask_j = 0
-        self.mask_k = 0
+        self.mask_j = j
+        self.mask_k = k
 
     def forward(self):
         max_value = -INFINITY
@@ -61,9 +61,22 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     output_width = int(math.ceil((input_width - kernel_w + 2 * pad_w) / stride_w)) + 1
     output_height = int(math.ceil((input_height - kernel_h + 2 * pad_h) / stride_h)) + 1
 
+
+    max_j = np.zeros((5,), dtype=np.int32)
+    
     shape = (input_channels, output_height, output_width)
+    max_j = np.zeros(shape, dtype=np.int32)
+    max_k = np.zeros(shape, dtype=np.int32)
+
     neurons = np.empty(shape, dtype='object')
-    neurons[:] = MaxNeuron()
+
+
+    for i in range(input_channels):
+      for j in range(output_height):
+         for k in range(output_width): 
+            neurons[i,j,k] = MaxNeuron(max_j[i,j,k],max_k[i,j,k])
+
+
 
     pooling_ens = net.init_ensemble(neurons)
 
@@ -179,7 +192,17 @@ def MeanPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
  
     shape = (input_channels, output_height, output_width)
     neurons = np.empty(shape, dtype='object')
-    neurons[:] = MeanNeuron(kernel_h, kernel_w)
+    
+    h = np.full(shape, kernel_h, dtype=np.int32)
+    w = np.full(shape, kernel_w, dtype=np.int32) 
+ 
+
+    
+    for i in range(input_channels):
+      for j in range(output_height):
+         for k in range(output_width):
+            neurons[i,j,k] = MeanNeuron(h[i,j,k],w[i,j,k])
+
  
     pooling_ens = net.init_ensemble(neurons)
  
