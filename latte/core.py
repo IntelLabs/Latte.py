@@ -117,18 +117,33 @@ class Net:
         self.add_one_to_one_connections(source_ens, ens)
         return ens
 
+    def add_to_connection_map(self, sink_ens, connection):
+        if sink_ens not in self.connections_map:
+          self.connections_map[sink_ens]=[]
+        self.connections_map[sink_ens].append(connection)
+
     def add_connections(self, source_ens, sink_ens, mapping, reshape=None, clamp=False):
         if isinstance(source_ens, EnsembleGroup):
             source_ens = source_ens.ensembles[-1]
-        self.connections.append(Connection(source_ens, sink_ens, mapping, reshape, clamp))
+        #self.connections.append(Connection(source_ens, sink_ens, mapping, reshape, clamp))
+        connection=Connection(source_ens, sink_ens, mapping, reshape, clamp)
+        self.connections.append(connection)
+        self.add_to_connection_map(sink_ens, connection)
+          
 
     def add_loss_connection(self, source_ens, sink_ens):
-        self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
+        #self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
+        connection = Connection(source_ens, sink_ens, one_to_one, None)
+        self.connections.append(connection)
+        self.add_to_connection_map(sink_ens, connection)
 
     def add_one_to_one_connections(self, source_ens, sink_ens):
         if isinstance(source_ens, EnsembleGroup):
             source_ens = source_ens.ensembles[-1]
-        self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
+        #self.connections.append(Connection(source_ens, sink_ens, one_to_one, None))
+        connection = Connection(source_ens, sink_ens, one_to_one, None)
+        self.connections.append(connection)
+        self.add_to_connection_map(sink_ens, connection)
 
     def clear_grad(self):
         for arr in self.grad_buffers:
@@ -319,9 +334,11 @@ class Net:
 
     def compile(self):
         task_groups = {}
+        '''
         self.connections_map = {ensemble: [] for ensemble in self.ensembles}
         for connection in self.connections:
             self.connections_map[connection.sink].append(connection)
+        '''
 
         in_place_buffer_map = {}
         forward_body = []
@@ -399,7 +416,7 @@ class Net:
             c_file = transformers.simple_fusion(c_file)
           
             if self.cbr_fusion or "ON" in latte.config.AUTO_FUSION:
-                print("FUSION ENABLED")
+                #print("FUSION ENABLED")
                 c_file = code_motion.lift_intermediate_loads(c_file)
                 c_file = transformers.simple_fusion(c_file)
                 c_file = copy_to_register.register_copy(c_file, self.fuse_map)
@@ -1874,13 +1891,29 @@ class Net:
       IFM_BLOCK_THRESHOLD = 4
       HEIGHT_THRESHOLD = 7
       WIDTH_THRESHOLD = 7
-      
        
-      #print (net.connections_map[bias_ens][0].source)
+      channels = self.connections_map[conv_ens][0].source.shape[0]
+      input_height = self.connections_map[conv_ens][0].source.shape[1]
+      input_width = self.connections_map[conv_ens][0].source.shape[2]
+      if channels < latte.config.SIMDWIDTH:
+        channels = latte.config.SIMDWIDTH
+      cache_line = 64
+      l1_size = 32768
+      l1_cacheline = int(l1_size/cache_line)
+      half_l1_size = 0.5 * l1_size
+      output_width = conv_ens.shape[2]
+      output_height = conv_ens.shape[1]
+      kernel_h=conv_ens.neurons[0,0,0].weights.shape[1]
+      kernel_w=conv_ens.neurons[0,0,0].weights.shape[2]
+      cacheline_needed_by_each_ofh = output_width + (channels*kernel_h*kernel_w) + (channels*kernel_h*kernel_w*latte.config.SIMDWIDTH)
+      cacheline_needed_by_each_ofw = 1 + (channels*kernel_h*kernel_w) + (channels*kernel_h*kernel_w*latte.config.SIMDWIDTH)
+      cacheline_needed_by_each_ifm = (kernel_h*kernel_w) + (kernel_h*kernel_w*latte.config.SIMDWIDTH)
+      #print("channels=", channels, " output_width=", output_width, " kernel_h=", kernel_h, " kernel_w=", kernel_w, " cacheline_needed_ofh=", cacheline_needed_by_each_ofh, " cacheline_needed_ofw=", cacheline_needed_by_each_ofw, " cacheline_needed_ifm=", cacheline_needed_by_each_ifm, " l1_cacheline=", l1_cacheline)
+      SIMDWIDTH=latte.config.SIMDWIDTH
       #First try to fuse CBR
       #if bias_ens is not None and net.connections_map[bias_ens][0].source.shape[0] < IFM_BLOCK_THRESHOLD and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
-      if bias_ens is not None and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
-
+      #if bias_ens is not None and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
+      if bias_ens is not None and channels == SIMDWIDTH: 
         conv_ens.reset_prefetch(phase="forward")
         #bring ifm inside
         conv_ens.swap_loops(phase="forward", loop_vars=("i_outer", "_neuron_index_2"))
@@ -1901,7 +1934,68 @@ class Net:
         relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
-      else: #try fusing B and R
+
+      elif bias_ens is not None and cacheline_needed_by_each_ifm < l1_cacheline:
+        conv_ens.reset_prefetch(phase="forward")
+        #bring ifm inside
+        conv_ens.swap_loops(phase="forward", loop_vars=("i_outer", "_neuron_index_2"))
+        conv_ens.swap_loops(phase="forward", loop_vars=("i_outer", "_neuron_index_3"))
+        
+        #perform register blocking on h and w
+        #determine h_unroll_factor, w_unroll_factor
+        '''
+        h_unroll_factor = 7
+        while conv_ens.shape[1] % h_unroll_factor != 0:
+          h_unroll_factor -= 1
+        w_unroll_factor = int(28/h_unroll_factor)
+        while conv_ens.shape[2] % w_unroll_factor != 0:
+          w_unroll_factor -= 1
+        '''
+        w_unroll_factor = 28
+        while conv_ens.shape[2] % w_unroll_factor != 0:
+          w_unroll_factor -= 1
+        h_unroll_factor = int(28/w_unroll_factor)
+        while conv_ens.shape[1] % h_unroll_factor != 0:
+          h_unroll_factor -= 1
+
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
+        relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
+        relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
+        bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
+        bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
+
+        if (kernel_h == 1 and kernel_w == 1) or (stride_h >1): 
+          inner_unroll_factor = 2
+        else:
+          inner_unroll_factor = 4
+        cacheline_needed_by_each_ifm_reg_block = w_unroll_factor + (kernel_h*kernel_w*w_unroll_factor) + (kernel_h*kernel_w*latte.config.SIMDWIDTH)
+        #print ("ifm_reg_blpck=", cacheline_needed_by_each_ifm_reg_block);
+
+        #prefetch
+        if h_unroll_factor == 1 and cacheline_needed_by_each_ifm_reg_block  < l1_cacheline:
+          fp_pf_factor = ((kernel_h*kernel_w*w_unroll_factor))/(kernel_h*kernel_w*(SIMDWIDTH/inner_unroll_factor))
+          #print ("fp_pf_factor=", fp_pf_factor)
+          if fp_pf_factor > 1.0:
+            fp_pf_factor = math.ceil(fp_pf_factor)
+            fp_pf_loop = "i_inner"
+          else:
+            fp_pf_factor = ((kernel_h*kernel_w*w_unroll_factor))/(kernel_h*kernel_w)
+            #print ("fp_pf_factor=", fp_pf_factor)
+            if fp_pf_factor > 1.0:
+              fp_pf_factor = math.ceil(fp_pf_factor)
+              fp_pf_loop = "k"
+            else:
+              fp_pf_factor = math.ceil(((kernel_h*kernel_w*w_unroll_factor))/(kernel_h))
+              #print ("fp_pf_factor=", fp_pf_factor)
+              fp_pf_loop = "j"
+          #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, w_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [3, "i_inner", -2, w_unroll_factor, "k", 1, stride_w * w_unroll_factor, 0]})
+          if w_unroll_factor == output_width:
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, w_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1]})
+          else:
+            conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, w_unroll_factor, "_neuron_index_3", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1]})
+
+      elif bias_ens is not None: #try fusing B and R
         h_unroll_factor = 2
         w_unroll_factor = 2
         if bias_ens.shape[1] % h_unroll_factor == 0 and bias_ens.shape[2] % w_unroll_factor == 0 and relu_ens.shape[1] % h_unroll_factor == 0 and relu_ens.shape[2] % w_unroll_factor == 0:
