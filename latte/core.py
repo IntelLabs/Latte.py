@@ -413,7 +413,9 @@ class Net:
 
             #c_file._ext = "cpp"
               
-            c_file = transformers.simple_fusion(c_file)
+            if latte.config.codegen_strategy == "AUTOVEC":
+ 
+                c_file = transformers.simple_fusion(c_file)
           
             if self.cbr_fusion or "ON" in latte.config.AUTO_FUSION:
                 #print("FUSION ENABLED")
@@ -921,16 +923,16 @@ class Net:
         '''
 
     def _gen_libxsmm_function(self, ensemble, neuron, direction):
-      print("weights:" , neuron.weights.shape)
-      print("ensamble.shape:" , ensemble.shape)
-      print("nifm:", self.connections_map[ensemble][0].source.shape[0], " ifh:", self.connections_map[ensemble][0].source.shape[1], " ifw:", self.connections_map[ensemble][0].source.shape[2])
-      print("stride:", ensemble.stride)
-      print("pad_in_0:", self.connections_map[ensemble][0].source.pad[0], "pad_in_1:" , self.connections_map[ensemble][0].source.pad[1] , "pad_out_0" , ensemble.pad[0])
-      print("name:",ensemble.name)
+      #print("weights:" , neuron.weights.shape)
+      #print("ensamble.shape:" , ensemble.shape)
+      #print("nifm:", self.connections_map[ensemble][0].source.shape[0], " ifh:", self.connections_map[ensemble][0].source.shape[1], " ifw:", self.connections_map[ensemble][0].source.shape[2])
+      #print("stride:", ensemble.stride)
+      #print("pad_in_0:", self.connections_map[ensemble][0].source.pad[0], "pad_in_1:" , self.connections_map[ensemble][0].source.pad[1] , "pad_out_0" , ensemble.pad[0])
+      #print("name:",ensemble.name)
       input_name = ensemble.name + "inputs"
       output_name = ensemble.name+"value"
       filter_name = ensemble.name+"weights_transposed"
-      print("filter:",C.SymbolRef(filter_name))
+      #print("filter:",C.SymbolRef(filter_name))
       if direction == "forward" :
         return StringTemplate("""
       {
@@ -1458,7 +1460,7 @@ class Net:
           # func_def = optimizer.propogate_constants(func_def) [], None)
           
 
-          print(args[2])
+          #print(args[2])
           return func_def.defn, [arg.arg for arg in args]
 
         else:
@@ -1777,7 +1779,7 @@ class Net:
         func_def = optimizer.propogate_constants(func_def)
         
 
-        if latte.config.codegen_strategy == "AUTOVEC":
+        if latte.config.codegen_strategy == "AUTOVEC" or ensemble.use_libxsmm_lib != 1:
           # optimizations applied
           for loop_var1, loop_var2 in ensemble.loops_to_swap[direction]:
             loop1 = util.find_loop(func_def, loop_var1)
@@ -1850,9 +1852,11 @@ class Net:
           func_def = loopsimplifier.simplify_loops(func_def)
           #func_def = optimizer.propogate_constants(func_def)
 
-        else: #GEMM formulation
-          func_def = transformers.pattern_match_gemm(func_def)
-          raise NotImplementedError("GEMM formulation is not complete yet")
+        #else: #GEMM formulation
+        #   pre_trans = []
+        #   post_trans = []  
+        #  func_def = transformers.pattern_match_gemm(func_def)
+        #  raise NotImplementedError("GEMM formulation is not complete yet")
 
         assert isinstance(func_def.defn[0], C.For)
         func_def.defn[0].pre_trans = pre_trans
