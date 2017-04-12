@@ -106,7 +106,7 @@ class InitPrefetcher(ast.NodeTransformer):
 
 
 class StridedPrefetcher(ast.NodeTransformer):
-    def __init__(self, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint):
+    def __init__(self, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, prefetch_num_zeroes, cacheline_hint):
         super().__init__()
         self.prefetch_field = prefetch_field
         self.prefetch_type = prefetch_type
@@ -120,6 +120,7 @@ class StridedPrefetcher(ast.NodeTransformer):
         self.prefetch_multiplier = prefetch_multiplier
         self.prefetch_constant = prefetch_constant
         self.cacheline_hint= cacheline_hint
+        self.prefetch_num_zeroes = prefetch_num_zeroes
 
     def rewrite_arg(self, arg):
         if isinstance(arg, C.UnaryOp) and isinstance(arg.op, C.Op.Ref) and isinstance(arg.arg, C.BinaryOp) and isinstance(arg.arg.op, C.Op.ArrayRef):
@@ -129,8 +130,11 @@ class StridedPrefetcher(ast.NodeTransformer):
         else:
           curr_node = None
         idx = self.dim
+        num_zeroes = self.prefetch_num_zeroes
         while (idx+1 != 0):
-          curr_node.right=C.Constant(0)
+          if num_zeroes > 0:
+            curr_node.right=C.Constant(0)
+            num_zeroes--
           curr_node = curr_node.left
           idx+=1
         old_expr = curr_node.right
@@ -171,13 +175,13 @@ class StridedPrefetcher(ast.NodeTransformer):
             node.body = new_body
         return node
 
-def insert_strided_prefetches(ast,  prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint):
+def insert_strided_prefetches(ast,  prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, prefetch_num_zeroes, cacheline_hint):
      HoistPrefetch.escape_body=[]
      InitPrefetcher.init_body=[]
-     return InitPrefetcher(prefetch_init_loop).visit(HoistPrefetch(prefetch_dest_loop).visit(StridedPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint).visit(ast)))
+     return InitPrefetcher(prefetch_init_loop).visit(HoistPrefetch(prefetch_dest_loop).visit(StridedPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_offset, prefetch_dest_loop,  prefetch_init_loop, prefetch_loop_var, prefetch_multiplier, prefetch_constant, prefetch_num_zeroes, cacheline_hint).visit(ast)))
 
 class SimpleHoistPrefetcher(ast.NodeTransformer):
-    def __init__(self, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, cacheline_hint):
+    def __init__(self, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, prefetch_num_zeroes, cacheline_hint):
         super().__init__()
         self.prefetch_field = prefetch_field
         self.prefetch_type = prefetch_type
@@ -187,6 +191,7 @@ class SimpleHoistPrefetcher(ast.NodeTransformer):
         self.prefetch_dest_loop = prefetch_loop_var
         self.prefetch_multiplier = prefetch_multiplier
         self.prefetch_constant = prefetch_constant
+        self.prefetch_num_zeroes = prefetch_num_zeroes
         self.cacheline_hint= cacheline_hint
 
     def rewrite_arg(self, arg):
@@ -197,8 +202,11 @@ class SimpleHoistPrefetcher(ast.NodeTransformer):
         else:
           curr_node = None
         idx = self.dim
+        num_zeroes = self.prefetch_num_zeroes
         while (idx+1 != 0):
-          curr_node.right=C.Constant(0)
+          if num_zeroes > 0:
+            curr_node.right=C.Constant(0)
+            num_zeroes--
           curr_node = curr_node.left
           idx+=1
         old_expr = curr_node.right
@@ -227,7 +235,7 @@ class SimpleHoistPrefetcher(ast.NodeTransformer):
             node.body = new_body
         return node
 
-def insert_simple_hoist_prefetches(ast, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier,  prefetch_constant, cacheline_hint):
+def insert_simple_hoist_prefetches(ast, prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier,  prefetch_constant, prefetch_num_zeroes, cacheline_hint):
      HoistPrefetch.escape_body = []
-     return HoistPrefetch(prefetch_loop_var).visit(SimpleHoistPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant,cacheline_hint).visit(ast))
+     return HoistPrefetch(prefetch_loop_var).visit(SimpleHoistPrefetcher(prefetch_field, prefetch_type, enclosing_loop_var, dim, prefetch_count, prefetch_loop_var, prefetch_multiplier, prefetch_constant, prefetch_num_zeroes,cacheline_hint).visit(ast))
 

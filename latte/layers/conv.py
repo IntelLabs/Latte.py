@@ -176,10 +176,11 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     conv_ens.tile('value', dim=0, factor=SIMDWIDTH)
     conv_ens.tile('grad', dim=0, factor=SIMDWIDTH)
 
+    conv_ens.stride = stride
+
     # Added by Raj/Anand
     if "LIBXSMM" in latte.config.codegen_strategy:
       conv_ens.use_libxsmm(1)
-      conv_ens.stride = stride
       return conv_ens
 
     if "OPENCL" not in latte.config.parallel_strategy:
