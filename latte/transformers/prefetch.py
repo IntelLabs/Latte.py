@@ -134,7 +134,7 @@ class StridedPrefetcher(ast.NodeTransformer):
         while (idx+1 != 0):
           if num_zeroes > 0:
             curr_node.right=C.Constant(0)
-            num_zeroes--
+            num_zeroes-=1
           curr_node = curr_node.left
           idx+=1
         old_expr = curr_node.right
@@ -206,7 +206,7 @@ class SimpleHoistPrefetcher(ast.NodeTransformer):
         while (idx+1 != 0):
           if num_zeroes > 0:
             curr_node.right=C.Constant(0)
-            num_zeroes--
+            num_zeroes -= 1
           curr_node = curr_node.left
           idx+=1
         old_expr = curr_node.right
