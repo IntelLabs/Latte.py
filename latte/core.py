@@ -1997,9 +1997,9 @@ class Net:
                 fp_pf_loop = "j"
             #conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, w_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [3, "i_inner", -2, w_unroll_factor, "k", 1, stride_w * w_unroll_factor, 0]})
             if w_unroll_factor == output_width:
-              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, w_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 0]})
+              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, w_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 2, 0]})
             else:
-              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, w_unroll_factor, "_neuron_index_3", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 0]})
+              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, w_unroll_factor, "_neuron_index_3", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 2, 0]})
 
       elif bias_ens is not None: #try fusing B and R
         h_unroll_factor = 2
