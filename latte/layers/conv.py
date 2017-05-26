@@ -229,17 +229,20 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
       '''
       inner_unroll_factor=1
       if "AVX-512" in latte.config.vec_config:
-        #outer_unroll_factor = 16
         outer_unroll_factor = 28
-        #outer_unroll_factor = 8
-        #factor = 8
         while output_width % outer_unroll_factor != 0:
           outer_unroll_factor -= 1
-        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        if outer_unroll_factor > 1:
+          conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+
         if (kernel_h == 1 and kernel_w == 1) or (stride_h >1): 
           inner_unroll_factor = 2
         else:
-          inner_unroll_factor = 4
+          inner_unroll_factor = 32 - outer_unroll_factor
+          if inner_unroll_factor > 16:
+            inner_unroll_factor = 16
+          while 16 % inner_unroll_factor != 0:
+            inner_unroll_factor -= 1
         if inner_unroll_factor > 1:
           conv_ens.unroll(phase="forward", loop_var="i_inner", factor=inner_unroll_factor)
 
@@ -308,6 +311,17 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
           #print ("WARNING!!!!!  Disable prefetch as data does not fit L1 ")
           conv_ens.prefetch(phase="backward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, outer_unroll_factor, "_neuron_index_3", 1, outer_unroll_factor, 0], 'inputs': [3, "i_inner", -2, outer_unroll_factor, "k", 1, stride_w * outer_unroll_factor, 0]})
         '''
+        wu_inner_unroll_factor = 8
+        while 16 % wu_inner_unroll_factor != 0:
+          wu_inner_unroll_factor -= 1
+        if wu_inner_unroll_factor > 1:
+          conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_1_inner", factor=wu_inner_unroll_factor)
+        wu_outer_unroll_factor = 32 - wu_inner_unroll_factor
+        while output_width % wu_outer_unroll_factor != 0:
+          wu_outer_unroll_factor -= 1
+        if wu_outer_unroll_factor>1:
+          conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=wu_outer_unroll_factor)
+
       else: #AVX 2 code
         outer_unroll_factor = 16
         while output_width % outer_unroll_factor != 0:
@@ -316,8 +330,9 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         #backward  
         conv_ens.unroll(phase="backward", loop_var="_neuron_index_3", factor=outer_unroll_factor)
         conv_ens.unroll(phase="backward", loop_var="_neuron_index_1_inner", factor=inner_unroll_factor)
-      #update-internal
-      conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        #update-internal
+        conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_3", factor=outer_unroll_factor)
+        conv_ens.unroll(phase="update_internal", loop_var="_neuron_index_1_inner", factor=inner_unroll_factor)
          
     # End Optimizations
 
