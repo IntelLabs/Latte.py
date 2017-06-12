@@ -110,6 +110,6 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
         while net.batch_size % factor != 0:
             factor -= 1
         if latte.config.parallel_strategy != "FLOWGRAPH_LOOP":
-          ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
+          bias_ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
 
     return EnsembleGroup(ens, bias_ens)
