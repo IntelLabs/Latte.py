@@ -13,6 +13,8 @@ from .pattern_match_math import PatternMatchMath
 from .vectorize import fuse_multiply_adds, vectorize_loop
 from .outline_outer_loops import Outliner
 from .copy_to_register import register_copy
+from .scalar_expand import scalar_expand_vars
+from .scalar_expand import if_convert
 
 import ast
 import ctree.c.nodes as C
