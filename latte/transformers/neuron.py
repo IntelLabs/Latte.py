@@ -238,10 +238,19 @@ class NeuronTransformer(ast.NodeTransformer):
                             if dim + 1 == i:
                                 tile = True
                     if tile:
-                        value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(), 
+                        length = 0
+                        if len(self.connections[0].mapping.shape) > i:
+                            if len(self.connections[0].mapping.shape[i-1]) == 1:
+                                length = 1
+                        if length == 0:          
+                            value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(), 
                                 ast.Name("_input_offset_{}_outer".format(i), ast.Load())) 
-                        value.slice.value.elts[i + ndim] = ast.BinOp(value.slice.value.elts[i + ndim], ast.Add(), 
+                            value.slice.value.elts[i + ndim] = ast.BinOp(value.slice.value.elts[i + ndim], ast.Add(), 
                                 ast.Name("_input_offset_{}_inner".format(i), ast.Load())) 
+                        else:
+                           value.slice.value.elts[i] = ast.Name("_neuron_index_{}_outer".format(i), ast.Load())
+                           value.slice.value.elts[i + ndim] =  ast.Name("_neuron_index_{}_inner".format(i), ast.Load())
+
                     else:
                         value.slice.value.elts[i] = ast.BinOp(elem, ast.Add(), 
                                 ast.Name("_input_offset_{}".format(i), ast.Load()))
