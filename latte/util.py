@@ -311,6 +311,14 @@ class ReplaceSymbol(ast.NodeTransformer):
             return self.new
         return node
 
+    def visit_FunctionCall(self, node):
+    
+        new_args = [deepcopy(self.visit(a)) for a in node.args]
+    
+        return C.FunctionCall(node.func, new_args)
+
+
+
 def replace_symbol(old, new, ast):
     return ReplaceSymbol(old, new).visit(ast)
 
