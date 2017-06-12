@@ -6,6 +6,8 @@ extern "C"
 void reorder_4d_5d(float *_input, float *_output, int dim0, int dim1, int dim2, int dim3) {
     float (* __restrict input)[dim1][dim2][dim3] = (float (*)[dim1][dim2][dim3]) _input;
     float (* __restrict output)[dim1 / SIMDWITH][dim2][dim3][SIMDWITH] = (float (*)[dim1 / SIMDWITH][dim2][dim3][SIMDWITH]) _output;
+    //float (* input)[dim1][dim2][dim3] = (float (*)[dim1][dim2][dim3]) _input;
+    //float (* output)[dim1 / SIMDWITH][dim2][dim3][SIMDWITH] = (float (*)[dim1 / SIMDWITH][dim2][dim3][SIMDWITH]) _output;
     #pragma omp parallel for collapse(2)
     for (int n = 0; n < dim0; n++) {
         for (int i = 0; i < dim1 / SIMDWITH; i++) {
