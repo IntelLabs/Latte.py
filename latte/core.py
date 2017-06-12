@@ -30,6 +30,8 @@ import latte.analysis as analyzer
 import latte.optimizations as optimizer
 import latte.type_converter as type_converter
 import latte.transformers.copy_to_register as  copy_to_register
+import latte.transformers.scalar_expand as ScalarExpansion
+
 if "OPENCL" in latte.config.parallel_strategy:
     import pycl as cl
 
@@ -1318,6 +1320,10 @@ class Net:
         #   arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
         
 
+
+
+
+
         if direction in ensemble.vectorize_info:
              # RAJ hack here
 
@@ -1354,7 +1360,7 @@ class Net:
           # basic python -> C conversion
           func_def = PyBasicConversions().visit(func_def)
 
-          _, transposed_buffers = vectorizer.vectorize_loop(func_def,
+          _, transposed_buffers,_ = vectorizer.vectorize_loop(func_def,
                     ensemble.vectorize_info[direction][0])
  
  
@@ -1457,7 +1463,7 @@ class Net:
             buf = self.buffers[arg.name]
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
           # Basic type inference and constant propogation
-          func_def = analyzer.type_infer(func_def)
+           func_def, type_table  = analyzer.type_infer(func_def)
           # func_def = optimizer.propogate_constants(func_def) [], None)
           
 
@@ -1667,6 +1673,8 @@ class Net:
 
 
                 for dim in range(0, ensemble.ndim):
+                    offset_num  = -1
+
                     is_tiled_dim = "inputs" in ensemble.tiling_info and \
                         any(tiled_dim == dim 
                             for tiled_dim, _ in ensemble.tiling_info["inputs"])
@@ -1676,6 +1684,14 @@ class Net:
                             if tiled_dim == dim:
                                 # factor is now the tiling factor for tiled_dim
                                 break
+                        
+                        length = 0
+                        if len(mapping.shape) > dim:
+                            length = len(mapping.shape[dim])
+ 
+                        if length == 1:
+                              offset_num = 0
+
                         mapping.set_arg(dim, ast.BinOp(
                                 ast.BinOp(
                                     ast.Name("_neuron_index_{}_outer".format(dim + 1), ast.Load()), 
@@ -1695,10 +1711,14 @@ class Net:
                         body += util.get_dependent_statements(mapping_func.body[:-1], offset)
 
                     if is_tiled_dim:
-                        outer_offset = ast.BinOp(offset, ast.Div(), ast.Num(factor))
-                        body.append(ast.Assign([ast.Name(input_offset + "_outer", ast.Store())], outer_offset))
-                        inner_offset = ast.BinOp(offset, ast.Mod(), ast.Num(factor))
-                        body.append(ast.Assign([ast.Name(input_offset + "_inner", ast.Store())], inner_offset))
+                        if offset_num == 0 :
+                            body.append(ast.Assign([ast.Name(input_offset + "_outer", ast.Store())],  ast.Name("_neuron_index_{}_outer".format(dim + 1), ast.Load())))
+                            body.append(ast.Assign([ast.Name(input_offset + "_inner", ast.Store())],  ast.Name("_neuron_index_{}_inner".format(dim + 1), ast.Load())))
+                        else:
+                            outer_offset = ast.BinOp(offset, ast.Div(), ast.Num(factor))
+                            body.append(ast.Assign([ast.Name(input_offset + "_outer", ast.Store())], outer_offset))
+                            inner_offset = ast.BinOp(offset, ast.Mod(), ast.Num(factor))
+                            body.append(ast.Assign([ast.Name(input_offset + "_inner", ast.Store())], inner_offset))
                     else:
                         # Store the offset value
                         body.append(ast.Assign([ast.Name(input_offset, ast.Store())], offset))
@@ -1776,7 +1796,7 @@ class Net:
            buf = self.buffers[arg.name]
            arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
         # Basic type inference and constant propogation
-        func_def = analyzer.type_infer(func_def)
+        func_def, type_table  = analyzer.type_infer(func_def)
         func_def = optimizer.propogate_constants(func_def)
         
 
@@ -1796,18 +1816,43 @@ class Net:
           #func_def = loopsimplifier.simplify_loops(func_def)
           #func_def = optimizer.propogate_constants(func_def)
 
-          if direction in ensemble.vectorize_info:
-            # RAJ hack here
-            func_def, transposed_buffers = vectorizer.vectorize_loop(func_def, 
+ #HACK-- Needs cleaner handling -- Anand(27th June 2017)
+          if direction in ensemble.scalar_expand_info and direction in ensemble.vectorize_info:
+            func_def, transposed_buffers, symbol_map = vectorizer.vectorize_loop(func_def,
                     ensemble.vectorize_info[direction][0])
             # func_def = transformers.push_inner_loop_down(func_def)
-            func_def = vectorizer.register_promote_vector_loads_stores(func_def)
+            func_def, symbol_map2 = vectorizer.register_promote_vector_loads_stores(func_def, symbol_map)
+            func_def, type_map, vector_type_map = ScalarExpansion.scalar_expand_vars(func_def, ensemble.scalar_expand_info[direction], type_table, symbol_map2)
+ 
+            if direction in ensemble.if_convert_info:
+               func_def  = ScalarExpansion.if_convert(func_def,type_map, vector_type_map)
+
+
+
+          elif direction in ensemble.vectorize_info:
+            # RAJ hack here
+            func_def, transposed_buffers, symbol_map = vectorizer.vectorize_loop(func_def, 
+                    ensemble.vectorize_info[direction][0])
+            # func_def = transformers.push_inner_loop_down(func_def)
+            func_def, symbol_map2 = vectorizer.register_promote_vector_loads_stores(func_def, symbol_map)
             func_def = code_motion.lift_invariant_load_stores(func_def)
             func_def = vectorizer.fuse_multiply_adds(func_def)
 
           if direction in ensemble.simd_info:
             for loopvar in ensemble.simd_info[direction]:
                 func_def = transformers.insert_pragma_simd(func_def, loopvar)
+
+          if direction in ensemble.unroll_no_jam_info:
+            unroll_dict_list = ensemble.unroll_no_jam_info[direction]
+ 
+            for unroll_var, unroll_factor, unroll_type in unroll_dict_list:
+            #  unroll_var = field
+            #   unroll_factor, unroll_type = value
+              func_def = unroller.unroll_no_jam_loop(func_def, unroll_var, unroll_factor, unroll_type)
+              #func_def = loopsimplifier.simplify_loops(func_def)
+ 
+          func_def = loopsimplifier.simplify_loops(func_def)
+
 
           if direction in ensemble.unroll_info:
             unroll_dict_list = ensemble.unroll_info[direction]
@@ -1883,6 +1928,55 @@ class Net:
     def fuse_pattern_cbr(self):
       self.cbr_fusion = True
 
+
+    def fuse_cbrm(self,input_ens, pooling_ens, pooling_window, pooling_stride):
+        # get relu ens unroll factors for h and w
+ 
+        h_unroll_factor = 1
+        w_unroll_factor = 1
+ 
+        if 'forward' in input_ens.unroll_info:
+            unroll_dict_list = input_ens.unroll_info['forward']
+            for field, value in unroll_dict_list.items():
+              unroll_var = field
+              unroll_factor, unroll_type = value
+              if unroll_var == "_neuron_index_2" and unroll_type == 1:
+                  h_unroll_factor = unroll_factor
+              elif unroll_var == "_neuron_index_3" and unroll_type == 1:
+                  w_unroll_factor = unroll_factor
+        # get relu bounds
+ 
+        # assert relu bounds divide pooling window
+        #if not relu_bounds % pooling_window == 0:
+        #    return
+ 
+        # relu_bounds
+ 
+        # Case 1 : Assume relu bounds divides unroll factor and pooling_stride
+        # B = k*u && B = l*s
+        # if u > s  => l > k
+        #if u = m*s  k*m*s = l*s => l = m*k   
+        #if u = m*s + c   k*m*s + c*k = l*s  => l = k*(m + c/s)
+ 
+        pooling_unroll_factor_h = 1
+        if h_unroll_factor >= pooling_stride:
+            if h_unroll_factor % pooling_stride == 0:
+                if (h_unroll_factor/pooling_stride  + pooling_window - 1) <= h_unroll_factor:
+                    pooling_unroll_factor_h = h_unroll_factor//pooling_stride
+ 
+ 
+        pooling_unroll_factor_w = 1
+        if w_unroll_factor >= pooling_stride:
+            if w_unroll_factor % pooling_stride == 0:
+                if (w_unroll_factor/pooling_stride  + pooling_window - 1) <= w_unroll_factor:
+                    pooling_unroll_factor_w = w_unroll_factor//pooling_stride
+ 
+ 
+        if pooling_unroll_factor_w > 0:
+            pooling_ens.unroll_no_jam(phase="forward", loop_var="_neuron_index_3", factor=pooling_unroll_factor_w, unroll_type= 1)
+
+
+
     def fuse_cbr(self, conv_bias_ens, relu_ens):
       if isinstance(conv_bias_ens, EnsembleGroup): 
         bias_ens = conv_bias_ens.ensembles[-1]
@@ -1926,6 +2020,8 @@ class Net:
         
         #perform register blocking on h and w
         #determine h_unroll_factor, w_unroll_factor
+        
+
         h_unroll_factor = 7
         while conv_ens.shape[1] % h_unroll_factor != 0:
           h_unroll_factor -= 1
@@ -1939,7 +2035,6 @@ class Net:
         relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
-
       elif bias_ens is not None and cacheline_needed_by_each_ifm < l1_cacheline:
         conv_ens.reset_prefetch(phase="forward")
         #bring ifm inside
@@ -1956,6 +2051,8 @@ class Net:
         while conv_ens.shape[2] % w_unroll_factor != 0:
           w_unroll_factor -= 1
         '''
+        
+        '''Anand commenting below (6/12/2017)
         w_unroll_factor = 28
         while conv_ens.shape[2] % w_unroll_factor != 0:
           w_unroll_factor -= 1
@@ -1969,6 +2066,35 @@ class Net:
         relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
+        '''
+         w_unroll_factor = 14 # Changed by Anand to 14 so that h_unroll_factor is at least 2
+        while w_unroll_factor > 0 and  conv_ens.shape[2] % w_unroll_factor != 0 :
+          w_unroll_factor -= 2 # change from 1 to 2
+ 
+        if w_unroll_factor > 0:
+            h_unroll_factor = int(28/w_unroll_factor)
+            while h_unroll_factor > 0 and conv_ens.shape[1] % h_unroll_factor != 0:
+                h_unroll_factor -= 2
+ 
+ 
+            if h_unroll_factor == 0:
+                h_unroll_factor = 1
+ 
+        if w_unroll_factor == 0:
+            w_unroll_factor = 28
+            h_unroll_factor = 1
+ 
+ 
+ 
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
+        conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
+        relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
+        relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
+        bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
+        bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
+ 
+
+
 
         if "AVX-512" in latte.config.vec_config:
           if (kernel_h == 1 and kernel_w == 1) or (conv_ens.stride >1): 
@@ -2000,6 +2126,13 @@ class Net:
               conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, w_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 2, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 0]})
             else:
               conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, w_unroll_factor, "_neuron_index_3", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 2, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 0]})
+          elif h_unroll_factor == 2 and cacheline_needed_by_each_ifm_reg_block  < l1_cacheline:
+            if w_unroll_factor == output_width:
+              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, 2*w_unroll_factor, "_neuron_index_2", 1, w_unroll_factor, 0]})
+            else:
+              conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, 2*w_unroll_factor, "_neuron_index_3", 1, w_unroll_factor, 0]})
+ 
+
 
       elif bias_ens is not None: #try fusing B and R
         h_unroll_factor = 2

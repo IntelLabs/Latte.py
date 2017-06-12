@@ -72,7 +72,9 @@ class BasicTypeInference(ast.NodeTransformer):
 def type_infer(ast):
     try:
         
-        return BasicTypeInference().visit(ast)
+        transformer = BasicTypeInference()
+        ast = transformer.visit(ast)
+        return (ast, transformer.seen)  
     except NotImplementedError as e:
         print("AST that caused exception during type inference")
         print(ast)

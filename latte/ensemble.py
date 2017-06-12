@@ -26,6 +26,7 @@ class Ensemble:
         self._tiling_info = {}
         self._transpose_info = {}
         self._vectorize_info = {}
+        self._unroll_no_jam_info =  {"forward": [], "backward": [], "update_internal": []}
         self._unroll_info = {"forward": {}, "backward": {}, "update_internal": {}}
         self._unroll_and_jam_info = {"forward": {}, "backward": {}, "update_internal": {}}
         self._private_info = set()
@@ -33,6 +34,8 @@ class Ensemble:
         self._prefetch_info = {"forward": {}, "backward": {}, "update_internal": {}}
         self.loops_to_swap = {'forward': [], 'backward': [], "update_internal": []}
         self.simd_info = {'forward': [], 'backward': [], "update_internal": []}
+        self._scalar_expand_info = {}
+        self._if_convert_info = {}
 
         self.scalar_fields = ["value", "grad"]
         self.use_libxsmm_lib = 0
@@ -58,12 +61,24 @@ class Ensemble:
         return self._prefetch_info
 
     @property
+    def scalar_expand_info(self):
+        return self._scalar_expand_info
+
+    @property
+    def if_convert_info(self):
+        return self._if_convert_info
+
+
+    @property
     def unroll_info(self):
         return self._unroll_info
 
     @property
     def unroll_and_jam_info(self):
         return self._unroll_and_jam_info
+    @property
+    def unroll_no_jam_info(self):
+        return self._unroll_no_jam_info
 
     @property
     def parallel_info(self):
@@ -96,6 +111,16 @@ class Ensemble:
     def unroll_and_jam(self, phase, loop_var, factor,unroll_type=0):
         dict = self._unroll_and_jam_info[phase]
         dict[loop_var] =  (factor, unroll_type)
+    def unroll_no_jam(self, phase, loop_var, factor,unroll_type=0):
+          self._unroll_no_jam_info[phase].append([loop_var, factor, unroll_type])
+
+
+    def scalar_expand(self, phase, scalar_vars):
+        self._scalar_expand_info[phase] =  scalar_vars
+
+    def if_convert(self, phase):
+        self._if_convert_info[phase] =  True
+
 
 
     def parallelize(self, phase, loop_var):

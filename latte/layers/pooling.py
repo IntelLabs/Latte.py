@@ -15,16 +15,25 @@ class MaxNeuron(Neuron):
 
         self.mask_j = j
         self.mask_k = k
-
     def forward(self):
-        max_value = -INFINITY
-        for j in range_dim(self.inputs, 1):
-            for k in range_dim(self.inputs, 2):
-                if self.inputs[0,j,k] > max_value:
-                    max_value = self.inputs[0,j,k]
-                    self.mask_j = j
-                    self.mask_k = k
-        self.value = max_value
+        for i in range_dim(self.inputs,0): 
+            max_value = -INFINITY
+            index_j = -1
+            index_k = -1
+            
+            for j in range_dim(self.inputs, 1):
+               for k in range_dim(self.inputs, 2):
+                    if self.inputs[i,j,k] > max_value:
+                        index_j = j
+                        index_k = k
+                        #max_value = self.inputs[i,j,k]
+                    max_value = fmax(max_value, self.inputs[i,j,k])
+            
+
+            self.mask_j = index_j
+            self.mask_k = index_k      
+            self.value = max_value
+
 
     def backward(self):
         j = self.mask_j
@@ -85,7 +94,7 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
     def mapping(c, y, x):
         in_y = y*stride_h - pad 
         in_x = x*stride_w - pad
-        return range(c, c+1), range(in_y, in_y+kernel_h), range(in_x, in_x+kernel_w)
+        return (range(c,c+1), range(in_y, in_y+kernel_h), range(in_x, in_x+kernel_w))
 
     net.add_connections(input_ensemble, pooling_ens, mapping, clamp=True)
 
@@ -99,10 +108,15 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
             pooling_ens.tile('inputs', dim=dim, factor=factor)
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
-        pooling_ens.simd(phase="forward", loop_var="_neuron_index_1_inner")
+        pooling_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
+        pooling_ens.scalar_expand(phase="forward", scalar_vars=["max_value", "index_j","index_k"])
+        pooling_ens.if_convert(phase="forward")
+        #pooling_ens.unroll_no_jam(phase="forward", loop_var="j", factor=kernel, unroll_type=1)
+        pooling_ens.unroll_no_jam(phase="forward", loop_var="k", factor=kernel, unroll_type=1)
+        pooling_ens.unroll_no_jam(phase="forward", loop_var="j", factor=kernel, unroll_type=1)
         '''
         unroll_factor = 4
         if pooling_ens.shape[1] % unroll_factor == 0 and pooling_ens.shape[2] % unroll_factor == 0:
@@ -119,6 +133,12 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         for dim, factor in tiled_dims:
             pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
         pooling_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
+
+    if "ON" in latte.config.AUTO_FUSION:
+      #print("FUSION ENABLED")
+      net.fuse_cbrm(input_ensemble, pooling_ens, kernel,stride)
+ 
+
 
     return pooling_ens
 
