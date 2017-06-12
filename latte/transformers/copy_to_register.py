@@ -138,6 +138,8 @@ def ref_equal_helper(a):
           for i in temp_map_1:
             if i  in temp_map_2:
                coeff_map[i] = temp_map_1[i] + temp_map_2[i]
+            else:
+               coeff_map[i] = temp_map_1[i]
           for i in temp_map_2:
              #print(i) 
              if i  not in temp_map_1:

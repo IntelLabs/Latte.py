@@ -58,10 +58,10 @@ class SimpleFusion(ast.NodeTransformer):
                     # new_body[-1].body.extend(statement.body)
                     for stmt in statement.body:
                         add = True
-                        for seen in new_body[-1].body:
-                            if stmt.codegen() == seen.codegen():
-                                add = False
-                                break
+                        #for seen in new_body[-1].body:
+                        #    if stmt.codegen() == seen.codegen():
+                        #        add = False
+                        #        break
                         if add:
                             new_body[-1].body.append(stmt)
                 else:

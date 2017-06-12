@@ -121,12 +121,22 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     []
                 )
                 self.tiled_loops.append(outer_loop)
-                inner_loop = C.For(
-                    C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
-                    C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.config.SIMDWIDTH)),
-                    C.AddAssign(C.SymbolRef(loop_var + "_inner"), C.Constant(1)),
-                    body,
-                )
+                if length < latte.config.SIMDWIDTH:
+                    inner_loop = C.For(
+                        C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(length)),
+                        C.AddAssign(C.SymbolRef(loop_var + "_inner"), C.Constant(1)),
+                        body,
+                    )
+                else:
+                        inner_loop = C.For(
+                        C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
+                        C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(latte.config.SIMDWIDTH)),
+                        C.AddAssign(C.SymbolRef(loop_var + "_inner"), C.Constant(1)),
+                        body,
+                    )
+      
+
                 return inner_loop
             else:
                 body = [UpdateInputIndices(loop_var, C.Mul(C.SymbolRef(loop_var), C.Constant(step))).visit(s) for s in body]

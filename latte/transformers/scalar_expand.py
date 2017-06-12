@@ -106,7 +106,6 @@ def get_type(src1,type_map, symbol_map):
          elif "epi32" in src1_name and "512" in src1_name:
             src1_type = simd.types.m512i()
          else:
-            print(src1_name)
             assert(False)
              
    return src1_type 
@@ -246,13 +245,11 @@ class IfConvert(ast.NodeTransformer):
 
       def visit_If(self, node):
        if node.then is not None and node.elze is None:
-         print("zeroth\n") 
          if isinstance(node.cond, C.BinaryOp) and isinstance(node.cond.op, C.Op.Gt) and is_vector_type(node.cond.right, self.var_types,self.symbol_table) and is_vector_type(node.cond.left, self.var_types, self.symbol_table): 
             new_then = []
             selector = self._gen_register()  
             mask_assign =  gen_vector_cmp_instruction(C.SymbolRef(selector, gen_selector_type()()),node.cond.left, node.cond.right, self.var_types,self.symbol_table)
             new_then.append(mask_assign)
-            print("first\n")
             for s in node.then:
                if isinstance(s, C.BinaryOp) and isinstance(s.op, C.Op.Assign): 
                   if isinstance(s.left, C.SymbolRef) and (isinstance(s.left.type, get_simd_type(ctypes.c_int())) or isinstance(s.left.type, get_simd_type(ctypes.c_float()))) and isinstance(s.right, C.SymbolRef):
@@ -263,7 +260,6 @@ class IfConvert(ast.NodeTransformer):
                           s.right = broadcast_ss(C.SymbolRef(s.right.name, None), ctypes.c_float())
                           self.var_types[s.left.name] = get_simd_type(ctypes.c_float())()
                       
-                      print("second\n")
                   elif isinstance(s.left, C.SymbolRef) and s.left.name in self.symbol_table\
                          and (isinstance(self.symbol_table[s.left.name], get_simd_type(ctypes.c_int())) or isinstance(self.symbol_table[s.left.name], get_simd_type(ctypes.c_float()))) and isinstance(s.right, C.SymbolRef):
                       if isinstance(self.symbol_table[s.left.name], get_simd_type(ctypes.c_int())):
@@ -274,7 +270,6 @@ class IfConvert(ast.NodeTransformer):
                           self.var_types[s.left.name] = get_simd_type(ctypes.c_float())()
                       
 
-                      print("third\n")
                   elif isinstance(s.left, C.SymbolRef) and s.left.name in self.var_types \
                          and (isinstance(self.var_types[s.left.name], get_simd_type(ctypes.c_int())) or isinstance(self.var_types[s.left.name], get_simd_type(ctypes.c_float()))) and isinstance(s.right, C.SymbolRef):
                       if isinstance(self.var_types[s.left.name], get_simd_type(ctypes.c_int())):
@@ -284,7 +279,6 @@ class IfConvert(ast.NodeTransformer):
                           s.right = broadcast_ss(C.SymbolRef(s.right.name, None), ctypes.c_float())
                           self.var_types[s.left.name] = get_simd_type(ctypes.c_float())()
 
-                      print("fourth\n") 
                if is_vector_type(s.left, self.var_types,self.symbol_table) and is_vector_type(s.right, self.var_types, self.symbol_table):
                     s = gen_mask_move_instruction(s.left, s.left, C.SymbolRef(selector, None), s.right, self.var_types,self.symbol_table)
                else:
@@ -321,7 +315,6 @@ class ScalarExpand(ast.NodeTransformer):
         self.variables = set()
         self.type_table = deepcopy(type_table)
         for i in vars_:
-            print(i)
             self.variables.add(i)
         self.transposed_buffers = {}
         self.symbol_table = deepcopy(symbol_table)

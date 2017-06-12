@@ -30,6 +30,14 @@ def load_ps(arg):
         "AVX-512": "_mm512_load_ps",
     }[latte.config.vec_config]), [arg])
 
+def store_epi32(target, value):
+    return C.FunctionCall(C.SymbolRef({
+        "AVX": "_mm256_store_epi32",
+        "AVX-2": "_mm256_store_epi32",
+        "AVX-512": "_mm512_store_epi32",
+    }[latte.config.vec_config]), [target, value])
+
+
 def broadcast_ss(arg):
     if latte.config.vec_config == "AVX-512":
         # AVX-512 doesn't support broadcast, use set1_ps and remove Ref node
@@ -80,6 +88,49 @@ class Vectorizer(ast.NodeTransformer):
         self.loop_var = loop_var
         self.transposed_buffers = {}
         self.symbol_table = {}
+        self.seen = {}
+ 
+    def visit_SymbolRef(self, node):
+        if node.type is not None:
+            self.seen[node.name] = node.type
+        return node
+ 
+    def get_type(self, node):
+        if isinstance(node, C.SymbolRef):
+            if node.name == "INFINITY":
+                return ctypes.c_float()
+            elif node.name in self.seen:
+                return self.seen[node.name]
+        elif isinstance(node, C.UnaryOp):
+            return self.get_type(node.arg)
+        elif isinstance(node, C.Constant):
+            if isinstance(node.value, int):
+                # promote all longs to int
+                return ctypes.c_int()
+            return ctree.types.get_ctype(node.value)
+        elif isinstance(node, C.BinaryOp):
+            if isinstance(node.op, C.Op.ArrayRef):
+                while not isinstance(node, C.SymbolRef):
+                    node = node.left
+                pointer_type = self.get_type(node)
+                if(pointer_type is None):
+                   return None
+                return ctree.types.get_c_type_from_numpy_dtype(pointer_type._dtype_)()
+            else:
+                left = self.get_type(node.left)
+                right = self.get_type(node.right)
+                return ctree.types.get_common_ctype([left, right])
+        elif isinstance(node, C.FunctionCall):
+            if node.func.name in ["MAX", "MIN", "max", "min", "floor"]:
+                return ctree.types.get_common_ctype([self.get_type(a) for a in node.args])
+        
+        return None
+
+
+
+
+
+
 
     def visit(self, node):
         node = super().visit(node)
@@ -192,10 +243,28 @@ class Vectorizer(ast.NodeTransformer):
                         raise NotImplementedError()
                     self.transposed_buffers[curr_node.name] = idx
                     curr_node.name += "_transposed"
-                if isinstance(node.left.right, C.Constant) and node.target.value == 0.0:
-                    return store_ps(node.left.left, node.right)
+                
+                is_float = self.get_type(node.left)
+        
+
+
+                if isinstance(is_float, ctypes.c_float):  
+                    if isinstance(node.left.right, C.Constant) and node.target.value == 0.0:
+                        return store_ps(node.left.left, node.right)
+                    else:
+                        return store_ps(C.Ref(node.left), node.right)
+                elif isinstance(is_float, ctypes.c_int):
+                   if isinstance(node.left.right, C.Constant) and node.target.value == 0.0:
+                        return store_epi32(node.left.left, node.right)
+                   else:
+                        return store_epi32(C.Ref(node.left), node.right)
                 else:
-                    return store_ps(C.Ref(node.left), node.right)
+                    if isinstance(node.left.right, C.Constant) and node.target.value == 0.0:
+                        return store_ps(node.left.left, node.right)
+                    else:
+                        return store_ps(C.Ref(node.left), node.right)
+ 
+    
             node.left = self.visit(node.left)
             return node
         node.left = self.visit(node.left)
@@ -232,7 +301,7 @@ def vectorize_loop(ast, loopvar):
         print(ast)
         print("---------- END AST   ----------")
         raise e
-    return ast, transformer.transposed_buffers
+    return ast, transformer.transposed_buffers, transformer.symbol_table
 
 class FMAReplacer(ast.NodeTransformer):
     def __init__(self):
@@ -322,6 +391,10 @@ class VectorLoadCollector(ast.NodeVisitor):
 
 class VectorLoadStoresRegisterPromoter(ast.NodeTransformer):
     _tmp = -1
+
+    def __init__(self, symbol_map):
+        self.sym = deepcopy(symbol_map)
+
     def _gen_register(self):
         VectorLoadStoresRegisterPromoter._tmp += 1
         return "___x" + str(self._tmp)
@@ -341,11 +414,12 @@ class VectorLoadStoresRegisterPromoter(ast.NodeTransformer):
                         reg = self._gen_register()
                         load_node, number, func = collector.loads[stmt]
                         seen[stmt] = (reg, load_node, func)
+                        self.sym[reg] = get_simd_type()()
                         new_body.append(C.Assign(C.SymbolRef(reg, get_simd_type()()),
                                                  C.FunctionCall(C.SymbolRef(func), [load_node])))
                 if isinstance(s, C.FunctionCall) and "_mm" in s.func.name and "_store" in s.func.name:
                     if s.args[0].codegen() in seen:
-                        stores.append((s.args[0], seen[s.args[0].codegen()][0]))
+                        stores.append((s.args[0], seen[s.args[0].codegen()][0], s.func.name))
                         s = C.Assign(C.SymbolRef(seen[s.args[0].codegen()][0]), s.args[1])
                 for stmt in seen.keys():
                     reg, load_node, func = seen[stmt]
@@ -354,10 +428,18 @@ class VectorLoadStoresRegisterPromoter(ast.NodeTransformer):
                             C.SymbolRef(reg))
                     s = replacer.visit(s)
                 new_body.append(s)
-            for target, value in stores:
-                new_body.append(store_ps(target, C.SymbolRef(value)))
+            for target, value ,name in stores:
+                if "epi32" in name:
+                    new_body.append(store_epi32(target, C.SymbolRef(value)))
+                elif "ps" in name:
+                    new_body.append(store_ps(target, C.SymbolRef(value)))
+                else:
+                    assert(false)
             node.body = util.flatten(new_body)
         return node
 
-def register_promote_vector_loads_stores(ast):
-    return VectorLoadStoresRegisterPromoter().visit(ast)
+def register_promote_vector_loads_stores(ast, symbol_table):
+    transformer = VectorLoadStoresRegisterPromoter(symbol_table)
+    ast = transformer.visit(ast)
+
+    return (ast, transformer.sym)
