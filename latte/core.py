@@ -31,6 +31,8 @@ import latte.optimizations as optimizer
 import latte.type_converter as type_converter
 import latte.transformers.copy_to_register as  copy_to_register
 import latte.transformers.scalar_expand as ScalarExpansion
+#alternative tiling
+#import latte.transformers.tile_loop as tile_loop
 
 if "OPENCL" in latte.config.parallel_strategy:
     import pycl as cl
@@ -1463,7 +1465,7 @@ class Net:
             buf = self.buffers[arg.name]
             arg.type = np.ctypeslib.ndpointer(buf.dtype, buf.ndim, buf.shape)()
           # Basic type inference and constant propogation
-           func_def, type_table  = analyzer.type_infer(func_def)
+            func_def, type_table  = analyzer.type_infer(func_def)
           # func_def = optimizer.propogate_constants(func_def) [], None)
           
 
@@ -1842,6 +1844,13 @@ class Net:
             for loopvar in ensemble.simd_info[direction]:
                 func_def = transformers.insert_pragma_simd(func_def, loopvar)
 
+          for var, value, phase in ensemble.tiling_loop_info:
+                #'tile' is the field
+                #if phase == 'forward':
+                    #print("forward")
+            tile_loop.shallow_tile(func_def,var,value)
+
+
           if direction in ensemble.unroll_no_jam_info:
             unroll_dict_list = ensemble.unroll_no_jam_info[direction]
  
@@ -2052,7 +2061,6 @@ class Net:
           w_unroll_factor -= 1
         '''
         
-        '''Anand commenting below (6/12/2017)
         w_unroll_factor = 28
         while conv_ens.shape[2] % w_unroll_factor != 0:
           w_unroll_factor -= 1
@@ -2092,7 +2100,7 @@ class Net:
         relu_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type = 1)
         bias_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type =1)
- 
+        ''' 
 
 
 
@@ -2126,12 +2134,14 @@ class Net:
               conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, w_unroll_factor, "_neuron_index_2", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 2, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 0]})
             else:
               conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, w_unroll_factor, "_neuron_index_3", 1, 1, 0], 'inputs': [3, "i_inner", -4, fp_pf_factor, fp_pf_loop, 1, 1, 2, 0], 'weights': [1, "i_inner", -4, 1, "i_outer", 1, 1, 0]})
+          
+          '''
           elif h_unroll_factor == 2 and cacheline_needed_by_each_ifm_reg_block  < l1_cacheline:
             if w_unroll_factor == output_width:
               conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -3, 2*w_unroll_factor, "_neuron_index_2", 1, w_unroll_factor, 0]})
             else:
               conv_ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_3", -2, 2*w_unroll_factor, "_neuron_index_3", 1, w_unroll_factor, 0]})
- 
+          '''
 
 
       elif bias_ens is not None: #try fusing B and R

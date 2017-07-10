@@ -16,6 +16,31 @@ class MaxNeuron(Neuron):
         self.mask_j = j
         self.mask_k = k
     def forward(self):
+
+        max_value = -INFINITY
+        for j in range_dim(self.inputs, 1):
+            for k in range_dim(self.inputs, 2):
+                if self.inputs[0,j,k] > max_value:
+                    max_value = self.inputs[0,j,k]
+                    self.mask_j = j
+                    self.mask_k = k
+        self.value = max_value
+  
+
+    def backward(self):
+        j = self.mask_j
+        k = self.mask_k
+        self.grad_inputs[0,j,k] += self.grad
+
+    def update_internal(self):
+        pass
+
+def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
+    assert input_ensemble.ndim == 3, "PoolingLayer only supports 3-d input"
+
+    #Anand commenting out below scalar expansion temporarily 7/5/17
+    '''
+         
         for i in range_dim(self.inputs,0): 
             max_value = -INFINITY
             index_j = -1
@@ -29,22 +54,13 @@ class MaxNeuron(Neuron):
                         #max_value = self.inputs[i,j,k]
                     max_value = fmax(max_value, self.inputs[i,j,k])
             
-
+ 
             self.mask_j = index_j
             self.mask_k = index_k      
             self.value = max_value
+    '''
 
 
-    def backward(self):
-        j = self.mask_j
-        k = self.mask_k
-        self.grad_inputs[0,j,k] += self.grad
-
-    def update_internal(self):
-        pass
-
-def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
-    assert input_ensemble.ndim == 3, "PoolingLayer only supports 3-d input"
 
     if isinstance(kernel, tuple):
         assert len(kernel) == 2, "kernel as a tuple must be of length 2"
@@ -108,15 +124,18 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
             pooling_ens.tile('inputs', dim=dim, factor=factor)
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
-        pooling_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
+        #Anand temporarily commenting out vectorize and adding back simd 7/5/17
+        #pooling_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
+        pooling_ens.simd(phase="forward", loop_var="_neuron_index_1_inner")
         pooling_ens.tile('value', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_j', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.tile('mask_k', dim=0, factor=latte.config.SIMDWIDTH)
-        pooling_ens.scalar_expand(phase="forward", scalar_vars=["max_value", "index_j","index_k"])
-        pooling_ens.if_convert(phase="forward")
+        #Anand commenting out following scalar expand, if convert and unroll no jam for now
+        #7/5/17 
+        #pooling_ens.scalar_expand(phase="forward", scalar_vars=["max_value", "index_j","index_k"])
+        #pooling_ens.if_convert(phase="forward")
+        #pooling_ens.unroll_no_jam(phase="forward", loop_var="k", factor=kernel, unroll_type=1)
         #pooling_ens.unroll_no_jam(phase="forward", loop_var="j", factor=kernel, unroll_type=1)
-        pooling_ens.unroll_no_jam(phase="forward", loop_var="k", factor=kernel, unroll_type=1)
-        pooling_ens.unroll_no_jam(phase="forward", loop_var="j", factor=kernel, unroll_type=1)
         '''
         unroll_factor = 4
         if pooling_ens.shape[1] % unroll_factor == 0 and pooling_ens.shape[2] % unroll_factor == 0:
