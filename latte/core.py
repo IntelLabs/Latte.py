@@ -1844,11 +1844,11 @@ class Net:
             for loopvar in ensemble.simd_info[direction]:
                 func_def = transformers.insert_pragma_simd(func_def, loopvar)
 
-          for var, value, phase in ensemble.tiling_loop_info:
-                #'tile' is the field
-                #if phase == 'forward':
-                    #print("forward")
-            tile_loop.shallow_tile(func_def,var,value)
+          #for var, value, phase in ensemble.tiling_loop_info:
+          #      #'tile' is the field
+          #      #if phase == 'forward':
+          #          #print("forward")
+          #  tile_loop.shallow_tile(func_def,var,value)
 
 
           if direction in ensemble.unroll_no_jam_info:
