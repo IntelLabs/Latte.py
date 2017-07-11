@@ -4,7 +4,6 @@ from ..ensemble import Ensemble, EnsembleGroup
 import itertools
 import latte.core
 import math
-import latte.transformers.tile_loop as Tiler
 
 SIMDWIDTH = latte.config.SIMDWIDTH
 
