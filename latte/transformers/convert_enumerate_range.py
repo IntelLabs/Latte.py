@@ -121,7 +121,7 @@ class ConvertEnumerateRange(ast.NodeTransformer):
                     []
                 )
                 self.tiled_loops.append(outer_loop)
-                if length < latte.config.SIMDWIDTH:
+                if self.direction == "forward" and length < latte.config.SIMDWIDTH:
                     inner_loop = C.For(
                         C.Assign(C.SymbolRef(loop_var + "_inner", ctypes.c_int()), C.Constant(0)),
                         C.Lt(C.SymbolRef(loop_var + "_inner"), C.Constant(length)),
