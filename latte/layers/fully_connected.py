@@ -28,7 +28,7 @@ import numpy as np
 from ..neuron import WeightedNeuron, BiasNeuron
 from ..ensemble import Ensemble, EnsembleGroup
 import latte.core
-
+import math
 class FCNeuron(WeightedNeuron):
     pass
     # def forward(self):
@@ -80,19 +80,46 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
     if "OPENCL" not in latte.config.parallel_strategy:
         ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
         #factor = 8
-        factor = 16
+        factor = 28
         while net.batch_size % factor != 0:
             factor -= 1
-            
         if latte.config.parallel_strategy != "FLOWGRAPH_LOOP":
-          ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
-    ens.parallelize(phase="forward", loop_var="_neuron_index_0")
-    ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+            factor = 28
+            while math.ceil(num_outputs/latte.config.SIMDWIDTH) % factor != 0: 
+                factor -= 1
+  
+            #if len(input_shape) > 2:
+            ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=32)
+            ens.unroll(phase="forward", loop_var="__unique_loopvar0_inner", factor=2)
+
+            #ens.unroll_no_jam(phase="forward", loop_var="__unique_loopvar2", factor=3)
+            # Anand experiment with different parallelization and loop order 9/8/17
+            #ens.unroll(phase="forward", loop_var="_neuron_index_1_outer", factor=8, unroll_type=1)
+            if "AVX-512" in latte.config.vec_config and len(input_shape) > 2: 
+                    ens.prefetch(phase="forward", prefetch_dict_list={'weights': [1, "__unique_loopvar0_inner", -4,2,"__unique_loopvar1",1,1,0]})
+            #ens.prefetch(phase="forward", prefetch_dict_list={'weights': [1, "__unique_loopvar0_inner", -4,2,"__unique_loopvar1",1,1,0],'value': [1, "_neuron_index_0", -3,32,"_neuron_index_0",1,32,0]})
+  #'inputs': [2, "__unique_loopvar0_inner", -3,32, 16,"__unique_loopvar1","__unique_loopvar1","__unique_loopvar1", 1,1,2,0]})
+            #ens.prefetch(phase="forward", prefetch_dict_list={'value': [1, "_neuron_index_0", -3,32,"_neuron_index_0",1,32,0]})
+            # 'inputs': [2, "i_inner", -3, fp_pf_factor, fp_cache_line, fp_pf_loop, "_neuron_index_2", "_neuron_index_2", stride_h, 1, 2, 0]}) 
+            #ens.swap_loops(phase="forward", loop_vars=("_neuron_index_1_outer", "__unique_loopvar0_outer"))
+            if len(input_shape) > 1:
+               ens.swap_loops(phase="forward", loop_vars=( "__unique_loopvar1",  "__unique_loopvar0_inner"))
+            if len(input_shape) > 2:
+               ens.swap_loops(phase="forward", loop_vars=( "__unique_loopvar2",  "__unique_loopvar0_inner"))
+               #ens.prefetch(phase="forward", prefetch_dict_list={'inputs': [1, "__unique_loopvar2", -4, 1, "__unique_loopvar0_outer", 1,1, 0]})
+               #ens.unroll(phase="forward", loop_var="__unique_loopvar2", factor=3)
+
+
+
+    #ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")#ANAND 9/8/17 
     ens.parallelize(phase="backward", loop_var="_neuron_index_0")
     ens.parallelize(phase="backward", loop_var="__unique_loopvar0_outer")
     ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
     ens.parallelize(phase="update_internal", loop_var="__unique_loopvar0_outer")
     ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_0", "_neuron_index_1_outer"))
+    ens.swap_loops(phase="forward", loop_vars=( "_neuron_index_0",  "_neuron_index_1_outer")) 
+
     for i in range(1, input_ensemble.ndim):
         ens.swap_loops(phase="backward", loop_vars=("_neuron_index_1_inner", "__unique_loopvar{}".format(i)))
 
@@ -107,6 +134,9 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
               ens.unroll(phase="backward", loop_var="_neuron_index_0", factor=factor)
               ens.unroll(phase="update_internal", loop_var="_neuron_index_0", factor=factor)
             ens.vectorize(phase="update_internal", loop_var="__unique_loopvar0_inner", factor=latte.config.SIMDWIDTH)
+    
+
+
     # Added by Raj/Anand
     #ens.use_libxsmm(1)
     ens.stride=1
@@ -125,6 +155,7 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
 
     bias_ens.tile('bias', dim=0, factor=latte.config.SIMDWIDTH)
     bias_ens.tile('grad_bias', dim=0, factor=latte.config.SIMDWIDTH)
+    #bias_ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=32)
 
 
     bias_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
@@ -136,6 +167,6 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
         while net.batch_size % factor != 0:
             factor -= 1
         if latte.config.parallel_strategy != "FLOWGRAPH_LOOP":
-          bias_ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)
+          bias_ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=32)#factor=factor
 
     return EnsembleGroup(ens, bias_ens)
