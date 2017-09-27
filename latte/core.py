@@ -377,6 +377,7 @@ class Net:
  
         backward_body = []
         backward_args = set()
+        weight_update_body = []
 
         logger.info("Initializing ensembles and synthesizing functions...")
         #logger.info("Compiling functions...")
@@ -415,15 +416,20 @@ class Net:
               backward_args = backward_args.union(args)
               backward_body = body + backward_body
 
+              #body, args = self._synthesize_ast(ensemble, neuron, "update_internal")
+              #backward_args = backward_args.union(args)
+              #backward_body = body + backward_body
               body, args = self._synthesize_ast(ensemble, neuron, "update_internal")
               backward_args = backward_args.union(args)
-              backward_body = body + backward_body
+              weight_update_body = body + weight_update_body
 
         if isinstance(ensemble, ActivationEnsemble):
                                 source = self.connections_map[ensemble][0].source
                                 in_place_buffer_map[source.name + "value"] = [ensemble.name + "inputs"]
 
         logger.info("Compiling functions...")
+        backward_body += weight_update_body
+
         for args, direction, body, tasks, in zip([forward_args, backward_args], 
                                                    ["forward", "backward"],
                                                    [forward_body, backward_body],
@@ -444,11 +450,11 @@ class Net:
 
             #c_file._ext = "cpp"
               
-            if latte.config.codegen_strategy == "AUTOVEC":
+            if direction=="forward" and latte.config.codegen_strategy == "AUTOVEC" and  "ON" in latte.config.SIMPLE_FUSION:
  
                 c_file = transformers.simple_fusion(c_file)
           
-            if self.cbr_fusion or "ON" in latte.config.AUTO_FUSION:
+            if direction == "forward" and (self.cbr_fusion or "ON" in latte.config.AUTO_FUSION):
                 #print("FUSION ENABLED")
                 c_file = code_motion.lift_intermediate_loads(c_file)
                 c_file = transformers.simple_fusion(c_file)
@@ -1876,25 +1882,24 @@ class Net:
           #          #print("forward")
           #  tile_loop.shallow_tile(func_def,var,value)
 
-
-          if direction in ensemble.unroll_no_jam_info:
-            unroll_dict_list = ensemble.unroll_no_jam_info[direction]
+          if "ON" in latte.config.unroll_option:
+            if direction in ensemble.unroll_no_jam_info:
+              unroll_dict_list = ensemble.unroll_no_jam_info[direction]
  
-            for unroll_var, unroll_factor, unroll_type in unroll_dict_list:
-            #  unroll_var = field
-            #   unroll_factor, unroll_type = value
-              func_def = unroller.unroll_no_jam_loop(func_def, unroll_var, unroll_factor, unroll_type)
-              #func_def = loopsimplifier.simplify_loops(func_def)
+              for unroll_var, unroll_factor, unroll_type in unroll_dict_list:
+              #  unroll_var = field
+              #   unroll_factor, unroll_type = value
+                func_def = unroller.unroll_no_jam_loop(func_def, unroll_var, unroll_factor, unroll_type)
+                #func_def = loopsimplifier.simplify_loops(func_def)
  
-          func_def = loopsimplifier.simplify_loops(func_def)
+            func_def = loopsimplifier.simplify_loops(func_def)
 
-
-          if direction in ensemble.unroll_info:
-            unroll_dict_list = ensemble.unroll_info[direction]
-            for field, value in unroll_dict_list.items():
-              unroll_var = field
-              unroll_factor, unroll_type = value
-              unroller.unroll_loop(func_def, unroll_var, unroll_factor, unroll_type)
+            if direction in ensemble.unroll_info:
+              unroll_dict_list = ensemble.unroll_info[direction]
+              for field, value in unroll_dict_list.items():
+                unroll_var = field
+                unroll_factor, unroll_type = value
+                unroller.unroll_loop(func_def, unroll_var, unroll_factor, unroll_type)
           self._mark_parallel_loops(func_def, ensemble.parallel_info[direction])
 
           type_sig = []
@@ -1964,7 +1969,7 @@ class Net:
       self.cbr_fusion = True
 
 
-    def fuse_cbrm(self,input_ens, pooling_ens, pooling_window, pooling_stride):
+    def fuse_cbrm(self,input_ens, pooling_ens, pooling_window, pooling_stride,output_width):
         # get relu ens unroll factors for h and w
  
         h_unroll_factor = 1
@@ -2007,8 +2012,9 @@ class Net:
                     pooling_unroll_factor_w = w_unroll_factor//pooling_stride
  
  
-        if pooling_unroll_factor_w > 0:
-            pooling_ens.unroll_no_jam(phase="forward", loop_var="_neuron_index_3", factor=pooling_unroll_factor_w, unroll_type= 1)
+        #if pooling_unroll_factor_w > 0:
+        if pooling_unroll_factor_w > 0 and output_width%pooling_unroll_factor_w ==0:
+           pooling_ens.unroll_no_jam(phase="forward", loop_var="_neuron_index_3", factor=pooling_unroll_factor_w, unroll_type= 1)
 
 
 
@@ -2025,7 +2031,7 @@ class Net:
       IFM_BLOCK_THRESHOLD = 4
       HEIGHT_THRESHOLD = 7
       WIDTH_THRESHOLD = 7
-       
+      #print("Entered cbr\n") 
       channels = self.connections_map[conv_ens][0].source.shape[0]
       input_height = self.connections_map[conv_ens][0].source.shape[1]
       input_width = self.connections_map[conv_ens][0].source.shape[2]
@@ -2044,6 +2050,8 @@ class Net:
       cacheline_needed_by_each_ifm = (kernel_h*kernel_w) + (kernel_h*kernel_w*latte.config.SIMDWIDTH)
       #print("channels=", channels, " output_width=", output_width, " kernel_h=", kernel_h, " kernel_w=", kernel_w, " cacheline_needed_ofh=", cacheline_needed_by_each_ofh, " cacheline_needed_ofw=", cacheline_needed_by_each_ofw, " cacheline_needed_ifm=", cacheline_needed_by_each_ifm, " l1_cacheline=", l1_cacheline)
       SIMDWIDTH=latte.config.SIMDWIDTH
+      
+
       #First try to fuse CBR
       #if bias_ens is not None and net.connections_map[bias_ens][0].source.shape[0] < IFM_BLOCK_THRESHOLD and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
       #if bias_ens is not None and conv_ens.shape[1]  > HEIGHT_THRESHOLD and conv_ens.shape[2] > WIDTH_THRESHOLD:
@@ -2063,7 +2071,19 @@ class Net:
         w_unroll_factor = int(28/h_unroll_factor)
         while conv_ens.shape[2] % w_unroll_factor != 0:
           w_unroll_factor -= 1
+       
+        '''
+        print("h is \n")
+        print(conv_ens.shape[1])
+        print("w is \n")
+        print(conv_ens.shape[2])
 
+
+        print("h unroll factor is \n")
+        print(h_unroll_factor)
+        print("w unroll factor is \n")
+        print(w_unroll_factor)
+        '''
         conv_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
         conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
         relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
@@ -2086,14 +2106,32 @@ class Net:
         while conv_ens.shape[2] % w_unroll_factor != 0:
           w_unroll_factor -= 1
         '''
-        
         w_unroll_factor = 28
         while conv_ens.shape[2] % w_unroll_factor != 0:
           w_unroll_factor -= 1
         h_unroll_factor = int(28/w_unroll_factor)
         while conv_ens.shape[1] % h_unroll_factor != 0:
           h_unroll_factor -= 1
-
+        '''
+        w_unroll_factor = 7
+        while conv_ens.shape[2] % w_unroll_factor != 0:
+          w_unroll_factor -= 1
+        h_unroll_factor = int(28/w_unroll_factor)
+        while conv_ens.shape[1] % h_unroll_factor != 0:
+          h_unroll_factor -= 1
+        '''
+        '''
+        print("h is \n")
+        print(conv_ens.shape[1])
+        print("w is \n")
+        print(conv_ens.shape[2])
+ 
+ 
+        print("h unroll factor is \n")
+        print(h_unroll_factor)
+        print("w unroll factor is \n")
+        print(w_unroll_factor)
+        '''
         conv_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
         conv_ens.unroll(phase="forward", loop_var="_neuron_index_3", factor=w_unroll_factor, unroll_type=1)
         relu_ens.unroll(phase="forward", loop_var="_neuron_index_2", factor=h_unroll_factor, unroll_type= 1)
