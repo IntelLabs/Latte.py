@@ -77,6 +77,14 @@ AUTO_FUSION_OPTION = [
 ]
 AUTO_FUSION = os.getenv("LATTE_AUTO_FUSION", "OFF")
 
+SIMPLE_FUSION_OPTION = [
+    "ON",
+    "OFF"
+]
+SIMPLE_FUSION = os.getenv("LATTE_SIMPLE_FUSION", "OFF") 
+
+
+
 prefetch_options = [
     "ON",
     "OFF"
@@ -87,6 +95,16 @@ prefetch_options = [
     "OFF"
 ]
 prefetch_option = os.getenv("LATTE_PREFETCH_MODE", "ON")
+
+unroll_options = [
+    "ON",
+    "OFF"
+]
+ 
+
+unroll_option = os.getenv("LATTE_UNROLL", "ON")
+
+
 
 if parallel_strategy not in parallel_strategies:
     logger.warn("Invalid parallel strategy [%s], defaulting to OPENMP", parallel_strategy)
@@ -136,6 +154,9 @@ logger.info("    parallel_strategy = %s", parallel_strategy)
 logger.info("    nthreads          = %s", nthreads or "unspecified")
 logger.info("    codegen_strategy = %s", codegen_strategy)
 logger.info("    prefetch_option = %s", prefetch_option)
+logger.info("    unroll_option = %s", unroll_option)
+logger.info("    AUTO_FUSION = %s", AUTO_FUSION)
+logger.info("    SIMPLE_FUSION = %s", SIMPLE_FUSION)
 logger.info("    mode = %s", MODE)
 if "ON" in TIMER:
   logger.info("    timer = %s", "ON")
