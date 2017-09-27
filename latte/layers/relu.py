@@ -38,9 +38,9 @@ class ReLUNeuron(Neuron):
 
     def forward(self):
         #ANAND:temporarily commenting out following for fmax  7/5/17
-        self.value = max(self.input, float(0.0))
+        #self.value = max(self.input, float(0.0))
         #fmax(self.input, 0.0)
-
+        self.value = fmax(self.input, 0.0)
     def backward(self):
         # self.grad_input = ifelse(self.input > 0.0, self.grad, 0.0)
         if self.input > 0.0:
@@ -64,8 +64,8 @@ def ReLULayer(net, input_ensemble):
     if "value" in input_ensemble.tiling_info:
         relu_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
         relu_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
-        relu_ens.simd(phase="forward", loop_var="_neuron_index_1_inner")
-        #relu_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
+        #relu_ens.simd(phase="forward", loop_var="_neuron_index_1_inner")
+        relu_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
     else:
         relu_ens.parallelize(phase="forward", loop_var="_neuron_index_1")
         relu_ens.parallelize(phase="backward", loop_var="_neuron_index_1")
