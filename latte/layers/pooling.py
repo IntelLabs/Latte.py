@@ -179,9 +179,9 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
             pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
         pooling_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
 
-    if "ON" in latte.config.AUTO_FUSION:
+    #if "ON" in latte.config.AUTO_FUSION:
       #print("FUSION ENABLED")
-      net.fuse_cbrm(input_ensemble, pooling_ens, kernel,stride)
+      #net.fuse_cbrm(input_ensemble, pooling_ens, kernel,stride, output_width)
  
 
 
