@@ -24,15 +24,22 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
+import latte
 import latte.util as util
 import ctypes
 import ast
 import ctree.c.nodes as C
 from copy import deepcopy
-
+import ctree.simd as simd
 du_map = []
 #replace_map ={}
 sym_map = {} 
+def get_simd_type():
+    return {
+        "AVX": simd.types.m256,
+        "AVX-2": simd.types.m256,
+        "AVX-512": simd.types.m512,
+    }[latte.config.vec_config]
 
 def inReplaceMapSource(ast, replace_map): 
 
@@ -297,6 +304,10 @@ class RegisterCopy(ast.NodeTransformer):
     def __init__(self, map_):
         self.replace_map = map_
         self.seen = {}
+        self._tmp = 0
+    def _gen_register(self):
+        self._tmp += 1
+        return "___z" + str(self._tmp)
 
     def visit_SymbolRef(self, node):
         if node.type is not None:
@@ -327,21 +338,39 @@ class RegisterCopy(ast.NodeTransformer):
         for stmt in node.body:
           if isinstance(stmt, C.FunctionCall) and "_mm" in stmt.func.name \
              and "_store" in stmt.func.name and inReplaceMapSource(stmt.args[0], self.replace_map):
-                  sym_arr_ref = extract_reference(stmt.args)  
-                  store_in_du_map(sym_arr_ref)  
-                  new_body.append(stmt)      
+                  
+                  if isinstance(stmt.args[1], C.SymbolRef):
+                    sym_arr_ref = extract_reference(stmt.args)  
+                    store_in_du_map(sym_arr_ref)  
+                    reg = stmt.args[1]
+                    self.seen[reg.name] = None
+                    new_body.append(stmt)
+
+                  elif isinstance(stmt.args[1], C.FunctionCall) and "_mm" in stmt.func.name:
+                      tmp = self._gen_register()
+                      new_body.append(C.Assign(C.SymbolRef(tmp, get_simd_type()()), deepcopy(stmt.args[1])))
+                      new_body.append(C.FunctionCall(C.SymbolRef(stmt.func.name),  [stmt.args[0],C.SymbolRef(tmp, None)]))
+                      sym_arr_ref = extract_reference(C.FunctionCall(C.SymbolRef(stmt.func.name),  [stmt.args[0],C.SymbolRef(tmp, None)]).args)  
+                      store_in_du_map(sym_arr_ref)
+                  # if stmt.args[0].type:
+                  #    self.seen[reg.name] = stmt.args[0].type     
+                  #else:
+                      self.seen[tmp] = None
 
           elif isinstance(stmt, C.BinaryOp) and \
              isinstance(stmt.op, C.Op.Assign) and \
              isinstance(stmt.left, C.SymbolRef) and \
              isinstance(stmt.right, C.FunctionCall) and "_mm" in stmt.right.func.name and "_load" in stmt.right.func.name and inReplaceMapSink(stmt.right.args[0], self.replace_map): 
-                      
+                  #print(stmt.right.args[0])                         
                   source = get_alias(stmt.right.args, self.replace_map)
+                  #print(source)      
                   if (source is not None):
                     sym_arr_ref = construct_arr_reference(source, deepcopy(stmt.right.args))
                     if in_du_map(sym_arr_ref):
                        reg = get_register(sym_arr_ref)
+                       #print(reg.name)   
                        if str(reg.name) in self.seen: 
+                          #print(reg.name)  
                           sym_map[stmt.left.name] = reg
                        else:
                           new_body.append(stmt) 
@@ -357,5 +386,6 @@ class RegisterCopy(ast.NodeTransformer):
 
 def register_copy(ast, map_):
      #replace_map = map_   
+     #print(map_)
      return RegisterCopy(map_).visit(ast)
 
