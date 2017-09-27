@@ -182,10 +182,10 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
 
     #input_ensemble.set_padding((0, input_channel_pad), (pad, pad), (pad, pad))
 
-    #if  input_ensemble.shape[0] > latte.config.SIMDWIDTH:
-    input_ensemble.set_padding((0, input_channel_pad), (pad, pad), (pad, pad))
-    #else:
-    #    input_ensemble.set_padding((0, 0), (pad, pad), (pad, pad))
+    if  input_ensemble.shape[0] > latte.config.SIMDWIDTH:
+        input_ensemble.set_padding((0, input_channel_pad), (pad, pad), (pad, pad))
+    else:
+        input_ensemble.set_padding((0, 0), (pad, pad), (pad, pad))
 
 
     net.add_connections(input_ensemble, conv_ens, mapping)
@@ -205,12 +205,22 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         conv_ens.tile('grad_inputs', dim=0, factor=SIMDWIDTH)
  
     else:
+        '''
         input_ensemble.tile('value', dim=0, factor= latte.config.SIMDWIDTH)
         input_ensemble.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
         print("input ensemble shape\n")
         print(input_ensemble.shape[0])
         conv_ens.tile('grad_inputs', dim=0, factor=latte.config.SIMDWIDTH)
         conv_ens.tile('inputs', dim=0, factor= latte.config.SIMDWIDTH)
+        '''
+
+
+        input_ensemble.tile('value', dim=0, factor=input_ensemble.shape[0])
+        input_ensemble.tile('grad', dim=0, factor=input_ensemble.shape[0])
+        conv_ens.tile('grad_inputs', dim=0, factor=input_ensemble.shape[0])
+        conv_ens.tile('inputs', dim=0, factor=input_ensemble.shape[0])
+
+
         #conv_ens.tile_loop(var='i',factor=input_ensemble.shape[0], phase="forward")
         #$conv_ens.unroll(phase="forward", loop_var ="i_inner",factor=input_ensemble.shape[0])
         #conv_ens.tile_loop(var='i',factor=input_ensemble.shape[0], phase="forward") 
@@ -254,6 +264,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     conv_ens.parallelize(phase="backward", loop_var="i_outer")
     conv_ens.swap_loops(phase="backward", loop_vars=("_neuron_index_1_inner", "j"))
     conv_ens.swap_loops(phase="backward", loop_vars=("_neuron_index_1_inner", "k"))
+    #conv_ens.unroll_no_jam(phase="backward", loop_var="k", factor=kernel, unroll_type=1)
+    conv_ens.unroll_no_jam(phase="backward", loop_var="j", factor=kernel, unroll_type=1)
     if "OPENCL" not in latte.config.parallel_strategy:
         #if input_ensemble.shape[0] > SIMDWIDTH:
         conv_ens.vectorize(phase="update_internal", loop_var="i_inner", factor=SIMDWIDTH)
@@ -262,7 +274,13 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_0", "_neuron_index_1_outer"))
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_1_inner", "j"))
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_1_inner", "k"))
-
+    if input_ensemble.shape[0] < SIMDWIDTH and kernel > 3:
+        conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "j"))
+        conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "k"))
+        conv_ens.parallelize(phase="update_internal", loop_var="j")
+        conv_ens.parallelize(phase="update_internal", loop_var="k")
+    #else:
+    #    conv_ens.unroll_no_jam(phase="update_internal", loop_var="j", factor=kernel, unroll_type=1)   
     
     if "OPENCL" not in latte.config.parallel_strategy:
       '''
