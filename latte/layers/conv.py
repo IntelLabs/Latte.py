@@ -300,7 +300,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
                 conv_ens.parallelize(phase="update_internal", loop_var="k")
 
             elif parallelism*kernel_h < 4*int(latte.config.nthreads):
-
+                conv_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
                 conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "j"))
                 conv_ens.parallelize(phase="update_internal", loop_var="j")
             else:

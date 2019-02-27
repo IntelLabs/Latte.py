@@ -149,7 +149,7 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         for dim, factor in tiled_dims:
             pooling_ens.tile('inputs', dim=dim, factor=factor)
         pooling_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
-        pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
+        #pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
         #Anand temporarily commenting out vectorize and adding back simd 7/5/17
         #pooling_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
         pooling_ens.simd(phase="forward", loop_var="_neuron_index_1_inner")
@@ -178,7 +178,8 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
         for dim, factor in tiled_dims:
             pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
         pooling_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
-
+        pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
+        #pooling_ens.simd(phase="backward", loop_var="_neuron_index_1_inner")
     #if "ON" in latte.config.AUTO_FUSION:
       #print("FUSION ENABLED")
       #net.fuse_cbrm(input_ensemble, pooling_ens, kernel,stride, output_width)
