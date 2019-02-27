@@ -97,9 +97,12 @@ def ConvLayer(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=1, dil
     bias_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
     bias_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
     bias_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_0", "_neuron_index_1_outer"))
+    
+    #bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_0")
+
     bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
     bias_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
-
+    bias_ens.vectorize(phase="update_internal", loop_var="_neuron_index_1_inner", factor=SIMDWIDTH)
     '''
     h_unroll_factor = 7
     w_unroll_factor = 4
@@ -269,11 +272,47 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
     if "OPENCL" not in latte.config.parallel_strategy:
         #if input_ensemble.shape[0] > SIMDWIDTH:
         conv_ens.vectorize(phase="update_internal", loop_var="i_inner", factor=SIMDWIDTH)
-    conv_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
-    conv_ens.parallelize(phase="update_internal", loop_var="i_outer")
+    #conv_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
+    #conv_ens.parallelize(phase="update_internal", loop_var="i_outer")
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_0", "_neuron_index_1_outer"))
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_1_inner", "j"))
     conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_1_inner", "k"))
+    
+    if input_ensemble.shape[0] <= SIMDWIDTH and kernel >= 3:# and stride==1 :
+            parallelism = conv_ens.shape[0]//latte.config.SIMDWIDTH
+            if parallelism*kernel_h*kernel_w < 4*int(latte.config.nthreads):
+                conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "k"))
+                #conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "k"))
+
+                conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_3", "j"))
+                #conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_3", "k"))
+                conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_2", "j"))
+                #conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_2", "k"))
+                conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_0", "j"))
+                conv_ens.swap_loops(phase="update_internal", loop_vars=("j", "k"))
+
+
+                #conv_ens.swap_loops(phase="update_internal", loop_vars=("_neuron_index_2", "k"))
+
+                #conv_ens.reset_parallelize(phase="update_internal")
+                conv_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
+                conv_ens.parallelize(phase="update_internal", loop_var="j")
+                conv_ens.parallelize(phase="update_internal", loop_var="k")
+
+            elif parallelism*kernel_h < 4*int(latte.config.nthreads):
+
+                conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "j"))
+                conv_ens.parallelize(phase="update_internal", loop_var="j")
+            else:
+                conv_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
+                conv_ens.parallelize(phase="update_internal", loop_var="i_outer")  
+    else:
+            conv_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
+            conv_ens.parallelize(phase="update_internal", loop_var="i_outer")
+
+
+  
+    '''  
     if input_ensemble.shape[0] < SIMDWIDTH and kernel > 3:
         conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "j"))
         conv_ens.swap_loops(phase="update_internal", loop_vars=("i_outer", "k"))
@@ -281,7 +320,7 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
         conv_ens.parallelize(phase="update_internal", loop_var="k")
     #else:
     #    conv_ens.unroll_no_jam(phase="update_internal", loop_var="j", factor=kernel, unroll_type=1)   
-    
+    '''
     if "OPENCL" not in latte.config.parallel_strategy:
       '''
       h_unroll_factor = 7
@@ -326,8 +365,8 @@ def ConvLayerNoBias(net, input_ensemble, num_filters=0, kernel=3, stride=1, pad=
             inner_unroll_factor -= 1
         if inner_unroll_factor > 1 and input_ensemble.shape[0] > latte.config.SIMDWIDTH:
           conv_ens.unroll(phase="forward", loop_var="i_inner", factor=inner_unroll_factor)
-        else:
-          conv_ens.unroll(phase="forward", loop_var="i_inner", factor=input_ensemble.shape[0])
+        #else:
+        # conv_ens.unroll(phase="forward", loop_var="i_inner", factor=input_ensemble.shape[0])
 
         # a new approach is
         cache_line = 64

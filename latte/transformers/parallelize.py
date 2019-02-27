@@ -189,13 +189,26 @@ class LatteOpenMPParallel(ast.NodeTransformer):
     def visit_For(self, node):
         if hasattr(node, 'parallel') and node.parallel:
             to_return = []
+            #temp = deepcopy(node)
+            collapse_count = 1
+            temp = node.body
+            while len(temp) == 1 and isinstance(temp[0], C.For) and hasattr(temp[0], 'parallel') and temp[0].parallel:
+                 loopvar1 = temp[0].init.left.name
+                 #print(loopvar1) 
+                 collapse_count= collapse_count+1
+                 temp = temp[0].body
+            if all(isinstance(s, C.For) and hasattr(s, 'parallel') and s.parallel for s in temp):
+                  collapse_count = collapse_count + 1      
+            
             # Supports depth one nesting with collapse
             if all(isinstance(s, C.For) and hasattr(s, 'parallel') and s.parallel for s in node.body):
                 for s in node.body:
                     to_return.append(
                         C.For(node.init, node.test, node.incr, [s])
                     )
-                    to_return[-1].pragma = "omp parallel for collapse(2)"
+                   
+                    #to_return[-1].pragma = "omp parallel for collapse(2)"
+                    to_return[-1].pragma = "omp parallel for collapse(" + str(collapse_count)+")"
             else:
                 node.pragma = "omp parallel for"
                 to_return = [node]

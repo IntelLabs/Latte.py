@@ -89,7 +89,7 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
                 factor -= 1
   
             #if len(input_shape) > 2:
-            ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=32)
+            ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=16)
             ens.unroll(phase="forward", loop_var="__unique_loopvar0_inner", factor=2)
 
             #ens.unroll_no_jam(phase="forward", loop_var="__unique_loopvar2", factor=3)
