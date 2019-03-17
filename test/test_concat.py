@@ -103,7 +103,7 @@ def check_equal(actual, expected, atol=1e-6):
     assert np.allclose(actual, expected, atol=atol)
 
 def test_forward_backward():
-    net = Net(1)
+    net = Net(2)
     net.force_backward = True
     channels, height, width = 16, 16, 16
     data = MemoryDataLayer(net, (channels, height, width))
@@ -123,7 +123,7 @@ def test_forward_backward():
     net.compile()
  
         
-    data_value.append(np.random.rand(1, channels, height, width))
+    data_value.append(np.random.rand(2, channels, height, width))
     data_vector[0].set_value(data_value[0])
 
     weights = conv1.get_weights()
@@ -169,9 +169,9 @@ def test_forward_backward():
     #bot_grad = concat1.get_grad_inputs()
     #check_equal(bot_grad, top_grad)
 
-#def main():
-#    test_forward_backward()
+def main():
+    test_forward_backward()
  
-#if __name__ == "__main__":
-#    main()
+if __name__ == "__main__":
+    main()
  
