@@ -179,7 +179,7 @@ def MaxPoolingLayer(net, input_ensemble, kernel=2, stride=2, pad=0):
             pooling_ens.tile('grad_inputs', dim=dim, factor=factor)
         pooling_ens.tile('grad', dim=0, factor=latte.config.SIMDWIDTH)
         pooling_ens.parallelize(phase="backward", loop_var="_neuron_index_1_outer")
-        #pooling_ens.simd(phase="backward", loop_var="_neuron_index_1_inner")
+        pooling_ens.simd(phase="backward", loop_var="_neuron_index_1_inner")
     #if "ON" in latte.config.AUTO_FUSION:
       #print("FUSION ENABLED")
       #net.fuse_cbrm(input_ensemble, pooling_ens, kernel,stride, output_width)

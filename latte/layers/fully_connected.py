@@ -87,10 +87,19 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
             factor = 28
             while math.ceil(num_outputs/latte.config.SIMDWIDTH) % factor != 0: 
                 factor -= 1
-  
+ 
+            if (int(latte.config.nthreads)*4 > num_outputs//latte.config.SIMDWIDTH):
+                factor2 = 16
+            else:
+                factor2 = 8
+
+
+            while net.batch_size % factor2 != 0:
+                factor2 -= 1
+ 
             #if len(input_shape) > 2:
-            ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=16)
-            ens.unroll(phase="forward", loop_var="__unique_loopvar0_inner", factor=2)
+            ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor2)
+            ens.unroll(phase="forward", loop_var="__unique_loopvar0_inner", factor=1)
 
             #ens.unroll_no_jam(phase="forward", loop_var="__unique_loopvar2", factor=3)
             # Anand experiment with different parallelization and loop order 9/8/17
@@ -111,7 +120,8 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
 
 
 
-    #ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    if (int(latte.config.nthreads)*4 > num_outputs//latte.config.SIMDWIDTH):
+        ens.parallelize(phase="forward", loop_var="_neuron_index_0")
     ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")#ANAND 9/8/17 
     ens.parallelize(phase="backward", loop_var="_neuron_index_0")
     ens.parallelize(phase="backward", loop_var="__unique_loopvar0_outer")
@@ -135,6 +145,7 @@ def FullyConnectedLayerNoBias(net, input_ensemble, num_outputs):
               ens.unroll(phase="update_internal", loop_var="_neuron_index_0", factor=factor)
             ens.vectorize(phase="update_internal", loop_var="__unique_loopvar0_inner", factor=latte.config.SIMDWIDTH)
     
+    ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
 
 
     # Added by Raj/Anand
@@ -158,15 +169,33 @@ def FullyConnectedLayer(net, input_ensemble, num_outputs):
     #bias_ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=32)
 
 
-    bias_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    if (int(latte.config.nthreads)*4 > num_outputs//latte.config.SIMDWIDTH):
+        bias_ens.parallelize(phase="forward", loop_var="_neuron_index_0")
+    
+
     bias_ens.parallelize(phase="forward", loop_var="_neuron_index_1_outer")
+    bias_ens.swap_loops(phase="forward", loop_vars=( "_neuron_index_0",  "_neuron_index_1_outer"))  
     bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_0")
     bias_ens.parallelize(phase="update_internal", loop_var="_neuron_index_1_outer")
+  
+
+    bias_ens.vectorize(phase="forward", loop_var="_neuron_index_1_inner", factor=latte.config.SIMDWIDTH)
+ 
+
     if "OPENCL" not in latte.config.parallel_strategy:
-        factor = 16
+        if (int(latte.config.nthreads)*4 > num_outputs//latte.config.SIMDWIDTH):
+            factor = 16
+        else:
+            factor = 8
+
         while net.batch_size % factor != 0:
             factor -= 1
         if latte.config.parallel_strategy != "FLOWGRAPH_LOOP":
-          bias_ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=32)#factor=factor
+          bias_ens.unroll(phase="forward", loop_var="_neuron_index_0", factor=factor)#factor=factor
 
-    return EnsembleGroup(ens, bias_ens)
+
+    grp_ens = EnsembleGroup(ens, bias_ens)
+    net.fuse_cbr(grp_ens, relu_ens=None, is_fc=True)
+
+
+    return grp_ens

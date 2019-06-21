@@ -1944,7 +1944,7 @@ class Net:
         #  func_def = transformers.pattern_match_gemm(func_def)
         #  raise NotImplementedError("GEMM formulation is not complete yet")
 
-        assert isinstance(func_def.defn[0], C.For)
+        #assert isinstance(func_def.defn[0], C.For)
         func_def.defn[0].pre_trans = pre_trans
         reduce_vars = []
         func_def.defn[0].reduce_vars = reduce_vars
@@ -2018,12 +2018,20 @@ class Net:
 
 
 
-    def fuse_cbr(self, conv_bias_ens, relu_ens):
+    def fuse_cbr(self, conv_bias_ens, relu_ens, is_fc=False):
       if isinstance(conv_bias_ens, EnsembleGroup): 
+        if is_fc:
+            bias_ens = conv_bias_ens.ensembles[-1]
+            conv_ens = conv_bias_ens.ensembles[-2]
+            self.fuse_map[bias_ens.name + "inputs"] = conv_ens.name + "value"
+            return  
+
         bias_ens = conv_bias_ens.ensembles[-1]
         conv_ens = conv_bias_ens.ensembles[-2]
         self.fuse_map[bias_ens.name + "inputs"] = conv_ens.name + "value" 
         self.fuse_map[relu_ens.name + "inputs"] = bias_ens.name + "value"
+        #fully connected
+
       else:
         conv_ens = conv_bias_ens
         self.fuse_map[relu_ens.name + "inputs"] = conv_ens.name + "value"
