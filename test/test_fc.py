@@ -34,13 +34,13 @@ def check_equal(actual, expected, atol=1e-6):
 
 def test_forward_backward():
     net = Net(8)
-    data = MemoryDataLayer(net, (24, ))
-    fc1 = FullyConnectedLayer(net, data, 24)
-    fc2 = FullyConnectedLayer(net, fc1, 16)
-
+    data = MemoryDataLayer(net, (32, ))
+    fc1 = FullyConnectedLayer(net, data, 32)
+    #fc2 = FullyConnectedLayer(net, fc1, 32)
+    net.force_backward=True
     net.compile()
 
-    data_value = np.random.rand(8, 24)
+    data_value = np.random.rand(8, 32)
     data.set_value(data_value)
 
     bias = fc1.get_bias()
@@ -54,41 +54,47 @@ def test_forward_backward():
     expected = np.dot(data_value, weights.transpose())
 
     for n in range(8):
-        expected[n, :] += bias_value.reshape((24,))
+        expected[n, :] += bias_value.reshape((32,))
 
     check_equal(actual, expected, 1e-4)
 
-    top_grad = fc2.get_grad()
+    top_grad = fc1.get_grad()
     top_grad = np.random.rand(*top_grad.shape)
-    fc2.set_grad(top_grad)
+    fc1.set_grad(top_grad)
+    grad_weights = fc1.get_grad_weights() 
+    fc1.set_grad_weights(np.zeros(grad_weights.shape))
+
+
 
     net.backward()
-    weights = fc2.get_weights()
+    weights = fc1.get_weights()
 
-    bot_grad = fc1.get_grad()
+    bot_grad = data.get_grad()
     expected_bot_grad = np.dot(top_grad, weights)
     check_equal(bot_grad, expected_bot_grad, atol=1e-3)
 
     # weights_grad = np.sum(fc2.get_grad_weights(), axis=0)
-    weights_grad = fc2.get_grad_weights()
-    expected_weights_grad = np.dot(top_grad.transpose(), actual)
+    weights_grad = fc1.get_grad_weights()
+    expected_weights_grad = np.dot(top_grad.transpose(), data_value)
+    print(weights_grad)
+    print(expected_weights_grad)
     check_equal(weights_grad, expected_weights_grad, atol=1e-4)
 
-    bias_grad = fc2.get_grad_bias()
-    expected_bias_grad = np.sum(top_grad, 0).reshape(16, 1)
+    bias_grad = fc1.get_grad_bias()
+    expected_bias_grad = np.sum(top_grad, 0).reshape(32, 1)
     check_equal(bias_grad, expected_bias_grad, atol=1e-4)
 
 def test_forward_backward_not_flat():
     batch_size = 32
     net = Net(batch_size)
-    data = MemoryDataLayer(net, (8, 24, 24))
-    conv1 = ConvLayer(net, data, num_filters=16, kernel=3, stride=1, pad=1)
+    data = MemoryDataLayer(net, (16, 32, 32))
+    conv1 = ConvLayer(net, data, num_filters=32, kernel=3, stride=1, pad=1)
     fc1 = FullyConnectedLayer(net, conv1, 128)
-    fc2 = FullyConnectedLayer(net, fc1, 16)
+    fc2 = FullyConnectedLayer(net, fc1, 32)
 
     net.compile()
 
-    data_value = np.random.rand(batch_size, 8, 24, 24)
+    data_value = np.random.rand(batch_size, 16, 32, 32)
     data.set_value(data_value)
 
     bias = fc1.get_bias()
@@ -98,7 +104,7 @@ def test_forward_backward_not_flat():
 
     weights = fc1.get_weights()
     actual  = fc1.get_value()
-    expected = np.dot(conv1.get_value().reshape(batch_size, 16 * 24 * 24), weights.reshape(128, 16 * 24 * 24).transpose())
+    expected = np.dot(conv1.get_value().reshape(batch_size, 32 * 32 * 32), weights.reshape(128, 32* 32 * 32).transpose())
 
     for n in range(batch_size):
         expected[n, :] += bias_value.reshape((128,))
@@ -122,5 +128,12 @@ def test_forward_backward_not_flat():
     check_equal(weights_grad, expected_weights_grad, atol=1e-4)
 
     bias_grad = fc2.get_grad_bias()
-    expected_bias_grad = np.sum(top_grad, 0).reshape(16, 1)
+    expected_bias_grad = np.sum(top_grad, 0).reshape(32, 1)
     check_equal(bias_grad, expected_bias_grad, atol=1e-4)
+
+
+
+if __name__ == "__main__":
+   test_forward_backward()
+   test_forward_backward_not_flat() 
+

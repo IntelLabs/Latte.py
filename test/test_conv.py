@@ -91,7 +91,7 @@ def reference_caffe_conv_forward(_input, weights, bias, pad, stride, dilation=1)
                         col_buffer.flat[((n*channels_col+c)*output_height+h)*output_width+w] = 0
 
 
-    col_buffer_reshaped = col_buffer.reshape(channels_col, output_height * output_width)
+    col_buffer_reshaped = col_buffer.reshape(batch_size,channels_col, output_height * output_width)
     # weights array is padded so only use unpadded array to perform dot product. Otherwise, dimensions will not match.
     weights_reshaped = weights[:,0:in_channels,:,:].reshape(output_channels, in_channels * kernel_h * kernel_w)
 
@@ -235,9 +235,9 @@ def check_caffe_forward(batch_size=3, input_shape=(16, 14, 14), ofm1=16, ofm2=32
     net.forward()
 
     check_equal(data.get_value(), _input)
-    check_equal(conv1.get_value(), conv1_expected)
+    check_equal(conv1.get_value(), conv1_expected, 1e-4, 1e-4)
     actual  = conv2.get_value()
-    check_equal(actual, expected, 1e-4)
+    check_equal(actual, expected, 1e-4, 1e-4)
 
 
 def test_padding():
@@ -258,4 +258,10 @@ def test_pad_kernel_dilation():
     check_forward_backward(input_shape=(3,16,16), ofm1=16, ofm2=16, kernel=4, pad=6, dilation=4)
 
 def test_caffe_forward():
-    check_caffe_forward(batch_size=1, input_shape=(3,16,16), pad=1)
+    check_caffe_forward(batch_size=3, input_shape=(3,16,16), pad=1)
+
+
+
+
+if __name__ == "__main__":
+   test_medium()

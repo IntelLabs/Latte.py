@@ -30,33 +30,40 @@ import ctree.c.nodes as C
 
 
 class SymbolChecker(ast.NodeVisitor):
-    def __init__(self, sym):
+    def __init__(self, sym, fuse_map):
         self.flag = True
         self.sym = sym
+        self.fuse_map = fuse_map
 
     def visit_BinaryOp(self, node):  
         a = node
         while isinstance(a, C.BinaryOp):
             
             self.visit(a.right)   
-            a = a.left  
+            a = a.left 
+        if isinstance(a, C.SymbolRef):
+            if a.name in self.fuse_map:
+                self.flag = False
 
     def visit_SymbolRef(self, node):
-        if node.name != self.sym:
+        #print(node.name)
+        if node.name != self.sym :
             #print (self.sym)
             #print (node.name)
             self.flag = False
 
 
 
-def only_contains_symbol(ast, symbol):
-        checker = SymbolChecker(symbol)
+def only_contains_symbol(ast, symbol, fuse_map):
+        checker = SymbolChecker(symbol, fuse_map)
         checker.visit(ast)
         return checker.flag
 
 
 class hoist_intermediate_invariants(ast.NodeTransformer):
-    
+    def __init__(self, fuse_map):
+       self.fuse_map = fuse_map    
+ 
     def visit(self, node):
         node = super().visit(node)
         if hasattr(node, 'body'):
@@ -84,7 +91,7 @@ class hoist_intermediate_invariants(ast.NodeTransformer):
               isinstance(stmt.right, C.FunctionCall) and "_load" in stmt.right.func.name:
               hoist = True
               for arg in stmt.right.args:
-                  if not(only_contains_symbol(arg, node.init.left.name)):
+                  if not(only_contains_symbol(arg, node.init.left.name,self.fuse_map)):
                       hoist = False
               if hoist: 
                   pre_stmts.append(stmt)
@@ -147,8 +154,8 @@ class InvariantLoadStoreLifter(ast.NodeTransformer):
         return pre_stmts + [node] + post_stmts
 
 
-def lift_intermediate_loads(ast):
-    return hoist_intermediate_invariants().visit(ast)
+def lift_intermediate_loads(ast,fuse_map):
+    return hoist_intermediate_invariants(fuse_map).visit(ast)
 
 
 def lift_invariant_load_stores(ast):

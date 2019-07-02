@@ -456,7 +456,9 @@ class Net:
           
             if direction == "forward" and (self.cbr_fusion or "ON" in latte.config.AUTO_FUSION):
                 #print("FUSION ENABLED")
-                c_file = code_motion.lift_intermediate_loads(c_file)
+                #print(self.fuse_map)
+                  
+                c_file = code_motion.lift_intermediate_loads(c_file, self.fuse_map)
                 c_file = transformers.simple_fusion(c_file)
                 c_file = copy_to_register.register_copy(c_file, self.fuse_map)
             if "ON" in latte.config.TIMER:
